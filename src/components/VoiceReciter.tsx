@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Surah, Ayah, Reciter } from '../types/quran';
+import { getAyahPageNumber, getQuranPage, QuranPageAyah } from '../data/quranData';
 import { extractWords, wordSimilarity, normalizeArabicText, QuranWordMeta } from '../utils/arabicUtils';
 import { getAyahAudioUrl } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
@@ -31,7 +32,7 @@ interface VoiceReciterProps {
   selectedReciter: Reciter;
   onOpenTafsir: (ayah: Ayah) => void;
   onStatsUpdate: () => void;
-  onSelectSurahChange: (surahNum: number) => void;
+  onSelectSurahChange: (surahNum: number, ayahNum?: number) => void;
   allSurahsList: { number: number; name: string; numberOfAyahs: number }[];
 }
 
@@ -63,6 +64,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const [speechSupported, setSpeechSupported] = useState(true);
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
   const [manualWordInput, setManualWordInput] = useState('');
+  const [quranPageNumber, setQuranPageNumber] = useState<number | null>(null);
+  const [quranPageAyahs, setQuranPageAyahs] = useState<QuranPageAyah[]>([]);
+  const [isQuranPageLoading, setIsQuranPageLoading] = useState(true);
+  const [quranPageError, setQuranPageError] = useState<string | null>(null);
+  const [pageReloadToken, setPageReloadToken] = useState(0);
 
   const recognitionRef = useRef<any>(null);
   const incomingSpeechHandlerRef = useRef<(spokenText: string) => void>(() => {});
@@ -80,6 +86,45 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
   const surahProgress = surah.ayahs.length > 0 ? ((currentAyahIndex + 1) / surah.ayahs.length) * 100 : 0;
+  const currentVerseOnPageIndex = quranPageAyahs.findIndex((ayah) =>
+    ayah.surahNumber === surah.number && ayah.numberInSurah === currentAyah.numberInSurah
+  );
+  const revealedPageAyahs = currentVerseOnPageIndex >= 0
+    ? quranPageAyahs.slice(0, currentVerseOnPageIndex + 1)
+    : quranPageAyahs;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadQuranPage = async () => {
+      setIsQuranPageLoading(true);
+      setQuranPageError(null);
+
+      try {
+        const pageNumber = currentAyah.page
+          ?? await getAyahPageNumber(surah.number, currentAyah.numberInSurah);
+        const pageAyahs = await getQuranPage(pageNumber);
+
+        if (isMounted) {
+          setQuranPageNumber(pageNumber);
+          setQuranPageAyahs(pageAyahs);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setQuranPageError(error instanceof Error ? error.message : 'تعذر تحميل صفحة المصحف.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsQuranPageLoading(false);
+        }
+      }
+    };
+
+    void loadQuranPage();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentAyah, pageReloadToken, surah.number]);
 
   // Extract Quran words for current ayah
   const verseWords = useMemo(() => {
@@ -628,78 +673,117 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
         </div>
 
-        {/* Quran Scripture Display */}
-        <div className="p-6 sm:p-10 text-center min-h-[220px] flex flex-col justify-center items-center relative bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_52%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-          <div className="w-full max-w-3xl mb-5">
-            <div className="inline-flex items-center gap-3 rounded-full border border-emerald-200 bg-emerald-50/80 px-4 py-2 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">آية</span>
-              <span className="text-lg font-extrabold text-emerald-900">{currentAyah.numberInSurah}</span>
-              <span className="text-xs text-stone-500">من {surah.ayahs.length}</span>
+        {/* Full Mushaf Page */}
+        <div className="p-4 sm:p-8 flex flex-col items-center gap-6 relative bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_52%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+          <div className="w-full max-w-4xl min-h-[560px] sm:min-h-[760px] rounded-xl border-[5px] border-double border-emerald-800/70 bg-[#fffdf6] p-4 sm:p-8 shadow-[0_12px_40px_rgba(15,23,42,0.12)]">
+            <div className="flex items-center justify-between border-b border-amber-900/20 pb-3 text-xs font-semibold text-stone-600">
+              <span>القرآن الكريم</span>
+              <span>{quranPageNumber ? `صفحة ${quranPageNumber}` : 'صفحة المصحف'}</span>
             </div>
-          </div>
 
-          {/* Bismillah Header if Ayah 1 and not Tawbah/Fatihah */}
-          {currentAyah.numberInSurah === 1 && surah.number !== 1 && surah.number !== 9 && (
-            <div className="font-quran text-lg sm:text-xl text-stone-500 mb-4 select-none">
-              بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-            </div>
-          )}
+            {isQuranPageLoading ? (
+              <div className="flex min-h-[480px] items-center justify-center text-sm text-stone-500" role="status">
+                جارٍ تحميل صفحة المصحف...
+              </div>
+            ) : quranPageError ? (
+              <div className="flex min-h-[480px] flex-col items-center justify-center gap-3 text-center">
+                <p className="text-sm text-rose-700" role="alert">{quranPageError}</p>
+                <button
+                  onClick={() => setPageReloadToken((token) => token + 1)}
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            ) : (
+              <div dir="rtl" className="pt-5 text-justify text-[1.45rem] leading-[2.25] text-stone-900 sm:text-[1.8rem] sm:leading-[2.3]">
+                {revealedPageAyahs.map((pageAyah) => {
+                  const isCurrent = pageAyah.surahNumber === surah.number
+                    && pageAyah.numberInSurah === currentAyah.numberInSurah;
 
-          {/* Word-by-Word Interactive Quranic Text */}
-          <div className="w-full max-w-4xl rounded-[28px] border border-stone-200 bg-white/80 p-5 sm:p-7 shadow-[0_12px_40px_rgba(15,23,42,0.05)]">
-            <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-4 font-quran text-[2rem] sm:text-[2.6rem] lg:text-[3.2rem] leading-[2.1] text-stone-800">
-              {verseWords.map((wordObj) => {
-                const isMatched = matchedWords.includes(wordObj.index);
-                const isCurrent = wordObj.index === currentWordIdx && !isAyahCompleted;
-                const hasMistake = failedWords[wordObj.index] !== undefined;
+                  return (
+                    <React.Fragment key={`${pageAyah.surahNumber}:${pageAyah.numberInSurah}`}>
+                      {pageAyah.numberInSurah === 1 && (
+                        <>
+                          <span className="inline-block w-full py-2 text-center font-sans text-base font-bold text-emerald-900">
+                            سورة {pageAyah.surahName}
+                          </span>
+                          {pageAyah.surahNumber !== 1 && pageAyah.surahNumber !== 9 && (
+                            <span className="inline-block w-full pb-2 text-center font-quran text-xl text-stone-700 sm:text-2xl">
+                              بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {isCurrent ? (
+                        <>
+                          {verseWords.map((wordObj) => {
+                            const isMatched = matchedWords.includes(wordObj.index);
+                            const isCurrentWord = wordObj.index === currentWordIdx && !isAyahCompleted;
+                            const hasMistake = failedWords[wordObj.index] !== undefined;
+                            const isHidden = mode === 'memorization' && !isMatched && !isCurrentWord;
+                            const wordColorClass = isMatched
+                              ? 'text-emerald-700 font-bold'
+                              : hasMistake
+                                ? 'text-rose-600 font-bold'
+                                : 'text-stone-900';
+                            const wordBackgroundClass = isMatched
+                              ? 'bg-emerald-50 border border-emerald-200/80 shadow-sm'
+                              : hasMistake
+                                ? 'bg-rose-50 border border-rose-300 animate-pulse'
+                                : isCurrentWord
+                                  ? 'bg-amber-50 border-2 border-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.18)]'
+                                  : 'border border-transparent';
 
-                // Memorization mode: hide upcoming words until recited!
-                const isHidden = mode === 'memorization' && !isMatched && !isCurrent;
+                            return (
+                              <span
+                                key={wordObj.index}
+                                onClick={() => {
+                                  if (showSimulatedInput) {
+                                    submitSimulatedWord(wordObj.original);
+                                  }
+                                }}
+                                className={`inline-block cursor-pointer select-none rounded-xl px-1.5 py-0.5 transition-all duration-200 ${wordColorClass} ${wordBackgroundClass}`}
+                                title={hasMistake ? `نطقت خطأ: ${failedWords[wordObj.index]}` : wordObj.original}
+                              >
+                                {isHidden ? (
+                                  <span className="font-sans text-xl tracking-[0.24em] text-stone-300 sm:text-2xl">
+                                    •••••
+                                  </span>
+                                ) : wordObj.original}
+                              </span>
+                            );
+                          })}
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const localAyahIndex = pageAyah.surahNumber === surah.number
+                              ? surah.ayahs.findIndex((ayah) => ayah.numberInSurah === pageAyah.numberInSurah)
+                              : -1;
 
-                let wordColorClass = 'text-stone-800';
-                let bgClass = 'rounded-xl px-1.5 py-0.5 transition-all duration-200';
-
-                if (isMatched) {
-                  wordColorClass = 'text-emerald-700 font-bold';
-                  bgClass = 'bg-emerald-50 border border-emerald-200/80 rounded-xl px-1.5 py-0.5 shadow-sm';
-                } else if (hasMistake) {
-                  wordColorClass = 'text-rose-600 font-bold';
-                  bgClass = 'bg-rose-50 border border-rose-300 animate-pulse rounded-xl px-1.5 py-0.5 shadow-sm';
-                } else if (isCurrent) {
-                  wordColorClass = 'text-stone-900';
-                  bgClass = 'bg-amber-50 border-2 border-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.18)] rounded-xl px-1.5 py-0.5';
-                } else {
-                  bgClass = 'border border-transparent rounded-xl px-1.5 py-0.5';
-                }
-
-                return (
-                  <span
-                    key={wordObj.index}
-                    onClick={() => {
-                      // Clicking word in testing mode simulates reciting it
-                      if (showSimulatedInput) {
-                        submitSimulatedWord(wordObj.original);
-                      }
-                    }}
-                    className={`inline-block transition-all duration-200 cursor-pointer select-none ${wordColorClass} ${bgClass}`}
-                    title={hasMistake ? `نطقت خطأ: ${failedWords[wordObj.index]}` : wordObj.original}
-                  >
-                    {isHidden ? (
-                      <span className="text-stone-300 tracking-[0.24em] font-sans text-xl sm:text-2xl">
-                        •••••
+                            if (localAyahIndex >= 0) {
+                              setCurrentAyahIndex(localAyahIndex);
+                            } else {
+                              onSelectSurahChange(pageAyah.surahNumber, pageAyah.numberInSurah);
+                            }
+                          }}
+                          className="inline rounded-lg px-0.5 transition-colors hover:bg-amber-100"
+                          aria-label={`سورة ${pageAyah.surahName} الآية ${pageAyah.numberInSurah}`}
+                        >
+                          <span className="font-quran">{pageAyah.text}</span>
+                        </button>
+                      )}
+                      <span className="mx-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-emerald-800/70 px-1 text-sm font-sans font-bold text-emerald-900">
+                        {pageAyah.numberInSurah}
                       </span>
-                    ) : (
-                      wordObj.original
-                    )}
-                  </span>
-                );
-              })}
-
-              {/* Ayah End Sign */}
-              <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border-[3px] border-emerald-700 bg-emerald-50 text-emerald-800 text-sm font-extrabold mx-2 select-none shadow-sm">
-                {currentAyah.numberInSurah}
-              </span>
-            </div>
+                      {' '}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Active Error Detection / Correction Alert */}
@@ -792,7 +876,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
 
           {/* Center Main Action: Microphone Recitation Button */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-center">
             <button
               onClick={toggleListening}
               className={`relative flex items-center justify-center gap-2 px-6 py-3 rounded-full font-bold text-sm shadow-md transition-all cursor-pointer ${
@@ -838,6 +922,36 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 {isPlayingAudio ? 'جارٍ التشغيل...' : `استمع (${selectedReciter.name.split(' ')[1] || 'القارئ'})`}
               </span>
             </button>
+          </div>
+
+          <div className="w-full mt-2">
+            <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold text-stone-600 mb-2">
+              <span>انتقال آلي</span>
+              <span>{currentAyahIndex + 1} / {surah.ayahs.length}</span>
+            </div>
+            <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+              {surah.ayahs.map((_, index) => {
+                const isCurrent = index === currentAyahIndex;
+                const isDone = index < currentAyahIndex;
+                const isUpcoming = index > currentAyahIndex;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentAyahIndex(index)}
+                    className={[
+                      'h-10 rounded-xl border text-[11px] font-bold transition-all',
+                      isCurrent ? 'bg-emerald-700 text-white border-emerald-700 shadow-md' : '',
+                      isDone ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : '',
+                      isUpcoming ? 'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200' : ''
+                    ].join(' ')}
+                    title={`الآية ${index + 1}`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Simulated / Fallback Mode Toggle */}

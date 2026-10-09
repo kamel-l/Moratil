@@ -126,9 +126,9 @@ export default function App() {
             selectedReciter={selectedReciter}
             onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
             onStatsUpdate={refreshAllState}
-            onSelectSurahChange={(num) => {
+            onSelectSurahChange={(num, ayahNum = 1) => {
               setSelectedSurahNumber(num);
-              setInitialAyahForReciter(1);
+              setInitialAyahForReciter(ayahNum);
             }}
             allSurahsList={ALL_SURAHS}
           />

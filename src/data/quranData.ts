@@ -527,6 +527,16 @@ export const PRELOADED_SURAHS: Record<number, Surah> = {
  * In-memory cache for surahs fetched dynamically from Quran API
  */
 const dynamicSurahCache: Record<number, Surah> = {};
+const quranPageCache: Record<number, QuranPageAyah[]> = {};
+const surahPageCache: Record<number, (number | undefined)[]> = {};
+
+export interface QuranPageAyah {
+  surahNumber: number;
+  surahName: string;
+  numberInSurah: number;
+  text: string;
+  juz: number;
+}
 
 /**
  * Loads a Surah either from bundled high-precision data or fetches dynamically from Quran API
@@ -601,4 +611,102 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
   };
 
   return fallbackSurah;
+}
+
+export async function getAyahPageNumber(surahNumber: number, ayahNumber: number): Promise<number> {
+  const bundledSurah = PRELOADED_SURAHS[surahNumber];
+  if (bundledSurah && (surahNumber === 1 || (surahNumber >= 112 && surahNumber <= 114))) {
+    return bundledSurah.pageStart;
+  }
+
+  let pages = surahPageCache[surahNumber];
+  if (!pages) {
+    const response = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`);
+    if (!response.ok) {
+      throw new Error(`تعذر تحميل بيانات صفحات سورة ${bundledSurah?.name || surahNumber} (${response.status}).`);
+    }
+
+    const payload = await response.json();
+    const ayahs = payload?.data?.ayahs;
+    if (!Array.isArray(ayahs)) {
+      throw new Error('استجابة بيانات صفحات السورة غير صالحة.');
+    }
+
+    pages = ayahs.map((ayah: { page?: number }) => ayah.page);
+    surahPageCache[surahNumber] = pages;
+  }
+
+  const pageNumber = pages[ayahNumber - 1];
+  if (typeof pageNumber !== 'number' || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+    throw new Error(`لم يُعثر على رقم صفحة الآية ${ayahNumber} من السورة ${surahNumber}.`);
+  }
+
+  return pageNumber;
+}
+
+export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]> {
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+    throw new Error('رقم صفحة المصحف غير صالح.');
+  }
+
+  if (quranPageCache[pageNumber]) {
+    return quranPageCache[pageNumber];
+  }
+
+  if (pageNumber === 1) {
+    const pageAyahs = PRELOADED_SURAHS[1].ayahs.map((ayah) => ({
+      surahNumber: 1,
+      surahName: PRELOADED_SURAHS[1].name,
+      numberInSurah: ayah.numberInSurah,
+      text: ayah.text,
+      juz: ayah.juz
+    }));
+    quranPageCache[pageNumber] = pageAyahs;
+    return pageAyahs;
+  }
+
+  if (pageNumber === 604) {
+    const pageAyahs = [112, 113, 114].flatMap((surahNumber) =>
+      PRELOADED_SURAHS[surahNumber].ayahs.map((ayah) => ({
+        surahNumber,
+        surahName: PRELOADED_SURAHS[surahNumber].name,
+        numberInSurah: ayah.numberInSurah,
+        text: ayah.text,
+        juz: ayah.juz
+      }))
+    );
+    quranPageCache[pageNumber] = pageAyahs;
+    return pageAyahs;
+  }
+
+  const response = await fetch(`https://api.alquran.cloud/v1/page/${pageNumber}/quran-uthmani`);
+  if (!response.ok) {
+    throw new Error(`تعذر تحميل صفحة المصحف رقم ${pageNumber} (${response.status}).`);
+  }
+
+  const payload = await response.json();
+  const ayahs = payload?.data?.ayahs;
+  if (!Array.isArray(ayahs)) {
+    throw new Error('استجابة صفحة المصحف غير صالحة.');
+  }
+
+  const pageAyahs: QuranPageAyah[] = ayahs.map((ayah: {
+    numberInSurah: number;
+    text: string;
+    juz: number;
+    surah: { number: number; name: string };
+  }) => ({
+    surahNumber: ayah.surah.number,
+    surahName: ayah.surah.name,
+    numberInSurah: ayah.numberInSurah,
+    text: ayah.text,
+    juz: ayah.juz
+  }));
+
+  if (pageAyahs.length === 0) {
+    throw new Error(`لم تُعثر على آيات في صفحة المصحف رقم ${pageNumber}.`);
+  }
+
+  quranPageCache[pageNumber] = pageAyahs;
+  return pageAyahs;
 }
