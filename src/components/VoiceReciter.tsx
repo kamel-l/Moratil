@@ -86,6 +86,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
   const surahProgress = surah.ayahs.length > 0 ? ((currentAyahIndex + 1) / surah.ayahs.length) * 100 : 0;
+  const currentVerseOnPageIndex = quranPageAyahs.findIndex((ayah) =>
+    ayah.surahNumber === surah.number && ayah.numberInSurah === currentAyah.numberInSurah
+  );
+  const revealedPageAyahs = currentVerseOnPageIndex >= 0
+    ? quranPageAyahs.slice(0, currentVerseOnPageIndex + 1)
+    : quranPageAyahs;
 
   useEffect(() => {
     let isMounted = true;
@@ -691,7 +697,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               </div>
             ) : (
               <div dir="rtl" className="pt-5 text-justify text-[1.45rem] leading-[2.25] text-stone-900 sm:text-[1.8rem] sm:leading-[2.3]">
-                {quranPageAyahs.map((pageAyah) => {
+                {revealedPageAyahs.map((pageAyah) => {
                   const isCurrent = pageAyah.surahNumber === surah.number
                     && pageAyah.numberInSurah === currentAyah.numberInSurah;
 
@@ -709,96 +715,75 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                           )}
                         </>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const localAyahIndex = pageAyah.surahNumber === surah.number
-                            ? surah.ayahs.findIndex((ayah) => ayah.numberInSurah === pageAyah.numberInSurah)
-                            : -1;
+                      {isCurrent ? (
+                        <>
+                          {verseWords.map((wordObj) => {
+                            const isMatched = matchedWords.includes(wordObj.index);
+                            const isCurrentWord = wordObj.index === currentWordIdx && !isAyahCompleted;
+                            const hasMistake = failedWords[wordObj.index] !== undefined;
+                            const isHidden = mode === 'memorization' && !isMatched && !isCurrentWord;
+                            const wordColorClass = isMatched
+                              ? 'text-emerald-700 font-bold'
+                              : hasMistake
+                                ? 'text-rose-600 font-bold'
+                                : 'text-stone-900';
+                            const wordBackgroundClass = isMatched
+                              ? 'bg-emerald-50 border border-emerald-200/80 shadow-sm'
+                              : hasMistake
+                                ? 'bg-rose-50 border border-rose-300 animate-pulse'
+                                : isCurrentWord
+                                  ? 'bg-amber-50 border-2 border-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.18)]'
+                                  : 'border border-transparent';
 
-                          if (localAyahIndex >= 0) {
-                            setCurrentAyahIndex(localAyahIndex);
-                          } else {
-                            onSelectSurahChange(pageAyah.surahNumber, pageAyah.numberInSurah);
-                          }
-                        }}
-                        className={`inline rounded-lg px-0.5 transition-colors ${
-                          isCurrent ? 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300' : 'hover:bg-amber-100'
-                        }`}
-                        aria-label={`سورة ${pageAyah.surahName} الآية ${pageAyah.numberInSurah}`}
-                        aria-current={isCurrent ? 'true' : undefined}
-                      >
-                        <span className="font-quran">{pageAyah.text}</span>
-                        <span className="mx-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-emerald-800/70 px-1 text-sm font-sans font-bold text-emerald-900">
-                          {pageAyah.numberInSurah}
-                        </span>
-                      </button>{' '}
+                            return (
+                              <span
+                                key={wordObj.index}
+                                onClick={() => {
+                                  if (showSimulatedInput) {
+                                    submitSimulatedWord(wordObj.original);
+                                  }
+                                }}
+                                className={`inline-block cursor-pointer select-none rounded-xl px-1.5 py-0.5 transition-all duration-200 ${wordColorClass} ${wordBackgroundClass}`}
+                                title={hasMistake ? `نطقت خطأ: ${failedWords[wordObj.index]}` : wordObj.original}
+                              >
+                                {isHidden ? (
+                                  <span className="font-sans text-xl tracking-[0.24em] text-stone-300 sm:text-2xl">
+                                    •••••
+                                  </span>
+                                ) : wordObj.original}
+                              </span>
+                            );
+                          })}
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const localAyahIndex = pageAyah.surahNumber === surah.number
+                              ? surah.ayahs.findIndex((ayah) => ayah.numberInSurah === pageAyah.numberInSurah)
+                              : -1;
+
+                            if (localAyahIndex >= 0) {
+                              setCurrentAyahIndex(localAyahIndex);
+                            } else {
+                              onSelectSurahChange(pageAyah.surahNumber, pageAyah.numberInSurah);
+                            }
+                          }}
+                          className="inline rounded-lg px-0.5 transition-colors hover:bg-amber-100"
+                          aria-label={`سورة ${pageAyah.surahName} الآية ${pageAyah.numberInSurah}`}
+                        >
+                          <span className="font-quran">{pageAyah.text}</span>
+                        </button>
+                      )}
+                      <span className="mx-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-emerald-800/70 px-1 text-sm font-sans font-bold text-emerald-900">
+                        {pageAyah.numberInSurah}
+                      </span>
+                      {' '}
                     </React.Fragment>
                   );
                 })}
               </div>
             )}
-          </div>
-
-          {/* Word-by-Word Recitation Tracking */}
-          <div className="w-full max-w-4xl rounded-[28px] border border-stone-200 bg-white/80 p-5 sm:p-7 shadow-[0_12px_40px_rgba(15,23,42,0.05)]">
-            <div className="mb-3 flex items-center justify-between text-xs font-semibold text-stone-600">
-              <span>الآية المحددة للتسميع</span>
-              <span className="text-emerald-800">الآية {currentAyah.numberInSurah} من {surah.ayahs.length}</span>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-4 font-quran text-[1.5rem] leading-[2.1] text-stone-800 sm:text-[2rem]">
-              {verseWords.map((wordObj) => {
-                const isMatched = matchedWords.includes(wordObj.index);
-                const isCurrent = wordObj.index === currentWordIdx && !isAyahCompleted;
-                const hasMistake = failedWords[wordObj.index] !== undefined;
-
-                // Memorization mode: hide upcoming words until recited!
-                const isHidden = mode === 'memorization' && !isMatched && !isCurrent;
-
-                let wordColorClass = 'text-stone-800';
-                let bgClass = 'rounded-xl px-1.5 py-0.5 transition-all duration-200';
-
-                if (isMatched) {
-                  wordColorClass = 'text-emerald-700 font-bold';
-                  bgClass = 'bg-emerald-50 border border-emerald-200/80 rounded-xl px-1.5 py-0.5 shadow-sm';
-                } else if (hasMistake) {
-                  wordColorClass = 'text-rose-600 font-bold';
-                  bgClass = 'bg-rose-50 border border-rose-300 animate-pulse rounded-xl px-1.5 py-0.5 shadow-sm';
-                } else if (isCurrent) {
-                  wordColorClass = 'text-stone-900';
-                  bgClass = 'bg-amber-50 border-2 border-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.18)] rounded-xl px-1.5 py-0.5';
-                } else {
-                  bgClass = 'border border-transparent rounded-xl px-1.5 py-0.5';
-                }
-
-                return (
-                  <span
-                    key={wordObj.index}
-                    onClick={() => {
-                      // Clicking word in testing mode simulates reciting it
-                      if (showSimulatedInput) {
-                        submitSimulatedWord(wordObj.original);
-                      }
-                    }}
-                    className={`inline-block transition-all duration-200 cursor-pointer select-none ${wordColorClass} ${bgClass}`}
-                    title={hasMistake ? `نطقت خطأ: ${failedWords[wordObj.index]}` : wordObj.original}
-                  >
-                    {isHidden ? (
-                      <span className="text-stone-300 tracking-[0.24em] font-sans text-xl sm:text-2xl">
-                        •••••
-                      </span>
-                    ) : (
-                      wordObj.original
-                    )}
-                  </span>
-                );
-              })}
-
-              {/* Ayah End Sign */}
-              <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border-[3px] border-emerald-700 bg-emerald-50 text-emerald-800 text-sm font-extrabold mx-2 select-none shadow-sm">
-                {currentAyah.numberInSurah}
-              </span>
-            </div>
           </div>
 
           {/* Active Error Detection / Correction Alert */}
