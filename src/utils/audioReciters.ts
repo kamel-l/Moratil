@@ -50,8 +50,12 @@ export const POPULAR_RECITERS: Reciter[] = [
 /**
  * Returns direct CDN audio URL for a specific Ayah by a specific reciter
  */
-export function getAyahAudioUrl(reciterId: string, surahNumber: number, ayahNumber: number): string {
-  const reciter = POPULAR_RECITERS.find(r => r.id === reciterId) || POPULAR_RECITERS[0];
+export function getAyahAudioUrl(
+  reciterId: string,
+  surahNumber: number,
+  ayahNumber: number,
+): string {
+  const reciter = POPULAR_RECITERS.find((r) => r.id === reciterId) || POPULAR_RECITERS[0];
   const surahPad = surahNumber.toString().padStart(3, '0');
   const ayahPad = ayahNumber.toString().padStart(3, '0');
   return `https://everyayah.com/data/${reciter.folder}/${surahPad}${ayahPad}.mp3`;
@@ -60,7 +64,11 @@ export function getAyahAudioUrl(reciterId: string, surahNumber: number, ayahNumb
 /**
  * Fallback audio URL using Quran.com CDN if needed
  */
-export function getQuranComAudioUrl(reciterId: string, surahNumber: number, ayahNumber: number): string {
+export function getQuranComAudioUrl(
+  reciterId: string,
+  surahNumber: number,
+  ayahNumber: number,
+): string {
   const surahPad = surahNumber.toString().padStart(3, '0');
   const ayahPad = ayahNumber.toString().padStart(3, '0');
   return `https://verses.quran.com/${reciterId}/${surahPad}${ayahPad}.mp3`;

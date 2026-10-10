@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { 
-  CalendarClock, 
-  AlertTriangle, 
-  CheckCircle, 
-  Plus, 
-  ArrowLeft, 
-  Play, 
-  Volume2, 
-  Clock, 
-  Flame, 
-  ShieldAlert, 
+import {
+  CalendarClock,
+  AlertTriangle,
+  CheckCircle,
+  Plus,
+  ArrowLeft,
+  Play,
+  Volume2,
+  Clock,
+  Flame,
+  ShieldAlert,
   Sparkles,
-  BookOpen
+  BookOpen,
 } from 'lucide-react';
 import { RevisionPlan, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
@@ -28,7 +28,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   plans,
   forgottenVerses,
   onStartPracticingVerse,
-  onRefreshPlans
+  onRefreshPlans,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState('');
@@ -37,18 +37,18 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   const [durationDays, setDurationDays] = useState(14);
 
   const getSurahName = (num: number) => {
-    return ALL_SURAHS.find(s => s.number === num)?.name || `سورة ${num}`;
+    return ALL_SURAHS.find((s) => s.number === num)?.name || `سورة ${num}`;
   };
 
   const handleCompleteDay = (planId: string) => {
-    const updated = plans.map(p => {
+    const updated = plans.map((p) => {
       if (p.id === planId) {
         const nextDay = p.currentDay + 1;
         const isDone = nextDay >= p.durationDays;
         return {
           ...p,
           currentDay: nextDay,
-          isCompleted: isDone
+          isCompleted: isDone,
         };
       }
       return p;
@@ -73,7 +73,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
       durationDays: durationDays,
       currentDay: 1,
       isCompleted: false,
-      startDate: new Date().toISOString()
+      startDate: new Date().toISOString(),
     };
 
     const updated = [newPlan, ...plans];
@@ -85,7 +85,6 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      
       {/* Hero Header */}
       <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
         <div className="relative z-10 max-w-2xl space-y-3">
@@ -97,7 +96,8 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             خطط المراجعة وتنبيهات تثبيت الحفظ
           </h1>
           <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
-            القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
+            القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك
+            للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
           </p>
         </div>
       </div>
@@ -129,7 +129,8 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto" />
             <h3 className="font-bold text-stone-900 text-base">ما شاء الله! جميع محفوظاتك متقنة</h3>
             <p className="text-xs text-stone-500 max-w-md mx-auto">
-              لا توجد آيات متعثرة حالياً. واصل المراجعة اليومية المنتظمة لتحافظ على هذا المستوى الممتاز.
+              لا توجد آيات متعثرة حالياً. واصل المراجعة اليومية المنتظمة لتحافظ على هذا المستوى
+              الممتاز.
             </p>
           </div>
         ) : (
@@ -145,9 +146,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-base text-stone-900">
-                        سورة {surahName}
-                      </span>
+                      <span className="font-bold text-base text-stone-900">سورة {surahName}</span>
                       <span className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded-md font-semibold">
                         الآية {item.ayahNumber}
                       </span>
@@ -163,9 +162,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                     <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-600 border border-stone-100 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-stone-500">موضع التعثر السابق:</span>
-                        <span className="text-rose-600 font-bold">
-                          "{lastMistake.recitedWord}"
-                        </span>
+                        <span className="text-rose-600 font-bold">"{lastMistake.recitedWord}"</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-stone-500">الكلمة الصحيحة في المصحف:</span>
@@ -204,9 +201,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
               <CalendarClock className="w-5 h-5 text-emerald-700" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-stone-900">
-                خطط المراجعة الدورية النشطة
-              </h2>
+              <h2 className="text-lg font-bold text-stone-900">خطط المراجعة الدورية النشطة</h2>
               <p className="text-xs text-stone-500">
                 برامج مجدولة لمراجعة السور والأجزاء وفق خطة زمنية ومعدل يومي
               </p>
@@ -224,7 +219,10 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {plans.map((plan) => {
-            const progressPercent = Math.min(100, Math.round((plan.currentDay / plan.durationDays) * 100));
+            const progressPercent = Math.min(
+              100,
+              Math.round((plan.currentDay / plan.durationDays) * 100),
+            );
             const isFinished = plan.currentDay >= plan.durationDays;
 
             return (
@@ -235,19 +233,19 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                      {plan.category === 'spaced_repetition' ? 'تكرار متباعد' : plan.category === 'daily_wird' ? 'ورد يومي' : 'تثبيت سورة'}
+                      {plan.category === 'spaced_repetition'
+                        ? 'تكرار متباعد'
+                        : plan.category === 'daily_wird'
+                          ? 'ورد يومي'
+                          : 'تثبيت سورة'}
                     </span>
                     <span className="text-xs text-stone-500">
                       اليوم {plan.currentDay} من {plan.durationDays}
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-stone-900 text-base leading-snug">
-                    {plan.title}
-                  </h3>
-                  <p className="text-xs text-stone-500 line-clamp-2">
-                    {plan.description}
-                  </p>
+                  <h3 className="font-bold text-stone-900 text-base leading-snug">{plan.title}</h3>
+                  <p className="text-xs text-stone-500 line-clamp-2">{plan.description}</p>
                 </div>
 
                 <div className="space-y-2.5">
@@ -302,9 +300,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <h3 className="font-bold text-stone-900 text-lg">
-                إنشاء خطة مراجعة دورية مخصصة
-              </h3>
+              <h3 className="font-bold text-stone-900 text-lg">إنشاء خطة مراجعة دورية مخصصة</h3>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-stone-400 hover:text-stone-700 text-sm font-bold"
@@ -315,9 +311,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
             <form onSubmit={handleCreatePlan} className="space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="font-semibold text-stone-800">
-                  اسم الخطة أو الهدف:
-                </label>
+                <label className="font-semibold text-stone-800">اسم الخطة أو الهدف:</label>
                 <input
                   type="text"
                   required
@@ -330,9 +324,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-stone-800">
-                    الهدف اليومي (عدد الآيات):
-                  </label>
+                  <label className="font-semibold text-stone-800">الهدف اليومي (عدد الآيات):</label>
                   <input
                     type="number"
                     min={1}
@@ -344,9 +336,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-stone-800">
-                    مدة الخطة (بالأيام):
-                  </label>
+                  <label className="font-semibold text-stone-800">مدة الخطة (بالأيام):</label>
                   <input
                     type="number"
                     min={3}
@@ -359,14 +349,15 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-semibold text-stone-800">
-                  اختر السور المستهدفة:
-                </label>
+                <label className="font-semibold text-stone-800">اختر السور المستهدفة:</label>
                 <div className="max-h-40 overflow-y-auto border border-stone-200 rounded-xl p-2.5 grid grid-cols-2 gap-2 bg-stone-50">
                   {ALL_SURAHS.slice(0, 30).map((s) => {
                     const isChecked = selectedSurahNums.includes(s.number);
                     return (
-                      <label key={s.number} className="flex items-center gap-2 cursor-pointer select-none">
+                      <label
+                        key={s.number}
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                      >
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -374,12 +365,14 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                             if (e.target.checked) {
                               setSelectedSurahNums([...selectedSurahNums, s.number]);
                             } else {
-                              setSelectedSurahNums(selectedSurahNums.filter(n => n !== s.number));
+                              setSelectedSurahNums(selectedSurahNums.filter((n) => n !== s.number));
                             }
                           }}
                           className="accent-emerald-600 rounded"
                         />
-                        <span className="text-[11px] text-stone-700">{s.number}. {s.name}</span>
+                        <span className="text-[11px] text-stone-700">
+                          {s.number}. {s.name}
+                        </span>
                       </label>
                     );
                   })}
@@ -405,7 +398,6 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
           </div>
         </div>
       )}
-
     </div>
   );
 };

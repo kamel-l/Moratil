@@ -4,7 +4,8 @@
 
 // Regex for Quranic Tashkeel and diacritical marks
 const TASHKEEL_REGEX = /[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g;
-const NON_ARABIC_OR_SYMBOLS = /[\u0600-\u060F\u061B\u061F\u06D4\uFD3E\uFD3F«»()\[\]0-9٠-٩.,?!:;'"\-—_\n\r]/g;
+const NON_ARABIC_OR_SYMBOLS =
+  /[\u0600-\u060F\u061B\u061F\u06D4\uFD3E\uFD3F«»()0-9٠-٩.,?!:;'"\-—_\n\r]/g;
 
 /**
  * Removes all diacritics, pause marks, stop signs and non-essential Quranic annotations
@@ -25,7 +26,7 @@ export function removeTashkeel(text: string): string {
 export function normalizeArabicText(text: string): string {
   if (!text) return '';
   let str = removeTashkeel(text);
-  
+
   // Replace symbols, verse numbers and brackets
   str = str.replace(NON_ARABIC_OR_SYMBOLS, ' ');
 
@@ -64,13 +65,13 @@ export function extractWords(verseText: string): QuranWordMeta[] {
   if (!verseText) return [];
   // Clean decorative brackets or verse numbers if any in the original text
   const cleanOriginal = verseText.replace(/[\u06dd\ufd3e\ufd3f0-9٠-٩()]/g, ' ').trim();
-  const rawWords = cleanOriginal.split(/\s+/).filter(w => w.length > 0);
+  const rawWords = cleanOriginal.split(/\s+/).filter((w) => w.length > 0);
 
   return rawWords.map((word, index) => {
     return {
       index,
       original: word,
-      normalized: normalizeArabicText(word)
+      normalized: normalizeArabicText(word),
     };
   });
 }
@@ -92,7 +93,7 @@ export function levenshteinDistance(a: string, b: string): number {
       dp[i][j] = Math.min(
         dp[i - 1][j] + 1, // deletion
         dp[i][j - 1] + 1, // insertion
-        dp[i - 1][j - 1] + cost // substitution
+        dp[i - 1][j - 1] + cost, // substitution
       );
     }
   }

@@ -1,14 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Search, 
-  BookOpen, 
-  Mic, 
-  Volume2, 
-  Check, 
-  Sparkles, 
-  Filter,
-  ArrowRight
-} from 'lucide-react';
+import { Search, BookOpen, Mic, Volume2, Check, Sparkles, Filter, ArrowRight } from 'lucide-react';
 import { ALL_SURAHS, SurahMeta } from '../data/quranSurahsList';
 import { getSurahWithAyahs } from '../data/quranData';
 import { Surah, Ayah } from '../types/quran';
@@ -24,7 +15,7 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
   onSelectSurahForRecitation,
   onPlaySurahAudio,
   onOpenTafsir,
-  completedSurahs
+  completedSurahs,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'juz30' | 'makki' | 'madani'>('all');
@@ -32,7 +23,7 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
   const [loadingSurah, setLoadingSurah] = useState(false);
 
   const filteredSurahs = useMemo(() => {
-    return ALL_SURAHS.filter(s => {
+    return ALL_SURAHS.filter((s) => {
       const matchSearch =
         s.name.includes(searchTerm) ||
         s.englishName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -60,11 +51,9 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      
       {/* If in Reading / Full Tafsir View for a single Surah */}
       {activeReadingSurah ? (
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden space-y-6">
-          
           {/* Header of Reading View */}
           <div className="p-6 bg-stone-50 border-b border-stone-100 flex flex-wrap items-center justify-between gap-4">
             <button
@@ -111,7 +100,6 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
           <div className="p-6 sm:p-10 space-y-8 divide-y divide-stone-100">
             {activeReadingSurah.ayahs.map((ayah) => (
               <div key={ayah.numberInSurah} className="pt-6 first:pt-0 space-y-4">
-                
                 {/* Quran Scripture */}
                 <div className="text-right">
                   <div className="font-quran text-2xl sm:text-3xl text-stone-900 leading-loose">
@@ -137,22 +125,18 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
                         معاني الكلمات
                       </button>
                     </div>
-                    <p className="leading-relaxed text-stone-600">
-                      {ayah.tafsir}
-                    </p>
+                    <p className="leading-relaxed text-stone-600">{ayah.tafsir}</p>
                   </div>
                 )}
               </div>
             ))}
           </div>
-
         </div>
       ) : (
         <>
           {/* Top Search & Filter Bar */}
           <div className="bg-white rounded-3xl border border-stone-200 p-5 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              
               {/* Search Input */}
               <div className="relative w-full sm:max-w-md">
                 <Search className="w-4 h-4 text-stone-400 absolute right-3.5 top-3.5 pointer-events-none" />
@@ -211,7 +195,6 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
                   مدنية
                 </button>
               </div>
-
             </div>
           </div>
 
@@ -287,7 +270,6 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
           </div>
         </>
       )}
-
     </div>
   );
 };

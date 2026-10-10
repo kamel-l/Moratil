@@ -1,15 +1,15 @@
 import React from 'react';
-import { 
-  BarChart3, 
-  CheckCircle2, 
-  Clock, 
-  TrendingUp, 
-  Flame, 
-  Sparkles, 
-  Award, 
-  ShieldCheck, 
+import {
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  TrendingUp,
+  Flame,
+  Sparkles,
+  Award,
+  ShieldCheck,
   BookMarked,
-  BrainCircuit
+  BrainCircuit,
 } from 'lucide-react';
 import { UserStats, VerseMastery } from '../types/quran';
 import { formatTime } from '../utils/arabicUtils';
@@ -19,14 +19,11 @@ interface StatsDashboardProps {
   verseMasteryMap: Record<string, VerseMastery>;
 }
 
-export const StatsDashboard: React.FC<StatsDashboardProps> = ({
-  stats,
-  verseMasteryMap
-}) => {
+export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMasteryMap }) => {
   const masteryValues = Object.values(verseMasteryMap);
-  const masteredCount = masteryValues.filter(v => v.level === 'mastered').length;
-  const goodCount = masteryValues.filter(v => v.level === 'good').length;
-  const reviewNeededCount = masteryValues.filter(v => v.level === 'review_needed').length;
+  const masteredCount = masteryValues.filter((v) => v.level === 'mastered').length;
+  const goodCount = masteryValues.filter((v) => v.level === 'good').length;
+  const reviewNeededCount = masteryValues.filter((v) => v.level === 'review_needed').length;
   const totalTracked = masteryValues.length || 1;
 
   const masteredPercent = Math.round((masteredCount / totalTracked) * 100);
@@ -43,11 +40,10 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
     { day: 'الخميس', verses: 48 },
     { day: 'الجمعة', verses: 52 },
   ];
-  const maxDaily = Math.max(...dailyActivity.map(d => d.verses), 50);
+  const maxDaily = Math.max(...dailyActivity.map((d) => d.verses), 50);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      
       {/* Hero Header */}
       <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -65,16 +61,13 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
 
           <div className="bg-stone-50 border border-stone-200 rounded-2xl px-5 py-3 text-center">
             <span className="text-xs text-stone-500 block">المستوى الحالي</span>
-            <span className="text-base font-bold text-emerald-800 font-serif">
-              {stats.level}
-            </span>
+            <span className="text-base font-bold text-emerald-800 font-serif">{stats.level}</span>
           </div>
         </div>
       </div>
 
       {/* 4 Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        
         {/* Total Verses */}
         <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
@@ -86,9 +79,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
           <div className="text-2xl font-bold text-stone-900">
             {stats.totalVersesRecited.toLocaleString('ar-EG')}
           </div>
-          <p className="text-[11px] text-emerald-700 font-medium">
-            آية تمت تلاوتها ومراجعتها
-          </p>
+          <p className="text-[11px] text-emerald-700 font-medium">آية تمت تلاوتها ومراجعتها</p>
         </div>
 
         {/* Recitation Accuracy */}
@@ -99,12 +90,8 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
               <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-teal-800">
-            {stats.accuracyRate}%
-          </div>
-          <p className="text-[11px] text-stone-500">
-            مطابقة ممتازة للألفاظ
-          </p>
+          <div className="text-2xl font-bold text-teal-800">{stats.accuracyRate}%</div>
+          <p className="text-[11px] text-stone-500">مطابقة ممتازة للألفاظ</p>
         </div>
 
         {/* Time Spent */}
@@ -118,9 +105,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
           <div className="text-2xl font-bold text-stone-900">
             {Math.round(stats.totalRecitedSeconds / 60)} دقيقة
           </div>
-          <p className="text-[11px] text-stone-500">
-            جلسات تعاهد القرآن
-          </p>
+          <p className="text-[11px] text-stone-500">جلسات تعاهد القرآن</p>
         </div>
 
         {/* Fixed Mistakes */}
@@ -131,19 +116,13 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
               <BrainCircuit className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-stone-900">
-            {stats.mistakesFixedCount}
-          </div>
-          <p className="text-[11px] text-stone-500">
-            مواضع تعثر ثُبّتت بنجاح
-          </p>
+          <div className="text-2xl font-bold text-stone-900">{stats.mistakesFixedCount}</div>
+          <p className="text-[11px] text-stone-500">مواضع تعثر ثُبّتت بنجاح</p>
         </div>
-
       </div>
 
       {/* 7-Day Activity Chart & Mastery Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Activity Bar Chart (2 columns) */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-6 shadow-xs space-y-5">
           <div className="flex items-center justify-between">
@@ -180,9 +159,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
-                    <span className="text-[11px] text-stone-500 font-medium">
-                      {item.day}
-                    </span>
+                    <span className="text-[11px] text-stone-500 font-medium">{item.day}</span>
                   </div>
                 );
               })}
@@ -193,9 +170,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
         {/* Mastery Distribution Card (1 column) */}
         <div className="bg-white rounded-3xl border border-stone-200 p-6 shadow-xs space-y-5">
           <div className="space-y-0.5">
-            <h2 className="font-bold text-stone-900 text-base">
-              توزيع جودة الحفظ
-            </h2>
+            <h2 className="font-bold text-stone-900 text-base">توزيع جودة الحفظ</h2>
             <p className="text-xs text-stone-500">وفق مقياس التكرار المتباعد</p>
           </div>
 
@@ -256,9 +231,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
             تنبيه الخوارزمية: التسميع المتصل 3 مرات دون خطأ ينقل الآية تلقائياً لدرجة "متقنة".
           </div>
         </div>
-
       </div>
-
     </div>
   );
 };

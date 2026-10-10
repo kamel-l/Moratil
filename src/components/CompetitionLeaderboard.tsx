@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { 
-  Trophy, 
-  Flame, 
-  Sparkles, 
-  UserPlus, 
-  CheckCircle2, 
-  Send, 
-  Crown, 
-  Medal, 
-  Target, 
+import {
+  Trophy,
+  Flame,
+  Sparkles,
+  UserPlus,
+  CheckCircle2,
+  Send,
+  Crown,
+  Medal,
+  Target,
   Play,
   Heart,
-  Users
+  Users,
 } from 'lucide-react';
 import { FriendUser, QuranChallenge } from '../types/quran';
 import { saveFriends, saveChallenges } from '../services/storageService';
@@ -27,22 +27,24 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
   friends,
   challenges,
   onStartChallenge,
-  onRefresh
+  onRefresh,
 }) => {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendNameInput, setFriendNameInput] = useState('');
   const [sentCheers, setSentCheers] = useState<Record<string, string>>({});
 
   // Sort by points descending
-  const sortedFriends = [...friends].sort((a, b) => b.points - a.points).map((f, idx) => ({
-    ...f,
-    rank: idx + 1
-  }));
+  const sortedFriends = [...friends]
+    .sort((a, b) => b.points - a.points)
+    .map((f, idx) => ({
+      ...f,
+      rank: idx + 1,
+    }));
 
   const handleSendCheer = (friendId: string, cheerText: string) => {
-    setSentCheers(prev => ({ ...prev, [friendId]: cheerText }));
+    setSentCheers((prev) => ({ ...prev, [friendId]: cheerText }));
     setTimeout(() => {
-      setSentCheers(prev => {
+      setSentCheers((prev) => {
         const next = { ...prev };
         delete next[friendId];
         return next;
@@ -64,7 +66,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       accuracy: 95,
       rank: friends.length + 1,
       badge: 'رفيق الحفظ',
-      lastActive: 'الآن'
+      lastActive: 'الآن',
     };
 
     const updated = [...friends, newFriend];
@@ -76,7 +78,6 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      
       {/* Hero Header */}
       <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
         <div className="relative z-10 max-w-2xl space-y-3">
@@ -88,7 +89,8 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
             حلقة التنافس ومسابقة الأصدقاء
           </h1>
           <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
-            الصحبة الصالحة تشحذ الهمم وتعين على الاستمرار في تعاهد القرآن. نافس أصدقاءك في حفظ ومراجعة الآيات، واجمع الحسنات، وتصدر لوحة الشرف الأسبوعية.
+            الصحبة الصالحة تشحذ الهمم وتعين على الاستمرار في تعاهد القرآن. نافس أصدقاءك في حفظ
+            ومراجعة الآيات، واجمع الحسنات، وتصدر لوحة الشرف الأسبوعية.
           </p>
         </div>
       </div>
@@ -104,8 +106,8 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
             <div
               key={user.id}
               className={`bg-white rounded-3xl p-5 border text-center flex flex-col items-center justify-between relative shadow-xs ${
-                isFirst 
-                  ? 'border-amber-400 bg-gradient-to-b from-amber-50/50 to-white ring-2 ring-amber-300 sm:-translate-y-2' 
+                isFirst
+                  ? 'border-amber-400 bg-gradient-to-b from-amber-50/50 to-white ring-2 ring-amber-300 sm:-translate-y-2'
                   : 'border-stone-200'
               }`}
             >
@@ -120,9 +122,11 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                   <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center text-3xl shadow-inner border border-stone-200">
                     {user.avatar}
                   </div>
-                  <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs ${
-                    isFirst ? 'bg-amber-500' : isSecond ? 'bg-stone-500' : 'bg-amber-700'
-                  }`}>
+                  <span
+                    className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs ${
+                      isFirst ? 'bg-amber-500' : isSecond ? 'bg-stone-500' : 'bg-amber-700'
+                    }`}
+                  >
                     {user.rank}
                   </span>
                 </div>
@@ -138,7 +142,9 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
               <div className="w-full mt-4 pt-3 border-t border-stone-100 space-y-1.5 text-xs">
                 <div className="flex justify-between text-stone-600">
                   <span>الحسنات والنقاط</span>
-                  <span className="font-bold text-stone-900">{user.points.toLocaleString('ar-EG')}</span>
+                  <span className="font-bold text-stone-900">
+                    {user.points.toLocaleString('ar-EG')}
+                  </span>
                 </div>
                 <div className="flex justify-between text-stone-600">
                   <span>آيات اليوم</span>
@@ -162,9 +168,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Target className="w-5 h-5 text-emerald-700" />
-            <h2 className="text-lg font-bold text-stone-900">
-              تحديات التسميع اليومية
-            </h2>
+            <h2 className="text-lg font-bold text-stone-900">تحديات التسميع اليومية</h2>
           </div>
           <span className="text-xs text-stone-500">تتجدد يومياً لنيل نقاط وحسنات إضافية</span>
         </div>
@@ -182,9 +186,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                   </span>
                   <span className="text-stone-500">{challenge.difficulty}</span>
                 </div>
-                <h3 className="font-bold text-stone-900 text-sm leading-snug">
-                  {challenge.title}
-                </h3>
+                <h3 className="font-bold text-stone-900 text-sm leading-snug">{challenge.title}</h3>
               </div>
 
               <div className="pt-2 flex items-center justify-between border-t border-stone-100 text-xs">
@@ -207,9 +209,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
         <div className="p-5 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-emerald-700" />
-            <h2 className="text-base font-bold text-stone-900">
-              ترتيب حلقة الحفظ والأصدقاء
-            </h2>
+            <h2 className="text-base font-bold text-stone-900">ترتيب حلقة الحفظ والأصدقاء</h2>
           </div>
 
           <button
@@ -245,9 +245,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                       isMe ? 'bg-emerald-50/40 font-semibold' : ''
                     }`}
                   >
-                    <td className="py-3.5 px-4 font-bold text-stone-700">
-                      #{friend.rank}
-                    </td>
+                    <td className="py-3.5 px-4 font-bold text-stone-700">#{friend.rank}</td>
 
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-2.5">
@@ -265,9 +263,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                       {friend.points.toLocaleString('ar-EG')}
                     </td>
 
-                    <td className="py-3.5 px-4 text-stone-700">
-                      {friend.versesToday} آية
-                    </td>
+                    <td className="py-3.5 px-4 text-stone-700">{friend.versesToday} آية</td>
 
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
@@ -316,9 +312,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       {showAddFriend && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-xl">
-            <h3 className="font-bold text-stone-900 text-base">
-              إضافة رفيق إلى حلقة التنافس
-            </h3>
+            <h3 className="font-bold text-stone-900 text-base">إضافة رفيق إلى حلقة التنافس</h3>
             <p className="text-xs text-stone-500">
               أدخل اسم الصديق أو رمز المشاركة الخاص به للتنافس معاً.
             </p>
@@ -352,7 +346,6 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
           </div>
         </div>
       )}
-
     </div>
   );
 };

@@ -1,15 +1,15 @@
 import React from 'react';
-import { 
-  Mic, 
-  CalendarClock, 
-  Trophy, 
-  BarChart3, 
-  BookOpen, 
-  Award, 
-  Flame, 
+import {
+  Mic,
+  CalendarClock,
+  Trophy,
+  BarChart3,
+  BookOpen,
+  Award,
+  Flame,
   AlertTriangle,
   Sparkles,
-  Volume2
+  Volume2,
 } from 'lucide-react';
 import { UserStats } from '../types/quran';
 
@@ -46,9 +46,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-4">
-          
           {/* Brand Identity */}
-          <div className="flex items-center gap-2 sm:gap-3 cursor-pointer" onClick={() => onSelectTab('recite')}>
+          <div
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer"
+            onClick={() => onSelectTab('recite')}
+          >
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-700 text-amber-300 flex items-center justify-center shadow-inner font-bold text-xl sm:text-2xl font-serif">
               مُ
             </div>
@@ -85,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {/* Streak Counter */}
-            <div 
+            <div
               className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-stone-100/90 text-stone-800 text-xs font-semibold"
               title="أيام الالتزام المتتالية بالحفظ والمراجعة"
             >
@@ -109,8 +111,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onToggleAudioPlayer}
               className={`p-1.5 sm:p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1 ${
-                isAudioPlaying 
-                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm animate-pulse' 
+                isAudioPlaying
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm animate-pulse'
                   : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
               }`}
               title="مشغل تلاوات القراء"

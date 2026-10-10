@@ -14,26 +14,26 @@ import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
 
-import { 
-  Surah, 
-  Ayah, 
-  Reciter, 
-  UserStats, 
-  VerseMastery, 
-  RevisionPlan, 
-  FriendUser, 
-  QuranChallenge 
+import {
+  Surah,
+  Ayah,
+  Reciter,
+  UserStats,
+  VerseMastery,
+  RevisionPlan,
+  FriendUser,
+  QuranChallenge,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
 import { POPULAR_RECITERS } from './utils/audioReciters';
-import { 
-  getUserStats, 
-  getVerseMasteryMap, 
-  getVersesNeedingReinforcement, 
-  getRevisionPlans, 
-  getFriends, 
-  getChallenges 
+import {
+  getUserStats,
+  getVerseMasteryMap,
+  getVersesNeedingReinforcement,
+  getRevisionPlans,
+  getFriends,
+  getChallenges,
 } from './services/storageService';
 
 export default function App() {
@@ -44,8 +44,11 @@ export default function App() {
 
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(POPULAR_RECITERS[0]);
   const [stats, setStats] = useState<UserStats>(getUserStats());
-  const [verseMasteryMap, setVerseMasteryMap] = useState<Record<string, VerseMastery>>(getVerseMasteryMap());
-  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(getVersesNeedingReinforcement());
+  const [verseMasteryMap, setVerseMasteryMap] =
+    useState<Record<string, VerseMastery>>(getVerseMasteryMap());
+  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(
+    getVersesNeedingReinforcement(),
+  );
   const [plans, setPlans] = useState<RevisionPlan[]>(getRevisionPlans());
   const [friends, setFriends] = useState<FriendUser[]>(getFriends());
   const [challenges, setChallenges] = useState<QuranChallenge[]>(getChallenges());
@@ -58,11 +61,18 @@ export default function App() {
   // Load surah when selectedSurahNumber changes
   useEffect(() => {
     let isMounted = true;
-    getSurahWithAyahs(selectedSurahNumber).then((surahData) => {
-      if (isMounted) {
-        setCurrentSurah(surahData);
-      }
-    });
+    getSurahWithAyahs(selectedSurahNumber)
+      .then((surahData) => {
+        if (isMounted) {
+          setCurrentSurah(surahData);
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to load surah:', error);
+        if (isMounted) {
+          setCurrentSurah(PRELOADED_SURAHS[selectedSurahNumber] || PRELOADED_SURAHS[1]);
+        }
+      });
     return () => {
       isMounted = false;
     };
@@ -102,7 +112,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20">
-      
       {/* Top Navbar */}
       <Navbar
         currentTab={currentTab}
@@ -117,7 +126,6 @@ export default function App() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        
         {/* Tab 1: Voice Recitation & Real-time Error Correction */}
         {currentTab === 'recite' && (
           <VoiceReciter
@@ -170,12 +178,8 @@ export default function App() {
 
         {/* Tab 5: Daily Performance Statistics */}
         {currentTab === 'stats' && (
-          <StatsDashboard
-            stats={stats}
-            verseMasteryMap={verseMasteryMap}
-          />
+          <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
         )}
-
       </main>
 
       {/* Sticky Bottom Audio Player Bar */}
@@ -204,12 +208,8 @@ export default function App() {
 
       {/* Rewards & Badges Modal */}
       {isRewardsModalOpen && (
-        <RewardsModal
-          stats={stats}
-          onClose={() => setIsRewardsModalOpen(false)}
-        />
+        <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
       )}
-
     </div>
   );
 }
