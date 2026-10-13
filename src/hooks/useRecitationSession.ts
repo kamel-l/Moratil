@@ -6,17 +6,40 @@ export interface RecognitionState {
   currentWordIdx: number;
   matchedWords: number[];
   failedWords: Record<number, string>;
-  activeMistakeAlert: { expected: string; heard: string; wordIdx: number } | null;
+  activeMistakeAlert: {
+    expected: string;
+    heard: string;
+    wordIdx: number;
+    isUncertain?: boolean;
+  } | null;
 }
 
 export function evaluateSpokenText(
   verseWords: QuranWordMeta[],
   state: RecognitionState,
   spokenText: string,
+  confidence?: number,
 ): RecognitionState & { completed: boolean; isFlawless: boolean } {
   const spokenTokens = spokenText.split(/\s+/).filter(Boolean);
   if (spokenTokens.length === 0) {
     return { ...state, completed: false, isFlawless: false };
+  }
+
+  if (confidence !== undefined && confidence < 0.45) {
+    const expectedMeta = verseWords[state.currentWordIdx];
+    return {
+      ...state,
+      activeMistakeAlert: expectedMeta
+        ? {
+            expected: expectedMeta.original,
+            heard: spokenTokens.join(' '),
+            wordIdx: state.currentWordIdx,
+            isUncertain: true,
+          }
+        : state.activeMistakeAlert,
+      completed: false,
+      isFlawless: false,
+    };
   }
 
   let nextWordIdx = state.currentWordIdx;
@@ -46,6 +69,7 @@ export function evaluateSpokenText(
           expected: verseWords[skippedIndex].original,
           heard: `تخطيت كلمة "${verseWords[skippedIndex].original}"`,
           wordIdx: skippedIndex,
+          isUncertain: true,
         };
       }
 
@@ -64,6 +88,7 @@ export function evaluateSpokenText(
       expected: expectedMeta.original,
       heard: latestSpoken,
       wordIdx: nextWordIdx,
+      isUncertain: true,
     };
     nextWordIdx += 1;
   }
@@ -88,19 +113,14 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
   const [currentWordIdx, setCurrentWordIdx] = useState(0);
   const [matchedWords, setMatchedWords] = useState<number[]>([]);
   const [failedWords, setFailedWords] = useState<Record<number, string>>({});
-  const [activeMistakeAlert, setActiveMistakeAlert] = useState<{
-    expected: string;
-    heard: string;
-    wordIdx: number;
-  } | null>(null);
+  const [activeMistakeAlert, setActiveMistakeAlert] =
+    useState<RecognitionState['activeMistakeAlert']>(null);
   const [isAyahCompleted, setIsAyahCompleted] = useState(false);
   const completionLockRef = useRef(false);
   const currentWordIdxRef = useRef(0);
   const matchedWordsRef = useRef<number[]>([]);
   const failedWordsRef = useRef<Record<number, string>>({});
-  const activeMistakeAlertRef = useRef<{ expected: string; heard: string; wordIdx: number } | null>(
-    null,
-  );
+  const activeMistakeAlertRef = useRef<RecognitionState['activeMistakeAlert']>(null);
 
   const resetRecitationState = useCallback(() => {
     completionLockRef.current = false;
@@ -118,6 +138,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
   const handleIncomingSpokenText = useCallback(
     (
       spokenText: string,
+      confidence?: number,
     ): (RecognitionState & { completed: boolean; isFlawless: boolean }) | undefined => {
       if (
         completionLockRef.current ||
@@ -136,6 +157,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
           activeMistakeAlert: activeMistakeAlertRef.current,
         },
         spokenText,
+        confidence,
       );
 
       currentWordIdxRef.current = nextState.currentWordIdx;

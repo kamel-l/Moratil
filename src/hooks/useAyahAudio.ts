@@ -13,7 +13,7 @@ export function useAyahAudio() {
   }, []);
 
   const playAudio = useCallback(
-    (url: string, onEnded?: () => void) => {
+    (url: string, onEnded?: () => void, repeatCount = 1) => {
       const existingAudio = audioRef.current;
       if (existingAudio && existingAudio.src !== url) {
         existingAudio.pause();
@@ -24,7 +24,17 @@ export function useAyahAudio() {
       const audio = existingAudio && existingAudio.src === url ? existingAudio : new Audio(url);
       audioRef.current = audio;
 
+      let remainingPlays = Math.max(1, Math.floor(repeatCount));
       audio.onended = () => {
+        remainingPlays -= 1;
+        if (remainingPlays > 0) {
+          audio.currentTime = 0;
+          void audio.play().catch((error: unknown) => {
+            console.warn('Unable to repeat ayah audio:', error);
+            setIsPlayingAudio(false);
+          });
+          return;
+        }
         setIsPlayingAudio(false);
         onEnded?.();
       };

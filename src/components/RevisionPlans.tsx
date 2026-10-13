@@ -55,7 +55,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
     });
 
     saveRevisionPlans(updated);
-    addPointsAndVerses(50, 15, 600, 98);
+    addPointsAndVerses(50, 15, 600);
     onRefreshPlans();
   };
 
@@ -111,10 +111,10 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-stone-900">
-                تنبيه: آيات تحتاج لتثبيت وتكرار عاجل
+                مراجعات مستحقة وإشارات تحتاج إلى تثبيت
               </h2>
               <p className="text-xs text-stone-500">
-                آيات أظهرت خوارزمية التعرف الصوتي تعثراً في حفظها أو حان موعد مراجعتها المتباعدة
+                آيات حان موعد مراجعتها أو ظهر فيها اختلاف بين النص القرآني والتعرّف الصوتي
               </p>
             </div>
           </div>
@@ -127,10 +127,9 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         {forgottenVerses.length === 0 ? (
           <div className="bg-white rounded-2xl border border-stone-200 p-8 text-center space-y-2">
             <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto" />
-            <h3 className="font-bold text-stone-900 text-base">ما شاء الله! جميع محفوظاتك متقنة</h3>
+            <h3 className="font-bold text-stone-900 text-base">لا توجد مراجعات مستحقة حاليًا</h3>
             <p className="text-xs text-stone-500 max-w-md mx-auto">
-              لا توجد آيات متعثرة حالياً. واصل المراجعة اليومية المنتظمة لتحافظ على هذا المستوى
-              الممتاز.
+              واصل المراجعة المنتظمة، وتذكّر أن مطابقة النص آليًا لا تقيّم النطق أو التجويد.
             </p>
           </div>
         ) : (
@@ -153,23 +152,26 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                     </div>
 
                     <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                      أخطاء سابقة: {item.mistakeCount}
+                      اختلافات مسجلة: {item.mistakeCount}
                     </span>
                   </div>
 
-                  {/* Previous Mistake Details */}
+                  {/* Previous recognition mismatch */}
                   {lastMistake && (
                     <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-600 border border-stone-100 space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-stone-500">موضع التعثر السابق:</span>
-                        <span className="text-rose-600 font-bold">"{lastMistake.recitedWord}"</span>
+                        <span className="text-stone-500">ما تعرّف عليه النظام:</span>
+                        <span className="text-amber-800 font-bold">"{lastMistake.recitedWord}"</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-stone-500">الكلمة الصحيحة في المصحف:</span>
+                        <span className="text-stone-500">النص المقابل في المصحف:</span>
                         <span className="text-emerald-700 font-bold font-quran text-sm">
                           "{lastMistake.expectedWord}"
                         </span>
                       </div>
+                      <p className="pt-1 text-[11px] text-stone-500">
+                        هذا اختلاف رصده النظام، وقد يكون من التعرّف الصوتي لا من التلاوة.
+                      </p>
                     </div>
                   )}
 

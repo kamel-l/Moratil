@@ -5,11 +5,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
+import { LoginScreen } from './components/LoginScreen';
 import { VoiceReciter } from './components/VoiceReciter';
 import { RevisionPlans } from './components/RevisionPlans';
 import { SurahExplorer } from './components/SurahExplorer';
 import { CompetitionLeaderboard } from './components/CompetitionLeaderboard';
 import { StatsDashboard } from './components/StatsDashboard';
+import { HomeDashboard } from './components/HomeDashboard';
+import { MemorizationMode } from './components/MemorizationMode';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
@@ -27,6 +30,7 @@ import {
 import { ALL_SURAHS } from './data/quranSurahsList';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
 import { POPULAR_RECITERS } from './utils/audioReciters';
+import { supabase } from './services/supabase';
 import {
   getUserStats,
   getVerseMasteryMap,
@@ -37,7 +41,63 @@ import {
 } from './services/storageService';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<string>('recite');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!supabase) {
+      setIsAuthReady(true);
+      return;
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user.email ?? null);
+      setAuthError(null);
+      setIsAuthReady(true);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error('Unable to sign out:', error);
+      window.alert('تعذر تسجيل الخروج. تحقق من اتصالك بالإنترنت وحاول مجددًا.');
+    }
+  };
+
+  if (!isAuthReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-100" dir="rtl">
+        <div className="flex items-center gap-3 text-emerald-900" role="status">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+          جارٍ التحقق من تسجيل الدخول...
+        </div>
+      </main>
+    );
+  }
+
+  if (!userEmail) {
+    return <LoginScreen authError={authError} />;
+  }
+
+  return <AuthenticatedApp key={userEmail} userEmail={userEmail} onSignOut={handleSignOut} />;
+}
+
+interface AuthenticatedAppProps {
+  userEmail: string;
+  onSignOut: () => void;
+}
+
+function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
+  const [currentTab, setCurrentTab] = useState<string>('home');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
@@ -110,12 +170,19 @@ export default function App() {
     setIsAudioPlayerOpen(true);
   };
 
+  const handleSelectTab = (tab: string) => {
+    if (tab === 'memorize') setIsAudioPlayerOpen(false);
+    setCurrentTab(tab);
+  };
+
   return (
     <div className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20">
       {/* Top Navbar */}
       <Navbar
+        userEmail={userEmail}
+        onSignOut={onSignOut}
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+        onSelectTab={handleSelectTab}
         stats={stats}
         forgottenVersesCount={forgottenVerses.length}
         onOpenForgottenVerses={() => setCurrentTab('revision')}
@@ -126,6 +193,27 @@ export default function App() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+        {currentTab === 'home' && (
+          <HomeDashboard
+            stats={stats}
+            verseMasteryMap={verseMasteryMap}
+            forgottenVersesCount={forgottenVerses.length}
+            onStartSession={() => setCurrentTab('recite')}
+            onOpenMemorization={() => setCurrentTab('memorize')}
+            onResumeVerse={handleStartPracticingVerse}
+            onOpenReview={() => setCurrentTab('revision')}
+            onOpenStats={() => setCurrentTab('stats')}
+          />
+        )}
+
+        {currentTab === 'memorize' && (
+          <MemorizationMode
+            allSurahs={ALL_SURAHS}
+            selectedReciter={selectedReciter}
+            onSelectReciter={setSelectedReciter}
+          />
+        )}
+
         {/* Tab 1: Voice Recitation & Real-time Error Correction */}
         {currentTab === 'recite' && (
           <VoiceReciter

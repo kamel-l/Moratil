@@ -767,6 +767,12 @@ const dynamicSurahCache: Record<number, Surah> = {};
 const quranPageCache: Record<number, QuranPageAyah[]> = {};
 const surahPageCache: Record<number, (number | undefined)[]> = {};
 
+function hasCompleteAyahSequence(ayahs: Ayah[], expectedCount: number): boolean {
+  return (
+    ayahs.length === expectedCount && ayahs.every((ayah, index) => ayah.numberInSurah === index + 1)
+  );
+}
+
 export interface QuranPageAyah {
   surahNumber: number;
   surahName: string;
@@ -779,15 +785,24 @@ export interface QuranPageAyah {
  * Loads a Surah either from bundled high-precision data or fetches dynamically from Quran API
  */
 export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
-  if (PRELOADED_SURAHS[surahNumber]) {
-    return PRELOADED_SURAHS[surahNumber];
-  }
-
-  if (dynamicSurahCache[surahNumber]) {
-    return dynamicSurahCache[surahNumber];
-  }
-
   const meta = ALL_SURAHS.find((s) => s.number === surahNumber);
+  const expectedAyahCount = meta?.numberOfAyahs;
+
+  const preloadedSurah = PRELOADED_SURAHS[surahNumber];
+  if (
+    preloadedSurah &&
+    hasCompleteAyahSequence(preloadedSurah.ayahs, expectedAyahCount ?? preloadedSurah.numberOfAyahs)
+  ) {
+    return preloadedSurah;
+  }
+
+  const cachedSurah = dynamicSurahCache[surahNumber];
+  if (
+    cachedSurah &&
+    hasCompleteAyahSequence(cachedSurah.ayahs, expectedAyahCount ?? cachedSurah.numberOfAyahs)
+  ) {
+    return cachedSurah;
+  }
 
   try {
     // Fetch Quran text from reliable public Quran API
@@ -799,6 +814,16 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
       if (data?.data && Array.isArray(data.data) && data.data.length >= 2) {
         const textEdition = data.data[0];
         const tafsirEdition = data.data[1];
+
+        if (
+          !Array.isArray(textEdition.ayahs) ||
+          !hasCompleteAyahSequence(
+            textEdition.ayahs,
+            expectedAyahCount ?? textEdition.numberOfAyahs,
+          )
+        ) {
+          throw new Error(`Incomplete ayah data returned for surah ${surahNumber}.`);
+        }
 
         const ayahs: Ayah[] = textEdition.ayahs.map((item: any, idx: number) => {
           const tafsirItem = tafsirEdition.ayahs[idx];

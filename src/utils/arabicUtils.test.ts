@@ -1,11 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { extractWords, normalizeArabicText, wordSimilarity } from './arabicUtils';
+import {
+  extractWords,
+  normalizeArabicText,
+  removeOpeningBasmalah,
+  wordSimilarity,
+} from './arabicUtils';
 import { recordVerseResult } from '../services/storageService';
 
 describe('arabicUtils', () => {
   it('normalizes Arabic diacritics and alef variants', () => {
     expect(normalizeArabicText('أَلْفُ')).toBe('الف');
     expect(normalizeArabicText('بِسْمِ ٱللّٰهِ')).toBe('بسم الله');
+  });
+
+  it('removes a leading basmalah without changing the remaining verse', () => {
+    expect(removeOpeningBasmalah('بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ الم')).toBe('الم');
+    expect(removeOpeningBasmalah('الم')).toBe('الم');
   });
 
   it('extracts words while keeping the original text', () => {

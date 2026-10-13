@@ -12,6 +12,112 @@ const MASTERY_KEY = 'murattil_verse_mastery';
 const PLANS_KEY = 'murattil_revision_plans';
 const FRIENDS_KEY = 'murattil_friends';
 const CHALLENGES_KEY = 'murattil_challenges';
+const DAILY_ACTIVITY_KEY = 'murattil_daily_activity';
+const DAILY_GOAL_KEY = 'murattil_daily_verse_goal';
+
+export interface DailyRecitationActivity {
+  date: string;
+  verses: number;
+  sessions: number;
+}
+
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function getDailyRecitationActivity(dayCount = 7): DailyRecitationActivity[] {
+  let savedActivity: DailyRecitationActivity[] = [];
+  try {
+    const raw = localStorage.getItem(DAILY_ACTIVITY_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        savedActivity = parsed.filter(
+          (item): item is DailyRecitationActivity =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof item.date === 'string' &&
+            typeof item.verses === 'number' &&
+            Number.isFinite(item.verses),
+        ).map((item) => ({
+          date: item.date,
+          verses: item.verses,
+          sessions: typeof item.sessions === 'number' && Number.isFinite(item.sessions)
+            ? item.sessions
+            : 0,
+        }));
+      }
+    }
+  } catch (error) {
+    console.warn('Unable to read daily recitation activity from localStorage', error);
+  }
+
+  const activityByDate = new Map(savedActivity.map((item) => [item.date, item.verses]));
+  const today = new Date();
+  return Array.from({ length: Math.max(1, dayCount) }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (Math.max(1, dayCount) - index - 1));
+    const dateKey = getLocalDateKey(date);
+    const savedDay = savedActivity.find((item) => item.date === dateKey);
+    return {
+      date: dateKey,
+      verses: activityByDate.get(dateKey) || 0,
+      sessions: savedDay?.sessions || 0,
+    };
+  });
+}
+
+export function getDailyVerseGoal(): number {
+  try {
+    const raw = localStorage.getItem(DAILY_GOAL_KEY);
+    const parsed = raw ? Number(raw) : NaN;
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 100) return parsed;
+  } catch (error) {
+    console.warn('Unable to read daily verse goal from localStorage', error);
+  }
+  return 10;
+}
+
+export function saveDailyVerseGoal(goal: number): void {
+  const validGoal = Math.max(1, Math.min(100, Math.round(goal)));
+  try {
+    localStorage.setItem(DAILY_GOAL_KEY, String(validGoal));
+  } catch (error) {
+    console.warn('Unable to save daily verse goal to localStorage', error);
+  }
+}
+
+function recordDailyActivity(versesCount: number): void {
+  if (versesCount <= 0) return;
+  const date = getLocalDateKey(new Date());
+  const activity = getDailyRecitationActivity(30);
+  const today = activity.find((item) => item.date === date);
+  if (today) today.verses += versesCount;
+  else activity.push({ date, verses: versesCount, sessions: 0 });
+
+  try {
+    localStorage.setItem(DAILY_ACTIVITY_KEY, JSON.stringify(activity.slice(-30)));
+  } catch (error) {
+    console.warn('Unable to save daily recitation activity to localStorage', error);
+  }
+}
+
+export function recordRecitationSession(): void {
+  const date = getLocalDateKey(new Date());
+  const activity = getDailyRecitationActivity(30);
+  const today = activity.find((item) => item.date === date);
+  if (today) today.sessions += 1;
+  else activity.push({ date, verses: 0, sessions: 1 });
+
+  try {
+    localStorage.setItem(DAILY_ACTIVITY_KEY, JSON.stringify(activity.slice(-30)));
+  } catch (error) {
+    console.warn('Unable to save daily recitation session to localStorage', error);
+  }
+}
 
 export const INITIAL_BADGES: Badge[] = [
   {
@@ -241,15 +347,17 @@ export function addPointsAndVerses(
   addedPoints: number,
   versesCount: number,
   seconds: number,
-  accuracy: number,
+  accuracy?: number,
 ) {
   const stats = getUserStats();
   stats.points += addedPoints;
   stats.totalVersesRecited += versesCount;
   stats.totalRecitedSeconds += seconds;
+  recordDailyActivity(versesCount);
 
-  // Calculate running weighted accuracy
-  stats.accuracyRate = Math.round(((stats.accuracyRate * 4 + accuracy) / 5) * 10) / 10;
+  if (accuracy !== undefined && Number.isFinite(accuracy)) {
+    stats.accuracyRate = Math.round(((stats.accuracyRate * 4 + accuracy) / 5) * 10) / 10;
+  }
 
   // Level progression
   if (stats.points >= 5000) stats.level = 'حافظ متقن ومجاز';

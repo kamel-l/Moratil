@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.quranhifdh.app',
-  appName: 'Quran-hifdh',
+  appName: 'مُرتِّل',
   webDir: 'dist',
 };
 

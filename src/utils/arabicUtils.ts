@@ -51,6 +51,21 @@ export function normalizeArabicText(text: string): string {
   return str;
 }
 
+export function removeOpeningBasmalah(text: string): string {
+  const basmalahWords = ['بسم', 'الله', 'الرحمن', 'الرحيم'];
+  const words = [...text.matchAll(/\S+/gu)];
+
+  if (
+    words.length < basmalahWords.length ||
+    !basmalahWords.every((word, index) => normalizeArabicText(words[index][0]) === word)
+  ) {
+    return text;
+  }
+
+  const lastBasmalahWord = words[basmalahWords.length - 1];
+  return text.slice((lastBasmalahWord.index ?? 0) + lastBasmalahWord[0].length).trimStart();
+}
+
 /**
  * Splits Quranic text into an array of words, preserving the original diacritized word
  * alongside its clean normalized counterpart for accurate matching.

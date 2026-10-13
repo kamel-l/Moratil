@@ -14,9 +14,16 @@ View your app in AI Studio: https://ai.studio/apps/de034915-7fd9-444a-a842-fcaf8
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Configure Supabase Authentication:
+   - Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from Supabase **Project Settings > API**.
+   - Enable email authentication in Supabase **Authentication > Providers** and configure email confirmation as desired.
+   - Set the app's local/deployed URL in **Authentication > URL Configuration** so confirmation and password-reset links return to the app.
+   - Restart the development server after changing environment variables.
+3. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key.
+4. Run the app:
    `npm run dev`
+
+Users can create an account, sign in, and request a password-reset email. Quran progress continues to be stored locally on the current device; Supabase authentication does not synchronize progress between devices. Never put a Supabase `service_role` key in the frontend; use only the anon or publishable key.
 
 # ERP-NATIVE
 
@@ -48,4 +55,4 @@ npx cap copy
 
 npx cap open android
 
-    ./gradlew clean assembleDebug
+./gradlew clean assembleDebug

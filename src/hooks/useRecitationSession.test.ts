@@ -46,4 +46,17 @@ describe('evaluateSpokenText', () => {
     expect(result.isFlawless).toBe(true);
     expect(result.failedWords).toEqual({});
   });
+
+  it('does not advance or report a mistake when recognition confidence is low', () => {
+    const result = evaluateSpokenText(words, emptyState, 'بسم', 0.2);
+
+    expect(result.currentWordIdx).toBe(0);
+    expect(result.failedWords).toEqual({});
+    expect(result.completed).toBe(false);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'بسم',
+      isUncertain: true,
+    });
+  });
 });
