@@ -18,7 +18,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { Surah, Ayah, Reciter } from '../types/quran';
-import { extractWords } from '../utils/arabicUtils';
+import { extractWords, removeOpeningBasmalah } from '../utils/arabicUtils';
 import { getAyahAudioUrl } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
@@ -84,11 +84,15 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const surahRecitationSummaryRef = useRef({ completedAyahs: 0, accuratelyMatchedAyahs: 0 });
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
+  const currentAyahText =
+    surah.number !== 1 && currentAyah.numberInSurah === 1
+      ? removeOpeningBasmalah(currentAyah.text)
+      : currentAyah.text;
 
   // استخراج كلمات الآية الحالية للمقارنة كلمة بكلمة
   const verseWords = useMemo(() => {
-    return extractWords(currentAyah.text);
-  }, [currentAyah]);
+    return extractWords(currentAyahText);
+  }, [currentAyahText]);
 
   const {
     currentWordIdx,

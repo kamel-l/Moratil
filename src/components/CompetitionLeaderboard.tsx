@@ -12,9 +12,10 @@ import {
   Play,
   Heart,
   Users,
+  RotateCcw,
 } from 'lucide-react';
 import { FriendUser, QuranChallenge } from '../types/quran';
-import { saveFriends, saveChallenges } from '../services/storageService';
+import { resetCompetitionData, saveFriends } from '../services/storageService';
 
 interface CompetitionLeaderboardProps {
   friends: FriendUser[];
@@ -60,10 +61,10 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       id: `friend_${Date.now()}`,
       name: friendNameInput.trim(),
       avatar: '🌟',
-      points: Math.floor(Math.random() * 800) + 1200,
-      versesToday: Math.floor(Math.random() * 20) + 10,
-      streakDays: Math.floor(Math.random() * 7) + 2,
-      accuracy: 95,
+      points: 0,
+      versesToday: 0,
+      streakDays: 0,
+      accuracy: 0,
       rank: friends.length + 1,
       badge: 'رفيق الحفظ',
       lastActive: 'الآن',
@@ -76,27 +77,54 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
     onRefresh();
   };
 
+  const handleResetCompetition = () => {
+    const confirmed = window.confirm(
+      'سيتم حذف جميع الأصدقاء والتحديات، بما فيها البيانات الافتراضية. هل تريد المتابعة؟',
+    );
+    if (!confirmed) return;
+
+    resetCompetitionData();
+    setSentCheers({});
+    onRefresh();
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Hero Header */}
       <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
-        <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold">
-            <Trophy className="w-3.5 h-3.5" />
-            <span>وفي ذلك فليتنافس المتنافسون</span>
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold">
+              <Trophy className="w-3.5 h-3.5" />
+              <span>وفي ذلك فليتنافس المتنافسون</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
+              حلقة التنافس ومسابقة الأصدقاء
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+              الصحبة الصالحة تشحذ الهمم وتعين على الاستمرار في تعاهد القرآن. نافس أصدقاءك في حفظ
+              ومراجعة الآيات، واجمع الحسنات، وتصدر لوحة الشرف الأسبوعية.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
-            حلقة التنافس ومسابقة الأصدقاء
-          </h1>
-          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
-            الصحبة الصالحة تشحذ الهمم وتعين على الاستمرار في تعاهد القرآن. نافس أصدقاءك في حفظ
-            ومراجعة الآيات، واجمع الحسنات، وتصدر لوحة الشرف الأسبوعية.
-          </p>
+          <button
+            type="button"
+            onClick={handleResetCompetition}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+            title="حذف جميع الأصدقاء والتحديات"
+          >
+            <RotateCcw className="h-4 w-4" />
+            تصفير التنافس
+          </button>
         </div>
       </div>
 
       {/* Podium Top 3 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+        {sortedFriends.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-500 sm:col-span-3">
+            لا يوجد أصدقاء أو بيانات افتراضية. أضف أصدقاءك لبدء التنافس.
+          </div>
+        )}
         {sortedFriends.slice(0, 3).map((user, idx) => {
           const isFirst = idx === 0;
           const isSecond = idx === 1;
@@ -170,10 +198,15 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
             <Target className="w-5 h-5 text-emerald-700" />
             <h2 className="text-lg font-bold text-stone-900">تحديات التسميع اليومية</h2>
           </div>
-          <span className="text-xs text-stone-500">تتجدد يومياً لنيل نقاط وحسنات إضافية</span>
+          <span className="text-xs text-stone-500">تظهر عند توفر التحديات</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {challenges.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-500 md:col-span-3">
+              لا توجد تحديات حاليًا.
+            </div>
+          )}
           {challenges.map((challenge) => (
             <div
               key={challenge.id}
@@ -235,6 +268,13 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
+              {sortedFriends.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-stone-500">
+                    قائمة الأصدقاء فارغة. استخدم «إضافة صديق للحلقة» لإضافة أول صديق.
+                  </td>
+                </tr>
+              )}
               {sortedFriends.map((friend) => {
                 const isMe = friend.id === 'f_me';
 
