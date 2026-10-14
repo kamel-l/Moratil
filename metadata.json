@@ -1,8 +1,6 @@
 {
   "name": "مُرتِّل | تحفيظ ومراجعة القرآن الكريم الذكي",
   "description": "منصة ذكية لحفظ ومراجعة القرآن الكريم بالتعرف على الصوت والتصحيح الفوري، خطط التكرار المتباعد لتثبيت الحفظ، مسابقات الأصدقاء، التفسير الميسر، ونظام نقاط وأوسمة تحفيزي.",
-  "requestFramePermissions": [
-    "microphone"
-  ],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

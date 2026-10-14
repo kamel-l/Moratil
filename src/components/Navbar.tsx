@@ -1,19 +1,24 @@
 import React from 'react';
-import { 
-  Mic, 
-  CalendarClock, 
-  Trophy, 
-  BarChart3, 
-  BookOpen, 
-  Award, 
-  Flame, 
+import {
+  Mic,
+  CalendarClock,
+  Trophy,
+  BarChart3,
+  BookOpen,
+  GraduationCap,
+  Award,
+  Flame,
   AlertTriangle,
   Sparkles,
-  Volume2
+  Volume2,
+  House,
+  LogOut,
 } from 'lucide-react';
 import { UserStats } from '../types/quran';
 
 interface NavbarProps {
+  userEmail: string;
+  onSignOut: () => void;
   currentTab: string;
   onSelectTab: (tab: string) => void;
   stats: UserStats;
@@ -25,6 +30,8 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  userEmail,
+  onSignOut,
   currentTab,
   onSelectTab,
   stats,
@@ -35,6 +42,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isAudioPlaying,
 }) => {
   const navItems = [
+    { id: 'home', label: 'الرئيسية', icon: House },
+    { id: 'memorize', label: 'وضع الحفظ', icon: GraduationCap },
     { id: 'recite', label: 'التسميع والتصحيح', icon: Mic },
     { id: 'revision', label: 'خطط المراجعة والتثبيت', icon: CalendarClock },
     { id: 'explorer', label: 'المصحف والتفسير', icon: BookOpen },
@@ -46,9 +55,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-4">
-          
           {/* Brand Identity */}
-          <div className="flex items-center gap-2 sm:gap-3 cursor-pointer" onClick={() => onSelectTab('recite')}>
+          <button
+            type="button"
+            className="flex items-center gap-2 text-right sm:gap-3"
+            onClick={() => onSelectTab('home')}
+          >
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-700 text-amber-300 flex items-center justify-center shadow-inner font-bold text-xl sm:text-2xl font-serif">
               مُ
             </div>
@@ -65,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 تحفيظ ومراجعة القرآن الكريم بالتصحيح الصوتي اللحظي
               </p>
             </div>
-          </div>
+          </button>
 
           {/* Quick Stat Indicators */}
           <div className="flex items-center gap-1 sm:gap-3">
@@ -85,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {/* Streak Counter */}
-            <div 
+            <div
               className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-stone-100/90 text-stone-800 text-xs font-semibold"
               title="أيام الالتزام المتتالية بالحفظ والمراجعة"
             >
@@ -109,14 +121,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onToggleAudioPlayer}
               className={`p-1.5 sm:p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1 ${
-                isAudioPlaying 
-                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm animate-pulse' 
+                isAudioPlaying
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm animate-pulse'
                   : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
               }`}
               title="مشغل تلاوات القراء"
             >
               <Volume2 className="w-4 h-4" />
               <span className="hidden lg:inline">{isAudioPlaying ? 'قارئ نشط' : 'التلاوة'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-medium text-stone-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+              title={`تسجيل الخروج من ${userEmail}`}
+              aria-label="تسجيل الخروج"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">خروج</span>
             </button>
           </div>
         </div>

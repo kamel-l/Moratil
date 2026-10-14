@@ -13,14 +13,13 @@ export const TafsirModal: React.FC<TafsirModalProps> = ({
   ayah,
   surahName,
   onClose,
-  onPlayAudio
+  onPlayAudio,
 }) => {
   if (!ayah) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-        
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -28,9 +27,7 @@ export const TafsirModal: React.FC<TafsirModalProps> = ({
               <BookOpen className="w-5 h-5 text-emerald-700" />
             </div>
             <div>
-              <h3 className="font-bold text-stone-900 text-base">
-                التفسير الميسر ومعاني الكلمات
-              </h3>
+              <h3 className="font-bold text-stone-900 text-base">التفسير الميسر ومعاني الكلمات</h3>
               <p className="text-xs text-stone-500">
                 سورة {surahName} · الآية رقم {ayah.numberInSurah} · الجزء {ayah.juz}
               </p>
@@ -68,19 +65,21 @@ export const TafsirModal: React.FC<TafsirModalProps> = ({
             <span>التفسير الميسر:</span>
           </h4>
           <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-xs sm:text-sm text-stone-700 leading-relaxed font-sans">
-            {ayah.tafsir || 'التفسير الميسر متاح لهذه الآية؛ يعينك فهم المعنى على استحضار الآيات في الصلاة وتثبيت الحفظ في الذاكرة.'}
+            {ayah.tafsir ||
+              'التفسير الميسر متاح لهذه الآية؛ يعينك فهم المعنى على استحضار الآيات في الصلاة وتثبيت الحفظ في الذاكرة.'}
           </div>
         </div>
 
         {/* Key Words Meanings (غريب القرآن) */}
         {ayah.keyWordsMeaning && ayah.keyWordsMeaning.length > 0 && (
           <div className="space-y-2.5">
-            <h4 className="font-bold text-stone-900 text-sm">
-              معاني الكلمات ودلالاتها:
-            </h4>
+            <h4 className="font-bold text-stone-900 text-sm">معاني الكلمات ودلالاتها:</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {ayah.keyWordsMeaning.map((item, idx) => (
-                <div key={idx} className="bg-stone-50 border border-stone-200/80 rounded-xl p-3 text-xs">
+                <div
+                  key={idx}
+                  className="bg-stone-50 border border-stone-200/80 rounded-xl p-3 text-xs"
+                >
                   <span className="font-bold font-quran text-base text-emerald-800 block">
                     {item.word}
                   </span>
@@ -99,7 +98,6 @@ export const TafsirModal: React.FC<TafsirModalProps> = ({
             إغلاق
           </button>
         </div>
-
       </div>
     </div>
   );

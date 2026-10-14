@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+android/app/src/main/assets
+lintreport.json
+metadata.json
+AIPRM-export-*.md

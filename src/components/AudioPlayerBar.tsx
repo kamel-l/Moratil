@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Play, 
-  Pause, 
-  SkipBack, 
-  SkipForward, 
-  Repeat, 
-  Volume2, 
-  VolumeX, 
-  X, 
-  ChevronUp, 
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Repeat,
+  VolumeX,
+  X,
+  ChevronUp,
   ChevronDown,
-  UserCheck
+  UserCheck,
 } from 'lucide-react';
 import { Reciter, Surah, Ayah } from '../types/quran';
 import { POPULAR_RECITERS, getAyahAudioUrl } from '../utils/audioReciters';
@@ -33,7 +32,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   onSelectReciter,
   onClose,
   onAyahChange,
-  isOpen
+  isOpen,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -45,7 +44,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const currentAyah = currentSurah.ayahs.find(a => a.numberInSurah === currentAyahNumber) || currentSurah.ayahs[0];
+  const currentAyah =
+    currentSurah.ayahs.find((a) => a.numberInSurah === currentAyahNumber) || currentSurah.ayahs[0];
 
   // Update audio source when reciter, surah, or ayah changes
   useEffect(() => {
@@ -65,7 +65,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     const handleEnded = () => {
       // Handle repeat mode
       if (repeatMode === 99 || repeatCounter + 1 < repeatMode) {
-        setRepeatCounter(prev => prev + 1);
+        setRepeatCounter((prev) => prev + 1);
         audio.currentTime = 0;
         audio.play().catch(() => {});
       } else {
@@ -84,8 +84,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     audio.addEventListener('ended', handleEnded);
 
     if (isPlaying) {
-      audio.play().catch(e => {
-        console.warn("Autoplay blocked", e);
+      audio.play().catch((e) => {
+        console.warn('Autoplay blocked', e);
         setIsPlaying(false);
       });
     }
@@ -103,7 +103,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     }
   };
 
@@ -138,7 +141,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-stone-900/95 backdrop-blur-md text-white border-t border-stone-800 shadow-2xl p-3 sm:p-4 animate-in slide-in-from-bottom">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-        
         {/* Reciter Info & Surah Info */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-2.5">
@@ -166,10 +168,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="md:hidden text-stone-400 hover:text-white p-1"
-          >
+          <button onClick={onClose} className="md:hidden text-stone-400 hover:text-white p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -177,7 +176,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         {/* Audio Controls */}
         <div className="flex flex-col items-center gap-1.5 w-full md:max-w-md">
           <div className="flex items-center gap-4">
-            
             {/* Speed Toggle */}
             <button
               onClick={cycleSpeed}
@@ -207,7 +205,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
             {/* Next Ayah */}
             <button
-              onClick={() => onAyahChange(Math.min(currentSurah.ayahs.length, currentAyahNumber + 1))}
+              onClick={() =>
+                onAyahChange(Math.min(currentSurah.ayahs.length, currentAyahNumber + 1))
+              }
               disabled={currentAyahNumber >= currentSurah.ayahs.length}
               className="text-stone-300 hover:text-white disabled:opacity-30 transition-colors p-1"
               title="الآية التالية"
@@ -219,14 +219,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <button
               onClick={cycleRepeat}
               className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
-                repeatMode > 1 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'text-stone-400 hover:text-white'
+                repeatMode > 1
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                  : 'text-stone-400 hover:text-white'
               }`}
               title="تكرار الآية لتثبيت الحفظ"
             >
               <Repeat className="w-3.5 h-3.5" />
               <span>{repeatMode === 99 ? '∞' : `${repeatMode}x`}</span>
             </button>
-
           </div>
 
           {/* Progress Bar & Timestamps */}
@@ -254,7 +255,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-
       </div>
 
       {/* Reciters Modal / Dropdown Picker */}
@@ -270,7 +270,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   setShowReciterPicker(false);
                 }}
                 className={`p-2.5 rounded-xl text-right flex items-center justify-between transition-colors ${
-                  isCurrent ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-600' : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300'
+                  isCurrent
+                    ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-600'
+                    : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300'
                 }`}
               >
                 <div>
@@ -283,7 +285,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           })}
         </div>
       )}
-
     </div>
   );
 };

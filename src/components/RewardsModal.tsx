@@ -14,7 +14,6 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-        
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -22,9 +21,7 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
               <Award className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <h3 className="font-bold text-stone-900 text-base">
-                نظام المكافآت وأوسمة الإتقان
-              </h3>
+              <h3 className="font-bold text-stone-900 text-base">نظام المكافآت وأوسمة الإتقان</h3>
               <p className="text-xs text-stone-500">
                 نقاط الحسنات والأوسمة التحفيزية لحفظة كتاب الله
               </p>
@@ -61,9 +58,7 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
         {/* Badges Collection Grid */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="font-bold text-stone-900 text-sm">
-              أوسمة الإنجاز والتثبيت
-            </h4>
+            <h4 className="font-bold text-stone-900 text-sm">أوسمة الإنجاز والتثبيت</h4>
             <span className="text-xs text-stone-500">
               تم فتح {stats.unlockedBadgeIds.length} من {allBadges.length} أوسمة
             </span>
@@ -82,25 +77,23 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
                       : 'bg-stone-50 border-stone-200 opacity-60'
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
-                    isUnlocked ? 'bg-amber-100 shadow-inner' : 'bg-stone-200'
-                  }`}>
+                  <div
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
+                      isUnlocked ? 'bg-amber-100 shadow-inner' : 'bg-stone-200'
+                    }`}
+                  >
                     {isUnlocked ? badge.icon : <Lock className="w-5 h-5 text-stone-400" />}
                   </div>
 
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-stone-900 text-sm">
-                        {badge.title}
-                      </span>
+                      <span className="font-bold text-stone-900 text-sm">{badge.title}</span>
                       <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
                         +{badge.pointsReward} حسنة
                       </span>
                     </div>
 
-                    <p className="text-xs text-stone-600 leading-tight">
-                      {badge.description}
-                    </p>
+                    <p className="text-xs text-stone-600 leading-tight">{badge.description}</p>
 
                     <div className="text-[10px] text-stone-500 flex items-center gap-1 pt-1">
                       {isUnlocked ? (
@@ -120,7 +113,8 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
 
         {/* Hadith Quote */}
         <div className="bg-stone-50 rounded-2xl p-4 text-center border border-stone-200 text-xs text-stone-700 leading-relaxed font-serif">
-          «يُقَالُ لِصَاحِبِ الْقُرْآنِ: اقْرَأْ، وَارْتَقِ، وَرَتِّلْ كَمَا كُنْتَ تُرَتِّلُ فِي الدُّنْيَا، فَإِنَّ مَنْزِلَتَكَ عِنْدَ آخِرِ آيَةٍ تَقْرَؤُهَا»
+          «يُقَالُ لِصَاحِبِ الْقُرْآنِ: اقْرَأْ، وَارْتَقِ، وَرَتِّلْ كَمَا كُنْتَ تُرَتِّلُ فِي
+          الدُّنْيَا، فَإِنَّ مَنْزِلَتَكَ عِنْدَ آخِرِ آيَةٍ تَقْرَؤُهَا»
         </div>
 
         <div className="flex justify-end pt-2">
@@ -131,7 +125,6 @@ export const RewardsModal: React.FC<RewardsModalProps> = ({ stats, onClose }) =>
             إغلاق
           </button>
         </div>
-
       </div>
     </div>
   );
