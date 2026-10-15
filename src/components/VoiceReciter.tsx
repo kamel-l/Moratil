@@ -54,6 +54,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const [showAyahText, setShowAyahText] = useState(true);
   const [isListening, setIsListening] = useState(false);
   const [isSurahRecitationMode, setIsSurahRecitationMode] = useState(false);
+  const [speechRecognitionError, setSpeechRecognitionError] = useState<string | null>(null);
   const [speechSupported, setSpeechSupported] = useState(
     () =>
       typeof window !== 'undefined' &&
@@ -312,7 +313,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       recognition.lang = 'ar-SA'; // عربي سعودي
 
       recognition.onstart = () => {
-        if (recognitionEnabledRef.current) setIsListening(true);
+        if (recognitionEnabledRef.current) {
+          setSpeechRecognitionError(null);
+          setIsListening(true);
+        }
       };
 
       recognition.onend = () => {
@@ -338,7 +342,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 }
                 console.warn('Unable to restart web speech recognition:', error);
                 recognitionEnabledRef.current = false;
+                isSurahRecitationModeRef.current = false;
+                setIsSurahRecitationMode(false);
                 setIsListening(false);
+                setSpeechRecognitionError(
+                  'تعذّر استئناف التعرّف الصوتي. تحقق من إذن الميكروفون واتصال الإنترنت.',
+                );
                 setShowSimulatedInput(true);
               }
             }
@@ -351,6 +360,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
+        const errorMessages: Record<string, string> = {
+          'not-allowed': 'لم يُسمح باستخدام الميكروفون. اسمح للموقع بالوصول إليه من إعدادات المتصفح.',
+          'service-not-allowed':
+            'خدمة التعرّف الصوتي غير متاحة. جرّب Chrome أو Edge وتأكد من اتصال الإنترنت.',
+          'audio-capture': 'لم يُعثر على ميكروفون. تحقق من توصيله واختياره في إعدادات الجهاز.',
+          network: 'تعذّر الاتصال بخدمة التعرّف الصوتي. تحقق من الإنترنت وحاول مجددًا.',
+          'language-not-supported': 'التعرّف الصوتي باللغة العربية غير مدعوم في هذا المتصفح.',
+        };
+        setSpeechRecognitionError(
+          errorMessages[event.error] ?? 'حدث خطأ في التعرّف الصوتي. حاول بدء التسميع مجددًا.',
+        );
         if (
           event.error === 'not-allowed' ||
           event.error === 'service-not-allowed' ||
@@ -358,6 +378,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           event.error === 'network'
         ) {
           recognitionEnabledRef.current = false;
+          isSurahRecitationModeRef.current = false;
+          setIsSurahRecitationMode(false);
           setIsListening(false);
           setShowSimulatedInput(true);
           try {
@@ -461,6 +483,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const startListening = async () => {
     if (isListening) return;
     const requestId = ++recognitionRequestIdRef.current;
+    setSpeechRecognitionError(null);
 
     // إن كانت الآية السابقة قد انتهت، صفّر كل شيء قبل البدء
     if (ayahCompletionHandledRef.current) {
@@ -517,9 +540,32 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
 
     // ---------- الويب ----------
+    const hostname = window.location.hostname;
+    if (
+      !window.isSecureContext &&
+      hostname !== 'localhost' &&
+      hostname !== '127.0.0.1' &&
+      hostname !== '[::1]' &&
+      hostname !== '::1'
+    ) {
+      recognitionEnabledRef.current = false;
+      isSurahRecitationModeRef.current = false;
+      setIsSurahRecitationMode(false);
+      setIsListening(false);
+      setSpeechRecognitionError('يتطلب تشغيل الميكروفون فتح الموقع عبر اتصال آمن (HTTPS).');
+      setShowSimulatedInput(true);
+      return;
+    }
+
     if (!speechSupported) {
+      recognitionEnabledRef.current = false;
+      isSurahRecitationModeRef.current = false;
+      setIsSurahRecitationMode(false);
       setShowSimulatedInput(true);
       setIsListening(false);
+      setSpeechRecognitionError(
+        'التعرّف الصوتي غير مدعوم في هذا المتصفح. جرّب Chrome أو Edge محدّثًا.',
+      );
       return;
     }
 
@@ -535,11 +581,20 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         }
         console.warn('Unable to start web speech recognition:', error);
         recognitionEnabledRef.current = false;
+        isSurahRecitationModeRef.current = false;
+        setIsSurahRecitationMode(false);
         setIsListening(false);
+        setSpeechRecognitionError(
+          'تعذّر بدء التعرّف الصوتي. تحقق من إذن الميكروفون واستخدم اتصال HTTPS.',
+        );
         setShowSimulatedInput(true);
       }
     } else {
+      recognitionEnabledRef.current = false;
+      isSurahRecitationModeRef.current = false;
+      setIsSurahRecitationMode(false);
       setIsListening(false);
+      setSpeechRecognitionError('تعذّر تهيئة التعرّف الصوتي في هذا المتصفح.');
       setShowSimulatedInput(true);
     }
   };
@@ -956,6 +1011,15 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 </>
               )}
             </button>
+
+            {speechRecognitionError && (
+              <p
+                className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-5 text-amber-900"
+                role="alert"
+              >
+                {speechRecognitionError}
+              </p>
+            )}
 
             {!isListening && (
               <span className="w-full text-center text-[11px] text-stone-500">
