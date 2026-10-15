@@ -12,10 +12,15 @@ import {
   ShieldAlert,
   Sparkles,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 import { RevisionPlan, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
-import { saveRevisionPlans, addPointsAndVerses } from '../services/storageService';
+import {
+  addPointsAndVerses,
+  resetRevisionData,
+  saveRevisionPlans,
+} from '../services/storageService';
 
 interface RevisionPlansProps {
   plans: RevisionPlan[];
@@ -31,6 +36,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   onRefreshPlans,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [newPlanTitle, setNewPlanTitle] = useState('');
   const [selectedSurahNums, setSelectedSurahNums] = useState<number[]>([1, 112, 113, 114]);
   const [dailyTarget, setDailyTarget] = useState(15);
@@ -83,22 +89,43 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
     onRefreshPlans();
   };
 
+  const handleResetRevision = () => {
+    const confirmed = window.confirm(
+      'سيتم حذف جميع خطط المراجعة وسجلات إتقان الآيات، بما فيها البيانات الافتراضية. لن تتأثر نقاطك أو إحصائياتك العامة. هل تريد المتابعة؟',
+    );
+    if (!confirmed) return;
+
+    resetRevisionData();
+    onRefreshPlans();
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Hero Header */}
       <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
-        <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-800/80 border border-emerald-700/60 px-3 py-1 rounded-full text-xs text-amber-300 font-medium">
-            <CalendarClock className="w-3.5 h-3.5" />
-            <span>نظام التكرار المتباعد (Spaced Repetition)</span>
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 bg-emerald-800/80 border border-emerald-700/60 px-3 py-1 rounded-full text-xs text-amber-300 font-medium">
+              <CalendarClock className="w-3.5 h-3.5" />
+              <span>نظام التكرار المتباعد (Spaced Repetition)</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
+              خطط المراجعة وتنبيهات تثبيت الحفظ
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+              القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك
+              للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
-            خطط المراجعة وتنبيهات تثبيت الحفظ
-          </h1>
-          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
-            القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك
-            للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
-          </p>
+          <button
+            type="button"
+            onClick={handleResetRevision}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+            title="حذف جميع الخطط وسجلات إتقان الآيات"
+          >
+            <RotateCcw className="h-4 w-4" />
+            تصفير المراجعة
+          </button>
         </div>
       </div>
 
@@ -161,7 +188,9 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                     <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-600 border border-stone-100 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-stone-500">ما تعرّف عليه النظام:</span>
-                        <span className="text-amber-800 font-bold">"{lastMistake.recitedWord}"</span>
+                        <span className="text-amber-800 font-bold">
+                          "{lastMistake.recitedWord}"
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-stone-500">النص المقابل في المصحف:</span>
@@ -220,6 +249,11 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {plans.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-500 md:col-span-3">
+              لا توجد خطط مراجعة. أنشئ خطة جديدة للبدء.
+            </div>
+          )}
           {plans.map((plan) => {
             const progressPercent = Math.min(
               100,
@@ -273,13 +307,13 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                 <div className="pt-2 border-t border-stone-100 flex items-center gap-2">
                   <button
                     onClick={() => {
-                      if (plan.targetSurahs.length > 0) {
-                        onStartPracticingVerse(plan.targetSurahs[0], 1);
-                      }
+                      setExpandedPlanId((currentPlanId) =>
+                        currentPlanId === plan.id ? null : plan.id,
+                      );
                     }}
                     className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-semibold py-2 rounded-xl text-center transition-colors"
                   >
-                    ابدأ مراجعة اليوم
+                    {expandedPlanId === plan.id ? 'إخفاء السور' : 'اختر سورة للمراجعة'}
                   </button>
 
                   <button
@@ -291,6 +325,25 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                     <CheckCircle className="w-5 h-5 text-emerald-600" />
                   </button>
                 </div>
+                {expandedPlanId === plan.id && (
+                  <div className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+                    <p className="text-xs font-semibold text-emerald-900">
+                      سور هذه الخطة — اختر سورة لبدء المراجعة:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {plan.targetSurahs.map((surahNumber) => (
+                        <button
+                          key={surahNumber}
+                          type="button"
+                          onClick={() => onStartPracticingVerse(surahNumber, 1)}
+                          className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 transition-colors hover:border-emerald-500 hover:bg-emerald-100"
+                        >
+                          سورة {getSurahName(surahNumber)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -353,7 +406,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
               <div className="space-y-1.5">
                 <label className="font-semibold text-stone-800">اختر السور المستهدفة:</label>
                 <div className="max-h-40 overflow-y-auto border border-stone-200 rounded-xl p-2.5 grid grid-cols-2 gap-2 bg-stone-50">
-                  {ALL_SURAHS.slice(0, 30).map((s) => {
+                  {ALL_SURAHS.map((s) => {
                     const isChecked = selectedSurahNums.includes(s.number);
                     return (
                       <label

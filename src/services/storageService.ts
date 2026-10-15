@@ -35,20 +35,23 @@ export function getDailyRecitationActivity(dayCount = 7): DailyRecitationActivit
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        savedActivity = parsed.filter(
-          (item): item is DailyRecitationActivity =>
-            typeof item === 'object' &&
-            item !== null &&
-            typeof item.date === 'string' &&
-            typeof item.verses === 'number' &&
-            Number.isFinite(item.verses),
-        ).map((item) => ({
-          date: item.date,
-          verses: item.verses,
-          sessions: typeof item.sessions === 'number' && Number.isFinite(item.sessions)
-            ? item.sessions
-            : 0,
-        }));
+        savedActivity = parsed
+          .filter(
+            (item): item is DailyRecitationActivity =>
+              typeof item === 'object' &&
+              item !== null &&
+              typeof item.date === 'string' &&
+              typeof item.verses === 'number' &&
+              Number.isFinite(item.verses),
+          )
+          .map((item) => ({
+            date: item.date,
+            verses: item.verses,
+            sessions:
+              typeof item.sessions === 'number' && Number.isFinite(item.sessions)
+                ? item.sessions
+                : 0,
+          }));
       }
     }
   } catch (error) {
@@ -167,144 +170,6 @@ export const INITIAL_BADGES: Badge[] = [
     icon: '👑',
     pointsReward: 1200,
     conditionDescription: 'إتقان سور جزء عم',
-  },
-];
-
-const DEFAULT_PLANS: RevisionPlan[] = [
-  {
-    id: 'juz_30_srs',
-    title: 'تثبيت جزء عمّ بالتكرار المتباعد',
-    description: 'مراجعة دورية ذكية للسور القصيرة لضمان عدم النسيان',
-    category: 'spaced_repetition',
-    targetSurahs: [114, 113, 112, 110, 108, 103, 109, 97, 94, 93, 87],
-    dailyTargetAyahs: 15,
-    durationDays: 14,
-    currentDay: 3,
-    isCompleted: false,
-    startDate: new Date().toISOString(),
-  },
-  {
-    id: 'surah_mulk_fix',
-    title: 'تثبيت سورة الملك المنجية',
-    description: 'حفظ ومراجعة 3 آيات يومياً مع التفسير الميسر',
-    category: 'surah_fix',
-    targetSurahs: [67],
-    dailyTargetAyahs: 3,
-    durationDays: 10,
-    currentDay: 2,
-    isCompleted: false,
-    startDate: new Date().toISOString(),
-  },
-  {
-    id: 'daily_wird_basic',
-    title: 'الورد اليومي لتثبيت المحفوظ',
-    description: 'مراجعة ربع حزب يومياً مع الفحص الصوتي للأخطاء',
-    category: 'daily_wird',
-    targetSurahs: [1, 87, 93, 94, 97, 103, 108, 112, 113, 114],
-    dailyTargetAyahs: 25,
-    durationDays: 30,
-    currentDay: 5,
-    isCompleted: false,
-    startDate: new Date().toISOString(),
-  },
-];
-
-export const INITIAL_FRIENDS: FriendUser[] = [
-  {
-    id: 'f1',
-    name: 'أحمد بن علي الكندري',
-    avatar: '👨‍💼',
-    points: 3420,
-    versesToday: 35,
-    streakDays: 12,
-    accuracy: 98,
-    rank: 1,
-    badge: 'فارس الحفاظ',
-    lastActive: 'منذ 10 دقائق',
-  },
-  {
-    id: 'f_me',
-    name: 'أنت (حسابي)',
-    avatar: '🌱',
-    points: 1850,
-    versesToday: 18,
-    streakDays: 5,
-    accuracy: 96,
-    rank: 2,
-    badge: 'طالب إتقان',
-    lastActive: 'الآن',
-  },
-  {
-    id: 'f2',
-    name: 'عائشة المحمود',
-    avatar: '🧕',
-    points: 1640,
-    versesToday: 20,
-    streakDays: 7,
-    accuracy: 95,
-    rank: 3,
-    badge: 'شعلة الاستمرار',
-    lastActive: 'منذ ساعة',
-  },
-  {
-    id: 'f3',
-    name: 'عمر الفاروق الدوسري',
-    avatar: '🧔',
-    points: 1320,
-    versesToday: 12,
-    streakDays: 4,
-    accuracy: 94,
-    rank: 4,
-    badge: 'مكافح النسيان',
-    lastActive: 'منذ 3 ساعات',
-  },
-  {
-    id: 'f4',
-    name: 'فاطمة الزهراء',
-    avatar: '🌸',
-    points: 980,
-    versesToday: 8,
-    streakDays: 3,
-    accuracy: 92,
-    rank: 5,
-    badge: 'بداية النور',
-    lastActive: 'أمس',
-  },
-];
-
-export const DAILY_CHALLENGES: QuranChallenge[] = [
-  {
-    id: 'c1',
-    title: 'تحدي سورة الفاتحة والإخلاص بإتقان تام',
-    surahNumber: 1,
-    ayahStart: 1,
-    ayahEnd: 7,
-    rewardPoints: 200,
-    difficulty: 'سهل',
-    expiresInHours: 14,
-    completed: false,
-  },
-  {
-    id: 'c2',
-    title: 'تسميع سورة الأعلى دون أي توقف أو خطأ',
-    surahNumber: 87,
-    ayahStart: 1,
-    ayahEnd: 9,
-    rewardPoints: 350,
-    difficulty: 'متوسط',
-    expiresInHours: 18,
-    completed: false,
-  },
-  {
-    id: 'c3',
-    title: 'مراجعة آيات سورة الملك الأولى (تثبيت الحفظ)',
-    surahNumber: 67,
-    ayahStart: 1,
-    ayahEnd: 5,
-    rewardPoints: 300,
-    difficulty: 'متوسط',
-    expiresInHours: 24,
-    completed: false,
   },
 ];
 
@@ -472,8 +337,8 @@ export function getRevisionPlans(): RevisionPlan[] {
     console.warn('Unable to read revision plans from localStorage', error);
   }
 
-  saveRevisionPlans(DEFAULT_PLANS);
-  return DEFAULT_PLANS;
+  saveRevisionPlans([]);
+  return [];
 }
 
 export function saveRevisionPlans(plans: RevisionPlan[]) {
@@ -484,6 +349,11 @@ export function saveRevisionPlans(plans: RevisionPlan[]) {
   }
 }
 
+export function resetRevisionData(): void {
+  saveRevisionPlans([]);
+  saveVerseMasteryMap({});
+}
+
 export function getFriends(): FriendUser[] {
   try {
     const raw = localStorage.getItem(FRIENDS_KEY);
@@ -492,8 +362,8 @@ export function getFriends(): FriendUser[] {
     console.warn('Unable to read friends from localStorage', error);
   }
 
-  saveFriends(INITIAL_FRIENDS);
-  return INITIAL_FRIENDS;
+  saveFriends([]);
+  return [];
 }
 
 export function saveFriends(friends: FriendUser[]) {
@@ -512,8 +382,8 @@ export function getChallenges(): QuranChallenge[] {
     console.warn('Unable to read challenges from localStorage', error);
   }
 
-  saveChallenges(DAILY_CHALLENGES);
-  return DAILY_CHALLENGES;
+  saveChallenges([]);
+  return [];
 }
 
 export function saveChallenges(challenges: QuranChallenge[]) {
@@ -522,4 +392,9 @@ export function saveChallenges(challenges: QuranChallenge[]) {
   } catch (error) {
     console.warn('Unable to save challenges to localStorage', error);
   }
+}
+
+export function resetCompetitionData(): void {
+  saveFriends([]);
+  saveChallenges([]);
 }
