@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractWords,
+  findSimilarAyahs,
   normalizeArabicText,
   removeOpeningBasmalah,
   wordSimilarity,
@@ -28,6 +29,41 @@ describe('arabicUtils', () => {
     expect(wordSimilarity('وَجْه', 'وجه')).toBeGreaterThan(0.9);
     expect(wordSimilarity('الرحمن', 'رحمن')).toBeGreaterThan(0.9);
     expect(wordSimilarity('مستحيل', 'غير')).toBeLessThan(0.4);
+  });
+
+  it('finds distinct verses that share normalized Quranic vocabulary', () => {
+    const similar = findSimilarAyahs(
+      'إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ',
+      [
+        {
+          surahNumber: 1,
+          surahName: 'الفاتحة',
+          numberInSurah: 5,
+          text: 'إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ',
+        },
+        {
+          surahNumber: 2,
+          surahName: 'البقرة',
+          numberInSurah: 10,
+          text: 'وَإِيَّاكَ نَسْتَعِينُ فِي كُلِّ أُمُورِنَا',
+        },
+        {
+          surahNumber: 3,
+          surahName: 'آل عمران',
+          numberInSurah: 1,
+          text: 'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ',
+        },
+      ],
+      1,
+      5,
+    );
+
+    expect(similar).toHaveLength(1);
+    expect(similar[0]).toMatchObject({
+      surahNumber: 2,
+      numberInSurah: 10,
+      sharedWords: ['اياك', 'نستعين'],
+    });
   });
 });
 

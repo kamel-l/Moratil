@@ -47,7 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'recite', label: 'التسميع والتصحيح', icon: Mic },
     { id: 'revision', label: 'خطط المراجعة والتثبيت', icon: CalendarClock },
     { id: 'explorer', label: 'المصحف والتفسير', icon: BookOpen },
-    { id: 'competition', label: 'التنافس والأصدقاء', icon: Trophy },
+    { id: 'competition', label: 'التحديات اليومية', icon: Trophy },
     { id: 'stats', label: 'إحصائيات الأداء', icon: BarChart3 },
   ];
 

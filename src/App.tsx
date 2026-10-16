@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
 import { VoiceReciter } from './components/VoiceReciter';
@@ -24,7 +26,6 @@ import {
   UserStats,
   VerseMastery,
   RevisionPlan,
-  FriendUser,
   QuranChallenge,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
@@ -36,12 +37,58 @@ import {
   getVerseMasteryMap,
   getVersesNeedingReinforcement,
   getRevisionPlans,
-  getFriends,
   getChallenges,
+  retryProgressSync,
+  setStorageUserId,
+  stopProgressSync,
+  syncProgressFromCloud,
+  type ProgressSyncStatus,
 } from './services/storageService';
+import { scheduleDueReviewReminder } from './services/revisionReminderService';
+
+function getProgressSyncErrorMessage(error: unknown): string {
+  const details =
+    typeof error === 'object' && error !== null
+      ? (error as { code?: unknown; message?: unknown; status?: unknown })
+      : {};
+  const code = typeof details.code === 'string' ? details.code : '';
+  const message = typeof details.message === 'string' ? details.message.toLowerCase() : '';
+  const status = details.status;
+
+  if (message.includes('supabase is not configured')) {
+    return 'إعدادات الاتصال بقاعدة البيانات غير مكتملة. راجع VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ثم أعد بناء التطبيق.';
+  }
+  if (
+    code === 'PGRST205' ||
+    code === '42P01' ||
+    ((message.includes('relation') || message.includes('table')) &&
+      (message.includes('not found') || message.includes('does not exist')))
+  ) {
+    return 'جداول المزامنة غير موجودة في Supabase. نفّذ ملف supabase/migrations/20261015200000_progress_sync.sql في SQL Editor.';
+  }
+  if (
+    code === '42501' ||
+    status === 401 ||
+    status === 403 ||
+    message.includes('row-level security') ||
+    message.includes('permission denied')
+  ) {
+    return 'رفضت قاعدة البيانات الوصول إلى بيانات التقدم. تحقّق من سياسات RLS ومن تسجيل الدخول بالحساب نفسه على الجهازين.';
+  }
+  if (
+    error instanceof TypeError ||
+    message.includes('failed to fetch') ||
+    message.includes('network') ||
+    message.includes('timeout')
+  ) {
+    return 'تعذر الوصول إلى Supabase. تحقّق من اتصال الإنترنت وإعدادات عنوان المشروع ثم أعد المحاولة.';
+  }
+  return 'تعذر مزامنة التقدم مع Supabase. تحقّق من إعداد المشروع وقاعدة البيانات ثم أعد المحاولة.';
+}
 
 export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -54,6 +101,9 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      const authenticatedUserId = session?.user.id ?? null;
+      setStorageUserId(authenticatedUserId);
+      setUserId(authenticatedUserId);
       setUserEmail(session?.user.email ?? null);
       setAuthError(null);
       setIsAuthReady(true);
@@ -88,15 +138,29 @@ export default function App() {
     return <LoginScreen authError={authError} />;
   }
 
-  return <AuthenticatedApp key={userEmail} userEmail={userEmail} onSignOut={handleSignOut} />;
+  if (!userId) {
+    return <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />;
+  }
+
+  return (
+    <AuthenticatedApp
+      key={userId}
+      userId={userId}
+      userEmail={userEmail}
+      onSignOut={handleSignOut}
+    />
+  );
 }
 
 interface AuthenticatedAppProps {
+  userId: string;
   userEmail: string;
   onSignOut: () => void;
 }
 
-function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
+function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProps) {
+  const [syncStatus, setSyncStatus] = useState<ProgressSyncStatus>('syncing');
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
@@ -110,7 +174,6 @@ function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
     getVersesNeedingReinforcement(),
   );
   const [plans, setPlans] = useState<RevisionPlan[]>(getRevisionPlans());
-  const [friends, setFriends] = useState<FriendUser[]>(getFriends());
   const [challenges, setChallenges] = useState<QuranChallenge[]>(getChallenges());
 
   const [activeTafsirAyah, setActiveTafsirAyah] = useState<Ayah | null>(null);
@@ -143,9 +206,68 @@ function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
     setVerseMasteryMap(getVerseMasteryMap());
     setForgottenVerses(getVersesNeedingReinforcement());
     setPlans(getRevisionPlans());
-    setFriends(getFriends());
     setChallenges(getChallenges());
   }, []);
+
+  useEffect(() => {
+    let isCurrentUser = true;
+    void syncProgressFromCloud(userId, (status, error) => {
+      if (isCurrentUser) {
+        setSyncStatus(status);
+        setSyncErrorMessage(status === 'error' ? getProgressSyncErrorMessage(error) : null);
+      }
+    })
+      .then(refreshAllState)
+      .catch((error: unknown) => {
+        console.error('Unable to initialize progress synchronization:', error);
+      });
+    return () => {
+      isCurrentUser = false;
+      stopProgressSync();
+    };
+  }, [refreshAllState, userId]);
+
+  useEffect(() => {
+    void scheduleDueReviewReminder()
+      .then((result) => {
+        if (result === 'permission-denied') {
+          console.warn('Revision reminders are enabled but notification permission is denied.');
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to refresh due-review notification:', error);
+      });
+  }, [verseMasteryMap]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let isMounted = true;
+    let removeListener: (() => Promise<void>) | null = null;
+    void LocalNotifications.addListener('localNotificationActionPerformed', () => {
+      setCurrentTab('revision');
+    })
+      .then((listener) => {
+        if (isMounted) removeListener = () => listener.remove();
+        else void listener.remove();
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to register revision notification listener:', error);
+      });
+    return () => {
+      isMounted = false;
+      if (removeListener) {
+        void removeListener().catch((error: unknown) => {
+          console.warn('Unable to remove revision notification listener:', error);
+        });
+      }
+    };
+  }, []);
+
+  const handleRetrySync = () => {
+    void retryProgressSync().catch((error: unknown) => {
+      console.error('Unable to retry progress synchronization:', error);
+    });
+  };
 
   // Jump directly to practicing a specific forgotten verse
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
@@ -190,6 +312,33 @@ function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
         onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
         isAudioPlaying={isAudioPlayerOpen}
       />
+
+      {syncStatus !== 'synced' && (
+        <div className="mx-auto mt-3 max-w-7xl px-4 sm:px-6 lg:px-8">
+          {syncStatus === 'error' ? (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            >
+              <span>
+                {syncErrorMessage ??
+                  'تعذرت مزامنة التقدم. بياناتك محفوظة على هذا الجهاز.'}
+              </span>
+              <button
+                type="button"
+                onClick={handleRetrySync}
+                className="shrink-0 rounded-lg border border-amber-500 px-3 py-1.5 font-semibold hover:bg-amber-100"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900" role="status">
+              جارٍ مزامنة تقدمك...
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
@@ -257,10 +406,8 @@ function AuthenticatedApp({ userEmail, onSignOut }: AuthenticatedAppProps) {
         {/* Tab 4: Friends Competition & Leaderboard */}
         {currentTab === 'competition' && (
           <CompetitionLeaderboard
-            friends={friends}
             challenges={challenges}
             onStartChallenge={handleStartChallenge}
-            onRefresh={refreshAllState}
           />
         )}
 

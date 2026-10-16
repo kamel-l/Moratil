@@ -141,6 +141,64 @@ export function wordSimilarity(word1: string, word2: string): number {
   return Math.max(0, (maxLen - distance) / maxLen);
 }
 
+export interface SimilarAyahCandidate {
+  surahNumber: number;
+  surahName: string;
+  numberInSurah: number;
+  text: string;
+  sharedWords: string[];
+  similarity: number;
+}
+
+function normalizedVerseWords(text: string): string[] {
+  return normalizeArabicText(text)
+    .split(/\s+/)
+    .map((word) => {
+      if (word.length > 4 && word.startsWith('و')) return word.slice(1);
+      if (word.length > 5 && word.startsWith('ال')) return word.slice(2);
+      return word;
+    })
+    .filter((word) => word.length >= 3);
+}
+
+export function findSimilarAyahs(
+  sourceText: string,
+  ayahs: Omit<SimilarAyahCandidate, 'sharedWords' | 'similarity'>[],
+  sourceSurahNumber: number,
+  sourceAyahNumber: number,
+  limit = 5,
+): SimilarAyahCandidate[] {
+  const sourceWords = normalizedVerseWords(sourceText);
+  const sourceWordSet = new Set(sourceWords);
+  if (sourceWordSet.size < 2) return [];
+
+  return ayahs
+    .filter(
+      (ayah) =>
+        ayah.surahNumber !== sourceSurahNumber || ayah.numberInSurah !== sourceAyahNumber,
+    )
+    .map((ayah) => {
+      const candidateWords = normalizedVerseWords(ayah.text);
+      const candidateWordSet = new Set(candidateWords);
+      const sharedWords = [...sourceWordSet].filter((word) => candidateWordSet.has(word));
+      const denominator = sourceWordSet.size + candidateWordSet.size - sharedWords.length;
+      const overlap =
+        candidateWordSet.size > 0
+          ? sharedWords.length / Math.min(sourceWordSet.size, candidateWordSet.size)
+          : 0;
+      const jaccard = denominator > 0 ? sharedWords.length / denominator : 0;
+
+      return {
+        ...ayah,
+        sharedWords,
+        similarity: overlap * 0.7 + jaccard * 0.3,
+      };
+    })
+    .filter((ayah) => ayah.sharedWords.length >= 2 && ayah.similarity >= 0.3)
+    .sort((a, b) => b.similarity - a.similarity || b.sharedWords.length - a.sharedWords.length)
+    .slice(0, Math.max(1, limit));
+}
+
 /**
  * Formats seconds into MM:SS
  */

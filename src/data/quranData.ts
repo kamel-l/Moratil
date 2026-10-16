@@ -766,6 +766,8 @@ export const PRELOADED_SURAHS: Record<number, Surah> = {
 const dynamicSurahCache: Record<number, Surah> = {};
 const quranPageCache: Record<number, QuranPageAyah[]> = {};
 const surahPageCache: Record<number, (number | undefined)[]> = {};
+let fullQuranTextCache: QuranTextAyah[] | null = null;
+let fullQuranTextRequest: Promise<QuranTextAyah[]> | null = null;
 
 function hasCompleteAyahSequence(ayahs: Ayah[], expectedCount: number): boolean {
   return (
@@ -779,6 +781,82 @@ export interface QuranPageAyah {
   numberInSurah: number;
   text: string;
   juz: number;
+}
+
+export interface QuranTextAyah {
+  surahNumber: number;
+  surahName: string;
+  numberInSurah: number;
+  text: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+export async function getAllQuranAyahs(): Promise<QuranTextAyah[]> {
+  if (fullQuranTextCache) return fullQuranTextCache;
+  if (fullQuranTextRequest) return fullQuranTextRequest;
+
+  fullQuranTextRequest = (async () => {
+    const response = await fetch('https://api.alquran.cloud/v1/quran/quran-uthmani');
+    if (!response.ok) {
+      throw new Error(`تعذر تحميل نص القرآن للتدريب على المتشابهات (${response.status}).`);
+    }
+
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !isRecord(payload.data) || !Array.isArray(payload.data.surahs)) {
+      throw new Error('استجابة نص القرآن للمتشابهات غير صالحة.');
+    }
+
+    const ayahs: QuranTextAyah[] = [];
+    for (const rawSurah of payload.data.surahs) {
+      if (!isRecord(rawSurah) || !Array.isArray(rawSurah.ayahs)) {
+        throw new Error('بيانات إحدى سور القرآن غير صالحة.');
+      }
+      const surahNumber = rawSurah.number;
+      if (
+        typeof surahNumber !== 'number' ||
+        !Number.isInteger(surahNumber) ||
+        surahNumber < 1 ||
+        surahNumber > ALL_SURAHS.length
+      ) {
+        throw new Error('رقم سورة غير صالح في بيانات القرآن.');
+      }
+      const surahMeta = ALL_SURAHS[surahNumber - 1];
+      const surahName = surahMeta?.name ?? (typeof rawSurah.name === 'string' ? rawSurah.name : '');
+      for (const rawAyah of rawSurah.ayahs) {
+        if (
+          !isRecord(rawAyah) ||
+          typeof rawAyah.numberInSurah !== 'number' ||
+          !Number.isInteger(rawAyah.numberInSurah) ||
+          typeof rawAyah.text !== 'string'
+        ) {
+          throw new Error(`بيانات آية غير صالحة في سورة ${surahNumber}.`);
+        }
+        ayahs.push({
+          surahNumber,
+          surahName,
+          numberInSurah: rawAyah.numberInSurah,
+          text: rawAyah.text,
+        });
+      }
+    }
+
+    const expectedAyahCount = ALL_SURAHS.reduce((total, surah) => total + surah.numberOfAyahs, 0);
+    if (ayahs.length !== expectedAyahCount) {
+      throw new Error('بيانات القرآن غير مكتملة؛ تعذر بدء تدريب المتشابهات.');
+    }
+    fullQuranTextCache = ayahs;
+    return ayahs;
+  })();
+
+  try {
+    return await fullQuranTextRequest;
+  } catch (error) {
+    fullQuranTextRequest = null;
+    throw error;
+  }
 }
 
 /**
