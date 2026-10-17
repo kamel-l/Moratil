@@ -76,7 +76,13 @@ export function evaluateSpokenText(
       nextMatchedWords.push(matchedIndex);
       delete nextFailedWords[matchedIndex];
       nextWordIdx = matchedIndex + 1;
-      if (!skippedExpectedWord) nextMistake = null;
+      if (
+        !skippedExpectedWord &&
+        nextMistake &&
+        !Object.hasOwn(nextFailedWords, nextMistake.wordIdx)
+      ) {
+        nextMistake = null;
+      }
       continue;
     }
 

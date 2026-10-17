@@ -20,6 +20,21 @@ describe('evaluateSpokenText', () => {
     expect(result.isFlawless).toBe(false);
     expect(result.failedWords[0]).toBe('خطأ');
     expect(result.currentWordIdx).toBe(words.length);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'خطأ',
+    });
+  });
+
+  it('keeps the misrecognized word visible when the next word is recognized in the same chunk', () => {
+    const result = evaluateSpokenText(words, emptyState, 'خطأ الله');
+
+    expect(result.failedWords[0]).toBe('خطأ');
+    expect(result.matchedWords).toEqual([1]);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'خطأ',
+    });
   });
 
   it('marks a skipped word but continues with following words', () => {
@@ -58,5 +73,13 @@ describe('evaluateSpokenText', () => {
       heard: 'بسم',
       isUncertain: true,
     });
+  });
+
+  it('clears a low-confidence alert after the expected word is recognized', () => {
+    const uncertainResult = evaluateSpokenText(words, emptyState, 'بسم', 0.2);
+    const result = evaluateSpokenText(words, uncertainResult, 'بسم');
+
+    expect(result.activeMistakeAlert).toBeNull();
+    expect(result.failedWords).toEqual({});
   });
 });
