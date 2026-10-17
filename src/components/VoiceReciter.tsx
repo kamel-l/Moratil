@@ -62,7 +62,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   const [mode, setMode] = useState<RecitationMode>('karaoke');
   const [repeatCount, setRepeatCount] = useState(1);
-  const [showAyahText, setShowAyahText] = useState(true);
+  const [showAyahText, setShowAyahText] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [showSimilarAyahs, setShowSimilarAyahs] = useState(false);
@@ -77,10 +77,14 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
   );
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
+  const currentAyahRowRef = useRef<HTMLDivElement | null>(null);
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
     completedAyahs: number;
     accuratelyMatchedAyahs: number;
   } | null>(null);
+  const [recitationProgress, setRecitationProgress] = useState<
+    Record<number, { matchedWords: number[]; failedWords: Record<number, string> }>
+  >({});
 
   // ============ Refs ============
   const recognitionRef = useRef<any>(null);
@@ -122,6 +126,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const verseWords = useMemo(() => {
     return extractWords(currentAyahText);
   }, [currentAyahText]);
+  const surahVerseWords = useMemo(
+    () =>
+      surah.ayahs.map((ayah) =>
+        extractWords(
+          surah.number !== 1 && ayah.numberInSurah === 1
+            ? removeOpeningBasmalah(ayah.text)
+            : ayah.text,
+        ),
+      ),
+    [surah],
+  );
 
   const {
     currentWordIdx,
@@ -134,6 +149,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     completionLockRef,
     handleIncomingSpokenText,
     resetRecitationState,
+    matchedWordsRef,
     failedWordsRef,
   } = useRecitationSession(verseWords);
 
@@ -212,6 +228,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
 
     // ③ تسجيل النتيجة في نظام التكرار المتباعد
+    setRecitationProgress((previous) => ({
+      ...previous,
+      [currentAyah.numberInSurah]: {
+        matchedWords: [...matchedWordsRef.current],
+        failedWords: { ...failedWordsRef.current },
+      },
+    }));
     const mistakesArray = Object.entries(failedWordsRef.current).map(([idx, heard]) => ({
       expectedWord: verseWords[parseInt(idx, 10)]?.original || '',
       recitedWord: heard,
@@ -291,12 +314,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAyahIndex, surah.number]); // ← حذف resetRecitationState لتفادي إعادة التشغيل غير الضرورية
 
+  useEffect(() => {
+    currentAyahRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentAyahIndex]);
+
   // ============================================================
   // useEffect: عند تغيير السورة أو الآية الأولية
   // ============================================================
   useEffect(() => {
     setCurrentAyahIndex(Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)));
     setSurahRecitationResult(null);
+    setRecitationProgress({});
     surahRecitationSummaryRef.current = { completedAyahs: 0, accuratelyMatchedAyahs: 0 };
     isSurahRecitationModeRef.current = false;
     recognitionEnabledRef.current = false;
@@ -1032,12 +1060,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-stone-600 transition-colors hover:bg-stone-200/60 hover:text-stone-900"
               aria-pressed={!showAyahText}
             >
-              {showAyahText ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-              <span>{showAyahText ? 'إخفاء الآية' : 'إظهار الآية'}</span>
+              {showAyahText ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              <span>{showAyahText ? 'إخفاء الآيات' : 'كشف الآيات'}</span>
             </button>
             <button
               onClick={giveHint}
@@ -1050,37 +1074,95 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         </div>
 
         <div className="flex min-h-56 flex-col items-center justify-center gap-6 bg-stone-50 px-4 py-8">
-          <div
-            className="w-full text-center"
-            aria-live="polite"
-            aria-label={showAyahText ? 'نص الآية' : 'نص الآية مخفي'}
-          >
-            {showAyahText ? (
-              <p className="font-quran text-3xl leading-[2.3] text-stone-900 sm:text-4xl" dir="rtl">
-                {verseWords.map((word, index) => {
-                  const wasHeard = matchedWords.includes(index);
-                  const needsReview = Object.hasOwn(failedWords, index);
-                  const isCurrent = index === currentWordIdx && !isAyahCompleted;
-                  const wordClass = needsReview
-                    ? 'rounded-md bg-amber-100 px-1 text-amber-950'
-                    : wasHeard
-                      ? 'rounded-md bg-emerald-100/80 px-1 text-emerald-900'
-                      : isCurrent
-                        ? 'rounded-md bg-emerald-50 px-1 text-emerald-950 underline decoration-emerald-600 decoration-2 underline-offset-4'
-                        : '';
+          <div className="w-full bg-[#f8f5ed] px-3 py-5 sm:px-6 sm:py-8">
+            <div
+              className="mx-auto max-w-3xl rounded-2xl border border-[#c8b98c] bg-[#fbf9f3] p-3 shadow-inner sm:p-6"
+              aria-live="off"
+              aria-label={showAyahText ? `آيات سورة ${surah.name}` : 'آيات السورة مخفية'}
+            >
+              <div className="mb-5 rounded-full border border-emerald-200 bg-gradient-to-l from-indigo-900 via-emerald-800 to-indigo-900 px-4 py-2 text-center text-lg font-bold text-white shadow-sm">
+                سورة {surah.name}
+              </div>
+              {surah.number !== 1 && surah.number !== 9 && (
+                <p className="font-quran mb-4 text-center text-2xl text-stone-900 sm:text-3xl">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                </p>
+              )}
+              <div className="divide-y divide-dotted divide-[#b8aa83]" dir="rtl">
+                {surah.ayahs.map((ayah, ayahIndex) => {
+                  const isCurrentAyah = ayahIndex === currentAyahIndex;
+                  const savedProgress = recitationProgress[ayah.numberInSurah];
+                  const ayahMatchedWords = isCurrentAyah
+                    ? matchedWords
+                    : (savedProgress?.matchedWords ?? []);
+                  const ayahFailedWords = isCurrentAyah
+                    ? failedWords
+                    : (savedProgress?.failedWords ?? {});
+                  const ayahWords = surahVerseWords[ayahIndex];
 
                   return (
-                    <React.Fragment key={`${word.index}-${word.original}`}>
-                      <span className={wordClass}>{word.original}</span>{' '}
-                    </React.Fragment>
+                    <div
+                      key={ayah.numberInSurah}
+                      ref={isCurrentAyah ? currentAyahRowRef : undefined}
+                      className={`flex items-center gap-3 py-3 sm:gap-4 sm:py-4 ${
+                        isCurrentAyah ? 'bg-emerald-50/60' : ''
+                      }`}
+                      aria-current={isCurrentAyah ? 'location' : undefined}
+                    >
+                      <p className="font-quran flex-1 text-right text-2xl leading-[2.1] text-stone-900 sm:text-3xl">
+                        {ayahWords.map((word, index) => {
+                          const wasHeard = ayahMatchedWords.includes(index);
+                          const needsReview = Object.hasOwn(ayahFailedWords, index);
+                          const isCurrentWord =
+                            isCurrentAyah && index === currentWordIdx && !isAyahCompleted;
+                          const wordClass = needsReview
+                            ? 'rounded-md bg-red-100 px-1 text-red-700'
+                            : wasHeard
+                              ? 'rounded-md bg-emerald-100/80 px-1 text-emerald-900'
+                              : isCurrentWord
+                                ? 'rounded-md bg-emerald-50 px-1 text-emerald-950 underline decoration-emerald-600 decoration-2 underline-offset-4'
+                                : '';
+
+                          return (
+                            <React.Fragment key={`${word.index}-${word.original}`}>
+                              <span className={wordClass}>
+                                {showAyahText
+                                  ? word.original
+                                  : wasHeard
+                                    ? word.original
+                                    : needsReview
+                                      ? ayahFailedWords[index] === 'تم تخطيها'
+                                        ? word.original
+                                        : ayahFailedWords[index]
+                                      : 'ـــ'}
+                              </span>{' '}
+                            </React.Fragment>
+                          );
+                        })}
+                      </p>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white text-xs font-bold text-emerald-800">
+                        {ayah.numberInSurah.toLocaleString('ar-EG')}
+                      </span>
+                    </div>
                   );
                 })}
-              </p>
-            ) : (
-              <p className="mx-auto max-w-md rounded-2xl border border-stone-200 bg-white px-5 py-6 text-sm text-stone-600">
-                نص الآية مخفي لمساعدتك على التسميع من الحفظ.
-              </p>
-            )}
+              </div>
+              {!showAyahText && (
+                <p className="mt-3 text-center text-xs text-stone-500">
+                  ستظهر الكلمات الصحيحة أثناء التسميع، وتظهر الكلمات المسموعة بشكل مختلف بالأحمر.
+                </p>
+              )}
+            </div>
+            <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-stone-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-emerald-200" />
+                كلمة صحيحة
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-red-200" />
+                كلمة تحتاج إلى مراجعة
+              </span>
+            </div>
           </div>
 
           {/* تنبيه موضع اختلاف التعرّف */}
@@ -1230,7 +1312,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             </button>
 
             {isTranscribing && (
-              <p className="w-full text-center text-xs font-semibold text-emerald-800" role="status">
+              <p
+                className="w-full text-center text-xs font-semibold text-emerald-800"
+                role="status"
+              >
                 يجري تحليل التلاوة بمحرك Whisper القرآني...
               </p>
             )}
@@ -1352,7 +1437,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             </p>
           )}
           {similarAyahError && (
-            <div className="flex items-center justify-between gap-3 text-sm text-rose-800" role="alert">
+            <div
+              className="flex items-center justify-between gap-3 text-sm text-rose-800"
+              role="alert"
+            >
               <span>{similarAyahError}</span>
               <button
                 type="button"
