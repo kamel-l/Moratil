@@ -110,6 +110,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const ayahCompletionHandlerRef = useRef<(isFlawless: boolean) => void>(() => {});
   const nativeRecognitionRunnerRef = useRef<() => Promise<void>>(async () => {});
   const nativeRecognitionActiveRef = useRef(false);
+  const nativeRecognitionStopRef = useRef<Promise<void>>(Promise.resolve());
   const recognitionEnabledRef = useRef(false);
   const recognitionRequestIdRef = useRef(0);
   const similarAyahRequestIdRef = useRef(0);
@@ -216,7 +217,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       if (Capacitor.isNativePlatform()) {
         if (nativeRecognitionActiveRef.current) {
           nativeRecognitionActiveRef.current = false;
-          SpeechRecognition.stop().catch(() => {
+          nativeRecognitionStopRef.current = SpeechRecognition.stop().catch(() => {
             console.warn('Native stop between ayahs failed');
           });
         }
@@ -284,8 +285,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       // ---- الجوال (Native) ----
       if (Capacitor.isNativePlatform()) {
-        nativeRecognitionActiveRef.current = true; // ← إعادة تفعيل المشغل
-        void nativeRecognitionRunnerRef.current();
+        void nativeRecognitionStopRef.current.then(() => {
+          if (!isSurahRecitationModeRef.current || !recognitionEnabledRef.current) return;
+          nativeRecognitionActiveRef.current = true;
+          void nativeRecognitionRunnerRef.current();
+        });
         return;
       }
 
