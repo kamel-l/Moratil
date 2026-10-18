@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import { extractWords } from '../utils/arabicUtils';
+import { evaluateSpokenText, type RecognitionState } from './useRecitationSession';
+
+const words = extractWords('بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ');
+
+const emptyState: RecognitionState = {
+  currentWordIdx: 0,
+  matchedWords: [],
+  failedWords: {},
+  activeMistakeAlert: null,
+};
+
+describe('evaluateSpokenText', () => {
+  it('continues matching after a misrecognized word', () => {
+    const firstChunk = evaluateSpokenText(words, emptyState, 'خطأ');
+    const result = evaluateSpokenText(words, firstChunk, 'الله الرحمن الرحيم');
+
+    expect(result.completed).toBe(true);
+    expect(result.isFlawless).toBe(false);
+    expect(result.failedWords[0]).toBe('خطأ');
+    expect(result.currentWordIdx).toBe(words.length);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'خطأ',
+    });
+  });
+
+  it('keeps the misrecognized word visible when the next word is recognized in the same chunk', () => {
+    const result = evaluateSpokenText(words, emptyState, 'خطأ الله');
+
+    expect(result.failedWords[0]).toBe('خطأ');
+    expect(result.matchedWords).toEqual([1]);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'خطأ',
+    });
+  });
+
+  it('marks a skipped word but continues with following words', () => {
+    const result = evaluateSpokenText(words, emptyState, 'بسم الرحمن');
+
+    expect(result.completed).toBe(false);
+    expect(result.failedWords[1]).toBe('تم تخطيها');
+    expect(result.currentWordIdx).toBe(3);
+    expect(result.matchedWords).toEqual([0, 2]);
+  });
+
+  it('completes an ayah with an error in its last word', () => {
+    const result = evaluateSpokenText(words, emptyState, 'بسم الله الرحمن خطأ');
+
+    expect(result.completed).toBe(true);
+    expect(result.isFlawless).toBe(false);
+    expect(result.failedWords[3]).toBe('خطأ');
+  });
+
+  it('marks a fully matching recitation as flawless', () => {
+    const result = evaluateSpokenText(words, emptyState, 'بسم الله الرحمن الرحيم');
+
+    expect(result.completed).toBe(true);
+    expect(result.isFlawless).toBe(true);
+    expect(result.failedWords).toEqual({});
+  });
+
+  it('does not advance or report a mistake when recognition confidence is low', () => {
+    const result = evaluateSpokenText(words, emptyState, 'بسم', 0.2);
+
+    expect(result.currentWordIdx).toBe(0);
+    expect(result.failedWords).toEqual({});
+    expect(result.completed).toBe(false);
+    expect(result.activeMistakeAlert).toMatchObject({
+      expected: words[0].original,
+      heard: 'بسم',
+      isUncertain: true,
+    });
+  });
+
+  it('clears a low-confidence alert after the expected word is recognized', () => {
+    const uncertainResult = evaluateSpokenText(words, emptyState, 'بسم', 0.2);
+    const result = evaluateSpokenText(words, uncertainResult, 'بسم');
+
+    expect(result.activeMistakeAlert).toBeNull();
+    expect(result.failedWords).toEqual({});
+  });
+});
