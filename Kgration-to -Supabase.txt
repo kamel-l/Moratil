@@ -1,0 +1,281 @@
+# دليل تنفيذ الترحيل (Migration) على Supabase خطوة بخطوة
+
+ملاحظتك صحيحة تمامًا، وهذه هي الطريقة الصحيحة لتنفيذ أي ترحيل SQL على Supabase. دعني أوسّع الشرح ليصبح دليلاً كاملاً، مع التنبيهات الأمنية المهمة.
+
+---
+
+## ⚠️ أولاً: تنبيهات أمنية قبل البدء
+
+**لا تشارك أبدًا في هذه المحادثة أو أي مكان عام:**
+
+| العنصر | مكانه الصحيح |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | متغيرات البيئة في السيرفر فقط |
+| `DATABASE_URL` / كلمة مرور DB | لوحة Supabase → Settings → Database (سرّي) |
+| `anon key` | مسموح في الواجهة، لكن لا تشاركه هنا عبثًا |
+| `.env` بمحتواه | في `.gitignore` دائمًا |
+| JWT secrets | لوحة Supabase فقط |
+
+**الآمن للمشاركة هنا:**
+- محتوى ملف الترحيل (`migration.sql`) — لا يحتوي أسرارًا عادة.
+- رسائل الأخطاء بعد إخفاء أي مفاتيح.
+- أسماء الجداول والأعمدة.
+
+---
+
+## 1) خطوات التنفيذ بالتفصيل
+
+### الخطوة ① — الدخول إلى مشروع Supabase
+
+1. افتح [https://supabase.com/dashboard](https://supabase.com/dashboard).
+2. سجّل الدخول بحسابك.
+3. اختر **المشروع المرتبط بتطبيقك** من قائمة المشاريع.
+
+> 💡 **كيف تعرف المشروع الصحيح؟** قارن `project ref` مع الموجود في `.env` (متغير `VITE_SUPABASE_URL` أو `EXPO_PUBLIC_SUPABASE_URL`). الـ ref هو الجزء الأول من الرابط: `https://xxxxx.supabase.co` → الـ ref هو `xxxxx`.
+
+---
+
+### الخطوة ② — فتح SQL Editor
+
+من القائمة الجانبية اليسرى:
+
+```
+Database → SQL Editor
+```
+
+أو مباشرة من الشريط الجانبي:
+
+```
+SQL Editor  (أيقونة >_)
+```
+
+اضغط **`+ New query`** لفتح محرر جديد.
+
+---
+
+### الخطوة ③ — لصق محتوى ملف الترحيل
+
+1. افتح ملف الترحيل في مشروعك، وغالبًا يكون في:
+   ```
+   supabase/migrations/YYYYMMDDHHMMSS_xxx.sql
+   ```
+   أو في ملف أرسلته لك سابقًا.
+
+2. **انسخ المحتوى كاملاً** (Ctrl+A ثم Ctrl+C).
+
+3. **الصقه** في محرر SQL.
+
+> ⚠️ **مهم:** تأكد أن المحتوى كامل. إذا كان يحتوي على:
+> - `BEGIN;` ... `COMMIT;` → اتركهما.
+> - `CREATE TABLE`, `CREATE POLICY`, `ALTER TABLE` → كلها يجب أن تُنفَّذ معًا.
+
+---
+
+### الخطوة ④ — التشغيل (Run)
+
+- اضغط زر **`Run`** (أو `Ctrl+Enter`).
+- انتظر بضع ثوانٍ.
+
+**النتيجة المتوقعة عند النجاح:**
+
+```
+Success. No rows returned
+```
+
+أو رسالة مشابهة بدون أخطاء حمراء.
+
+**عند الفشل ستظهر رسالة حمراء** مثل:
+- `relation "xyz" already exists` → الجدول موجود مسبقًا.
+- `permission denied` → تحتاج صلاحيات أعلى (استخدم Service Role أو تأكد أنك Owner).
+- `syntax error at or near ...` → خطأ في نسخ/لصق المحتوى.
+
+---
+
+### الخطوة ⑤ — التحقق من نجاح الترحيل
+
+بعد التنفيذ، تأكد يدويًا:
+
+**أ) من نفس SQL Editor، شغّل استعلامات تحقق:**
+
+```sql
+-- اعرض الجداول الجديدة
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+order by table_name;
+
+-- اعرض سياسات RLS
+select schemaname, tablename, policyname, cmd, roles
+from pg_policies
+where schemaname = 'public';
+
+-- اعرض الفهارس (Indexes)
+select indexname, tablename
+from pg_indexes
+where schemaname = 'public';
+```
+
+**ب) من لوحة Supabase:**
+- `Table Editor` → يجب أن ترى الجداول الجديدة.
+- `Authentication → Policies` → يجب أن ترى السياسات (RLS).
+
+---
+
+### الخطوة ⑥ — إعادة فتح التطبيق والمزامنة
+
+1. **أغلق التطبيق تمامًا** (ليس مجرد تصغير).
+2. **أعد فتحه** من جديد.
+3. إذا كان التطبيق يستخدم `supabase-js`، قد يحتاج أيضًا إلى:
+   - **تحديث الصفحة** (في الويب).
+   - **مسح الكاش** إن كان هناك caching.
+   - **تسجيل الخروج والدخول** إذا كانت الجلسة قديمة.
+4. جرّب **زر المزامنة** الآن.
+
+---
+
+## 2) ماذا لو فشلت المزامنة بعد التنفيذ؟
+
+### المشكلة الشائعة ① — `relation does not exist`
+
+الجدول لم يُنشأ. أعد تنفيذ الترحيل وتأكد من عدم وجود أخطاء.
+
+### المشكلة الشائعة ② — `permission denied for table ...`
+
+RLS مفعّل لكن لا توجد سياسة مناسبة. تحقق:
+
+```sql
+-- هل RLS مفعّل؟
+select relname, relrowsecurity
+from pg_class
+where relname in ('your_table_1', 'your_table_2');
+
+-- ما هي السياسات الموجودة؟
+select * from pg_policies where tablename = 'your_table_1';
+```
+
+### المشكلة الشائعة ③ — `JWT expired` أو `Not authenticated`
+
+المستخدم غير مسجّل دخول. أعد تسجيل الدخول في التطبيق.
+
+### المشكلة الشائعة ④ — المزامنة تنجح جزئيًا
+
+قد يكون هناك **تعارض في البيانات** (conflict). تحقق من وجود قيد `unique` على مفاتيح المزامنة (مثل `user_id + surah_number + ayah_number`).
+
+---
+
+## 3) نموذج ترحيل مقترح بناءً على تطبيقك
+
+إذا كان ملف الترحيل الذي تملكه لا يغطي الجداول التي يحتاجها تطبيق التسميع (بناءً على ما رأيناه في `VoiceReciter.tsx`)، فهذا نموذج شامل:
+
+```sql
+-- ============================================================
+-- Migration: Quran Recitation App — Sync Schema
+-- ============================================================
+
+-- جدول إحصائيات المستخدم
+create table if not exists public.user_stats (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  total_points integer not null default 0,
+  total_verses integer not null default 0,
+  current_streak integer not null default 0,
+  last_activity date,
+  updated_at timestamptz not null default now()
+);
+
+-- جدول نتائج الآيات (نظام التكرار المتباعد)
+create table if not exists public.verse_results (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  surah_number integer not null,
+  ayah_number integer not null,
+  is_flawless boolean not null default false,
+  mistakes jsonb not null default '[]'::jsonb,
+  attempts integer not null default 1,
+  next_review_at timestamptz,
+  ease_factor real not null default 2.5,
+  interval_days integer not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, surah_number, ayah_number)
+);
+
+create index if not exists idx_verse_results_due
+  on public.verse_results(user_id, next_review_at);
+
+-- جدول جلسات التسميع
+create table if not exists public.recitation_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  surah_number integer not null,
+  completed_ayahs integer not null default 0,
+  accurately_matched integer not null default 0,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+
+-- ============================================================
+-- Row Level Security
+-- ============================================================
+alter table public.user_stats enable row level security;
+alter table public.verse_results enable row level security;
+alter table public.recitation_sessions enable row level security;
+
+-- سياسات: كل مستخدم يرى بياناته فقط
+drop policy if exists "own_stats" on public.user_stats;
+create policy "own_stats" on public.user_stats
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "own_verse_results" on public.verse_results;
+create policy "own_verse_results" on public.verse_results
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "own_sessions" on public.recitation_sessions;
+create policy "own_sessions" on public.recitation_sessions
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ============================================================
+-- Trigger: تحديث updated_at تلقائيًا
+-- ============================================================
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_user_stats_updated on public.user_stats;
+create trigger trg_user_stats_updated
+  before update on public.user_stats
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists trg_verse_results_updated on public.verse_results;
+create trigger trg_verse_results_updated
+  before update on public.verse_results
+  for each row execute function public.touch_updated_at();
+```
+
+---
+
+## 4) نصيحة أخيرة قبل المزامنة
+
+- **جرّب على مشروع تجريبي (staging) أولاً** إن أمكن، خاصة إذا كان الترحيل يحتوي على `DROP` أو `ALTER` على جداول موجودة.
+- **خذ نسخة احتياطية** من قاعدة البيانات الحالية قبل أي ترحيل خطير:
+  - Supabase Dashboard → `Database` → `Backups` → `Create backup`.
+- **راجع سياسات RLS** جيدًا: خطأ واحد قد يكشف بيانات مستخدم لآخر.
+- **لا تستخدم `service_role key` في التطبيق العميل أبدًا** — فقط في Edge Functions أو السيرفر.
+
+---
+
+## هل تريد أن أساعدك أكثر؟
+
+إذا أرسلت لي **محتوى ملف الترحيل** (بدون أي مفاتيح أو كلمات مرور)، يمكنني:
+1. مراجعته سطرًا سطرًا والتأكد من صحته.
+2. كشف أي أخطاء شائعة قبل التنفيذ.
+3. اقتراح تحسينات على RLS والفهارس.
+4. كتابة استعلامات تحقق مخصصة لجداولك.
+
+فقط الصق المحتوى هنا، وسأراجعه لك.

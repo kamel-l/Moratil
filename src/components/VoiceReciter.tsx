@@ -18,11 +18,21 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { Surah, Ayah, Reciter } from '../types/quran';
-import { extractWords, removeOpeningBasmalah } from '../utils/arabicUtils';
+import {
+  extractWords,
+  findSimilarAyahs,
+  removeOpeningBasmalah,
+  type SimilarAyahCandidate,
+} from '../utils/arabicUtils';
 import { getAyahAudioUrl } from '../utils/audioReciters';
+import { getAllQuranAyahs } from '../data/quranData';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
 import { useAyahAudio } from '../hooks/useAyahAudio';
+import {
+  isQuranAsrConfigured,
+  transcribeQuranRecitation,
+} from '../services/quranRecognition';
 
 interface VoiceReciterProps {
   surah: Surah;
@@ -48,11 +58,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const [currentAyahIndex, setCurrentAyahIndex] = useState(() =>
     Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)),
   );
+  const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
 
   const [mode, setMode] = useState<RecitationMode>('karaoke');
   const [repeatCount, setRepeatCount] = useState(1);
-  const [showAyahText, setShowAyahText] = useState(true);
+  const [showAyahText, setShowAyahText] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showSimilarAyahs, setShowSimilarAyahs] = useState(false);
+  const [isLoadingSimilarAyahs, setIsLoadingSimilarAyahs] = useState(false);
+  const [similarAyahs, setSimilarAyahs] = useState<SimilarAyahCandidate[]>([]);
+  const [similarAyahError, setSimilarAyahError] = useState<string | null>(null);
   const [isSurahRecitationMode, setIsSurahRecitationMode] = useState(false);
   const [speechRecognitionError, setSpeechRecognitionError] = useState<string | null>(null);
   const [speechSupported, setSpeechSupported] = useState(
@@ -61,13 +77,29 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
   );
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
+  const currentAyahRowRef = useRef<HTMLDivElement | null>(null);
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
     completedAyahs: number;
     accuratelyMatchedAyahs: number;
   } | null>(null);
+  const [recitationProgress, setRecitationProgress] = useState<
+    Record<number, { matchedWords: number[]; failedWords: Record<number, string> }>
+  >({});
 
   // ============ Refs ============
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingContextRef = useRef({ surahNumber: surah.number, ayahNumber: currentAyahIndex + 1 });
+  const currentAyahContextRef = useRef({
+    surahNumber: surah.number,
+    ayahNumber: currentAyah.numberInSurah,
+  });
+  currentAyahContextRef.current = {
+    surahNumber: surah.number,
+    ayahNumber: currentAyah.numberInSurah,
+  };
   const incomingSpeechHandlerRef = useRef<
     (
       spokenText: string,
@@ -79,12 +111,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const nativeRecognitionActiveRef = useRef(false);
   const recognitionEnabledRef = useRef(false);
   const recognitionRequestIdRef = useRef(0);
+  const similarAyahRequestIdRef = useRef(0);
   const isSurahRecitationModeRef = useRef(false);
   const isAyahCompletedRef = useRef(false);
   const ayahCompletionHandledRef = useRef(false);
   const surahRecitationSummaryRef = useRef({ completedAyahs: 0, accuratelyMatchedAyahs: 0 });
 
-  const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
   const currentAyahText =
     surah.number !== 1 && currentAyah.numberInSurah === 1
       ? removeOpeningBasmalah(currentAyah.text)
@@ -94,6 +126,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const verseWords = useMemo(() => {
     return extractWords(currentAyahText);
   }, [currentAyahText]);
+  const surahVerseWords = useMemo(
+    () =>
+      surah.ayahs.map((ayah) =>
+        extractWords(
+          surah.number !== 1 && ayah.numberInSurah === 1
+            ? removeOpeningBasmalah(ayah.text)
+            : ayah.text,
+        ),
+      ),
+    [surah],
+  );
 
   const {
     currentWordIdx,
@@ -106,6 +149,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     completionLockRef,
     handleIncomingSpokenText,
     resetRecitationState,
+    matchedWordsRef,
     failedWordsRef,
   } = useRecitationSession(verseWords);
 
@@ -162,6 +206,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       }
     } else if (shouldContinueSurah) {
       // آية عادية في وضع السورة → إيقاف مؤقت ليستأنفه الـ useEffect
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
+        return;
+      }
+
       if (Capacitor.isNativePlatform()) {
         if (nativeRecognitionActiveRef.current) {
           nativeRecognitionActiveRef.current = false;
@@ -179,6 +228,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
 
     // ③ تسجيل النتيجة في نظام التكرار المتباعد
+    setRecitationProgress((previous) => ({
+      ...previous,
+      [currentAyah.numberInSurah]: {
+        matchedWords: [...matchedWordsRef.current],
+        failedWords: { ...failedWordsRef.current },
+      },
+    }));
     const mistakesArray = Object.entries(failedWordsRef.current).map(([idx, heard]) => ({
       expectedWord: verseWords[parseInt(idx, 10)]?.original || '',
       recitedWord: heard,
@@ -258,12 +314,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAyahIndex, surah.number]); // ← حذف resetRecitationState لتفادي إعادة التشغيل غير الضرورية
 
+  useEffect(() => {
+    currentAyahRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentAyahIndex]);
+
   // ============================================================
   // useEffect: عند تغيير السورة أو الآية الأولية
   // ============================================================
   useEffect(() => {
     setCurrentAyahIndex(Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)));
     setSurahRecitationResult(null);
+    setRecitationProgress({});
     surahRecitationSummaryRef.current = { completedAyahs: 0, accuratelyMatchedAyahs: 0 };
     isSurahRecitationModeRef.current = false;
     recognitionEnabledRef.current = false;
@@ -280,15 +341,38 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     isAyahCompletedRef.current = isAyahCompleted;
   }, [isAyahCompleted]);
 
+  useEffect(() => {
+    similarAyahRequestIdRef.current += 1;
+    setShowSimilarAyahs(false);
+    setIsLoadingSimilarAyahs(false);
+    setSimilarAyahs([]);
+    setSimilarAyahError(null);
+  }, [currentAyah.numberInSurah, surah.number]);
+
   // ============================================================
   // تهيئة التعرف الصوتي (Native / Web)
   // ============================================================
   useEffect(() => {
+    const releaseMediaCapture = () => {
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.onstop = null;
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (error) {
+          console.warn('Unable to stop audio recording during cleanup:', error);
+        }
+      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      mediaRecorderRef.current = null;
+    };
+
     // ---------- الجوال ----------
     if (Capacitor.isNativePlatform()) {
       return () => {
         recognitionRequestIdRef.current += 1;
         recognitionEnabledRef.current = false;
+        releaseMediaCapture();
         if (nativeRecognitionActiveRef.current) {
           nativeRecognitionActiveRef.current = false;
           void SpeechRecognition.stop().catch((error) => {
@@ -303,7 +387,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      return;
+      return releaseMediaCapture;
     }
 
     try {
@@ -426,6 +510,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     return () => {
       recognitionRequestIdRef.current += 1;
       recognitionEnabledRef.current = false;
+      releaseMediaCapture();
       if (recognitionRef.current) {
         recognitionRef.current.abort();
       }
@@ -481,7 +566,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   // بدء الاستماع
   // ============================================================
   const startListening = async () => {
-    if (isListening) return;
+    if (isListening || isTranscribing) return;
     const requestId = ++recognitionRequestIdRef.current;
     setSpeechRecognitionError(null);
 
@@ -501,6 +586,111 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     isSurahRecitationModeRef.current = true;
     setIsSurahRecitationMode(true);
     setIsListening(true);
+
+    if (isQuranAsrConfigured) {
+      if (
+        !Capacitor.isNativePlatform() &&
+        !window.isSecureContext &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+      ) {
+        setIsListening(false);
+        setSpeechRecognitionError('يتطلب تسجيل الصوت فتح الموقع عبر اتصال آمن (HTTPS).');
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        setIsListening(false);
+        setSpeechRecognitionError('تسجيل الصوت غير مدعوم على هذا الجهاز أو المتصفح.');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (requestId !== recognitionRequestIdRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        mediaStreamRef.current = stream;
+        const preferredMimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(
+          (mimeType) => MediaRecorder.isTypeSupported(mimeType),
+        );
+        const recorder = preferredMimeType
+          ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+          : new MediaRecorder(stream);
+        mediaRecorderRef.current = recorder;
+        audioChunksRef.current = [];
+        recordingContextRef.current = {
+          surahNumber: surah.number,
+          ayahNumber: currentAyah.numberInSurah,
+        };
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+        recorder.onerror = () => {
+          setSpeechRecognitionError('تعذر تسجيل الصوت. تحقق من إذن الميكروفون وحاول مجددًا.');
+          setIsListening(false);
+          mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+          mediaRecorderRef.current = null;
+        };
+        recorder.onstop = () => {
+          const audio = new Blob(audioChunksRef.current, {
+            type: recorder.mimeType || 'audio/webm',
+          });
+          const context = recordingContextRef.current;
+          audioChunksRef.current = [];
+          mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+          mediaRecorderRef.current = null;
+
+          if (audio.size === 0) {
+            setSpeechRecognitionError('لم يُسجل صوت. ابدأ التسجيل مجددًا ثم أوقفه بعد التلاوة.');
+            return;
+          }
+
+          setIsTranscribing(true);
+          void transcribeQuranRecitation(audio, context)
+            .then((transcript) => {
+              const currentContext = currentAyahContextRef.current;
+              if (
+                currentContext.surahNumber !== context.surahNumber ||
+                currentContext.ayahNumber !== context.ayahNumber
+              ) {
+                setSpeechRecognitionError('تغيرت الآية أثناء تحليل التسجيل. أعد تسميع الآية الحالية.');
+                return;
+              }
+              const nextState = incomingSpeechHandlerRef.current(transcript);
+              if (nextState?.completed) {
+                ayahCompletionHandlerRef.current(nextState.isFlawless);
+              }
+            })
+            .catch((error: unknown) => {
+              console.error('Quran Whisper transcription failed:', error);
+              setSpeechRecognitionError(
+                error instanceof Error
+                  ? error.message
+                  : 'تعذر تحليل التلاوة. تحقق من اتصال الخادم وحاول مجددًا.',
+              );
+            })
+            .finally(() => setIsTranscribing(false));
+        };
+        recorder.start();
+        setSpeechRecognitionError(null);
+        setIsListening(true);
+      } catch (error) {
+        console.error('Unable to start Quran Whisper recording:', error);
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsListening(false);
+        setSpeechRecognitionError(
+          'تعذر بدء التسجيل. اسمح باستخدام الميكروفون وتحقق من إعدادات الجهاز.',
+        );
+      }
+      return;
+    }
 
     // ---------- الجوال ----------
     if (Capacitor.isNativePlatform()) {
@@ -612,6 +802,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     isAyahCompletedRef.current = false;
     setIsListening(false);
 
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      return;
+    }
+
     if (Capacitor.isNativePlatform()) {
       if (nativeRecognitionActiveRef.current) {
         nativeRecognitionActiveRef.current = false;
@@ -702,6 +897,41 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
   };
 
+  const loadSimilarAyahPractice = async () => {
+    setShowSimilarAyahs(true);
+    setIsLoadingSimilarAyahs(true);
+    setSimilarAyahError(null);
+    const requestId = ++similarAyahRequestIdRef.current;
+    const sourceContext = currentAyahContextRef.current;
+
+    try {
+      const allAyahs = await getAllQuranAyahs();
+      if (requestId !== similarAyahRequestIdRef.current) return;
+      const currentContext = currentAyahContextRef.current;
+      if (
+        currentContext.surahNumber !== sourceContext.surahNumber ||
+        currentContext.ayahNumber !== sourceContext.ayahNumber
+      ) {
+        return;
+      }
+      setSimilarAyahs(
+        findSimilarAyahs(
+          currentAyahText,
+          allAyahs,
+          sourceContext.surahNumber,
+          sourceContext.ayahNumber,
+        ),
+      );
+    } catch (error) {
+      console.error('Unable to load similar Quran verses:', error);
+      setSimilarAyahError(
+        error instanceof Error ? error.message : 'تعذر تحميل الآيات المتشابهة. حاول مجددًا.',
+      );
+    } finally {
+      if (requestId === similarAyahRequestIdRef.current) setIsLoadingSimilarAyahs(false);
+    }
+  };
+
   // ============================================================
   // التلميح
   // ============================================================
@@ -714,6 +944,16 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         wordIdx: currentWordIdx,
       });
     }
+  };
+
+  const toggleSimilarAyahPractice = () => {
+    if (showSimilarAyahs) {
+      similarAyahRequestIdRef.current += 1;
+      setIsLoadingSimilarAyahs(false);
+      setShowSimilarAyahs(false);
+      return;
+    }
+    void loadSimilarAyahPractice();
   };
 
   // ============================================================
@@ -820,12 +1060,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-stone-600 transition-colors hover:bg-stone-200/60 hover:text-stone-900"
               aria-pressed={!showAyahText}
             >
-              {showAyahText ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-              <span>{showAyahText ? 'إخفاء الآية' : 'إظهار الآية'}</span>
+              {showAyahText ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              <span>{showAyahText ? 'إخفاء الآيات' : 'كشف الآيات'}</span>
             </button>
             <button
               onClick={giveHint}
@@ -838,37 +1074,95 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         </div>
 
         <div className="flex min-h-56 flex-col items-center justify-center gap-6 bg-stone-50 px-4 py-8">
-          <div
-            className="w-full text-center"
-            aria-live="polite"
-            aria-label={showAyahText ? 'نص الآية' : 'نص الآية مخفي'}
-          >
-            {showAyahText ? (
-              <p className="font-quran text-3xl leading-[2.3] text-stone-900 sm:text-4xl" dir="rtl">
-                {verseWords.map((word, index) => {
-                  const wasHeard = matchedWords.includes(index);
-                  const needsReview = Object.hasOwn(failedWords, index);
-                  const isCurrent = index === currentWordIdx && !isAyahCompleted;
-                  const wordClass = needsReview
-                    ? 'rounded-md bg-amber-100 px-1 text-amber-950'
-                    : wasHeard
-                      ? 'rounded-md bg-emerald-100/80 px-1 text-emerald-900'
-                      : isCurrent
-                        ? 'rounded-md bg-emerald-50 px-1 text-emerald-950 underline decoration-emerald-600 decoration-2 underline-offset-4'
-                        : '';
+          <div className="w-full bg-[#f8f5ed] px-3 py-5 sm:px-6 sm:py-8">
+            <div
+              className="mx-auto max-w-3xl rounded-2xl border border-[#c8b98c] bg-[#fbf9f3] p-3 shadow-inner sm:p-6"
+              aria-live="off"
+              aria-label={showAyahText ? `آيات سورة ${surah.name}` : 'آيات السورة مخفية'}
+            >
+              <div className="mb-5 rounded-full border border-emerald-200 bg-gradient-to-l from-indigo-900 via-emerald-800 to-indigo-900 px-4 py-2 text-center text-lg font-bold text-white shadow-sm">
+                سورة {surah.name}
+              </div>
+              {surah.number !== 1 && surah.number !== 9 && (
+                <p className="font-quran mb-4 text-center text-2xl text-stone-900 sm:text-3xl">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                </p>
+              )}
+              <div className="divide-y divide-dotted divide-[#b8aa83]" dir="rtl">
+                {surah.ayahs.map((ayah, ayahIndex) => {
+                  const isCurrentAyah = ayahIndex === currentAyahIndex;
+                  const savedProgress = recitationProgress[ayah.numberInSurah];
+                  const ayahMatchedWords = isCurrentAyah
+                    ? matchedWords
+                    : (savedProgress?.matchedWords ?? []);
+                  const ayahFailedWords = isCurrentAyah
+                    ? failedWords
+                    : (savedProgress?.failedWords ?? {});
+                  const ayahWords = surahVerseWords[ayahIndex];
 
                   return (
-                    <React.Fragment key={`${word.index}-${word.original}`}>
-                      <span className={wordClass}>{word.original}</span>{' '}
-                    </React.Fragment>
+                    <div
+                      key={ayah.numberInSurah}
+                      ref={isCurrentAyah ? currentAyahRowRef : undefined}
+                      className={`flex items-center gap-3 py-3 sm:gap-4 sm:py-4 ${
+                        isCurrentAyah ? 'bg-emerald-50/60' : ''
+                      }`}
+                      aria-current={isCurrentAyah ? 'location' : undefined}
+                    >
+                      <p className="font-quran flex-1 text-right text-2xl leading-[2.1] text-stone-900 sm:text-3xl">
+                        {ayahWords.map((word, index) => {
+                          const wasHeard = ayahMatchedWords.includes(index);
+                          const needsReview = Object.hasOwn(ayahFailedWords, index);
+                          const isCurrentWord =
+                            isCurrentAyah && index === currentWordIdx && !isAyahCompleted;
+                          const wordClass = needsReview
+                            ? 'rounded-md bg-red-100 px-1 text-red-700'
+                            : wasHeard
+                              ? 'rounded-md bg-emerald-100/80 px-1 text-emerald-900'
+                              : isCurrentWord
+                                ? 'rounded-md bg-emerald-50 px-1 text-emerald-950 underline decoration-emerald-600 decoration-2 underline-offset-4'
+                                : '';
+
+                          return (
+                            <React.Fragment key={`${word.index}-${word.original}`}>
+                              <span className={wordClass}>
+                                {showAyahText
+                                  ? word.original
+                                  : wasHeard
+                                    ? word.original
+                                    : needsReview
+                                      ? ayahFailedWords[index] === 'تم تخطيها'
+                                        ? word.original
+                                        : ayahFailedWords[index]
+                                      : 'ـــ'}
+                              </span>{' '}
+                            </React.Fragment>
+                          );
+                        })}
+                      </p>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white text-xs font-bold text-emerald-800">
+                        {ayah.numberInSurah.toLocaleString('ar-EG')}
+                      </span>
+                    </div>
                   );
                 })}
-              </p>
-            ) : (
-              <p className="mx-auto max-w-md rounded-2xl border border-stone-200 bg-white px-5 py-6 text-sm text-stone-600">
-                نص الآية مخفي لمساعدتك على التسميع من الحفظ.
-              </p>
-            )}
+              </div>
+              {!showAyahText && (
+                <p className="mt-3 text-center text-xs text-stone-500">
+                  ستظهر الكلمات الصحيحة أثناء التسميع، وتظهر الكلمات المسموعة بشكل مختلف بالأحمر.
+                </p>
+              )}
+            </div>
+            <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-stone-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-emerald-200" />
+                كلمة صحيحة
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-red-200" />
+                كلمة تحتاج إلى مراجعة
+              </span>
+            </div>
           </div>
 
           {/* تنبيه موضع اختلاف التعرّف */}
@@ -993,6 +1287,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           <div className="flex items-center gap-3 flex-wrap justify-center">
             <button
               onClick={toggleListening}
+              disabled={isTranscribing}
               className={`relative flex items-center justify-center gap-2 px-6 py-3 rounded-full font-bold text-sm shadow-md transition-all cursor-pointer ${
                 isListening
                   ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-4 ring-rose-200'
@@ -1002,15 +1297,33 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               {isListening ? (
                 <>
                   <MicOff className="w-5 h-5" />
-                  <span>جارٍ الاستماع... انقر للإيقاف</span>
+                  <span>
+                    {isQuranAsrConfigured
+                      ? 'جارٍ التسجيل... انقر للتحليل'
+                      : 'جارٍ الاستماع... انقر للإيقاف'}
+                  </span>
                 </>
               ) : (
                 <>
                   <Mic className="w-5 h-5" />
-                  <span>ابدأ تسميع السورة</span>
+                  <span>{isQuranAsrConfigured ? 'ابدأ تسجيل الآية' : 'ابدأ تسميع السورة'}</span>
                 </>
               )}
             </button>
+
+            {isTranscribing && (
+              <p
+                className="w-full text-center text-xs font-semibold text-emerald-800"
+                role="status"
+              >
+                يجري تحليل التلاوة بمحرك Whisper القرآني...
+              </p>
+            )}
+            {isQuranAsrConfigured && (
+              <p className="w-full text-center text-[11px] text-stone-500">
+                يُرسل التسجيل إلى خادم Whisper المهيأ بعد إيقاف التسجيل.
+              </p>
+            )}
 
             {speechRecognitionError && (
               <p
@@ -1021,9 +1334,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               </p>
             )}
 
-            {!isListening && (
+            {!isListening && !isTranscribing && (
               <span className="w-full text-center text-[11px] text-stone-500">
-                ينتقل تلقائيًا بين الآيات حتى نهاية السورة.
+                {isQuranAsrConfigured
+                  ? 'سجّل تلاوة الآية ثم أوقف التسجيل لإرسالها للتحليل.'
+                  : 'ينتقل تلقائيًا بين الآيات حتى نهاية السورة.'}
               </span>
             )}
 
@@ -1057,6 +1372,14 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
           {/* تبديل المحاكي */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSimilarAyahPractice}
+              className="text-xs text-emerald-800 hover:text-emerald-950 underline decoration-dotted"
+              aria-expanded={showSimilarAyahs}
+            >
+              {showSimilarAyahs ? 'إخفاء المتشابهات' : 'تدرّب على الآيات المتشابهة'}
+            </button>
             <button
               onClick={() => setShowSimulatedInput(!showSimulatedInput)}
               className="text-xs text-stone-500 hover:text-stone-800 underline decoration-dotted"
@@ -1098,6 +1421,77 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
         )}
       </div>
+
+      {showSimilarAyahs && (
+        <section className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 sm:p-5">
+          <div>
+            <h2 className="font-bold text-emerald-950">تدريب المتشابهات اللفظية</h2>
+            <p className="mt-1 text-xs leading-5 text-emerald-900">
+              اقتراحات آلية لآيات تشترك في مفردات قرآنية؛ راجع السياق ولا تعتمد عليها كتفسير.
+            </p>
+          </div>
+
+          {isLoadingSimilarAyahs && (
+            <p className="text-sm text-stone-600" role="status">
+              جارٍ تحميل نص القرآن والبحث عن الآيات المتشابهة...
+            </p>
+          )}
+          {similarAyahError && (
+            <div
+              className="flex items-center justify-between gap-3 text-sm text-rose-800"
+              role="alert"
+            >
+              <span>{similarAyahError}</span>
+              <button
+                type="button"
+                onClick={() => void loadSimilarAyahPractice()}
+                className="shrink-0 rounded-lg border border-rose-300 bg-white px-3 py-1.5 font-semibold"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+          {!isLoadingSimilarAyahs && !similarAyahError && similarAyahs.length === 0 && (
+            <p className="text-sm text-stone-600">لم نعثر على آيات ذات مفردات مشتركة كافية.</p>
+          )}
+          {!isLoadingSimilarAyahs && similarAyahs.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {similarAyahs.map((ayah) => (
+                <article
+                  key={`${ayah.surahNumber}_${ayah.numberInSurah}`}
+                  className="space-y-3 rounded-xl border border-emerald-100 bg-white p-4"
+                >
+                  <p className="text-xs font-semibold text-emerald-800">
+                    سورة {ayah.surahName} · الآية {ayah.numberInSurah}
+                  </p>
+                  <p className="font-quran text-xl leading-loose text-stone-900">{ayah.text}</p>
+                  <div className="flex flex-wrap gap-1.5" aria-label="المفردات المشتركة">
+                    {ayah.sharedWords.map((word) => (
+                      <span
+                        key={word}
+                        className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900"
+                      >
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void stopSurahRecitation();
+                      setShowSimilarAyahs(false);
+                      onSelectSurahChange(ayah.surahNumber, ayah.numberInSurah);
+                    }}
+                    className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
+                  >
+                    انتقل للتسميع
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* بطاقة النصيحة */}
       <div className="bg-stone-50 rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex items-start gap-4">

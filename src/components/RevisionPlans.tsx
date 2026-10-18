@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   CalendarClock,
   AlertTriangle,
@@ -18,9 +19,13 @@ import { RevisionPlan, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
 import {
   addPointsAndVerses,
+  getRevisionReminderSettings,
   resetRevisionData,
+  saveRevisionReminderSettings,
   saveRevisionPlans,
+  type RevisionReminderSettings,
 } from '../services/storageService';
+import { scheduleDueReviewReminder } from '../services/revisionReminderService';
 
 interface RevisionPlansProps {
   plans: RevisionPlan[];
@@ -41,6 +46,11 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   const [selectedSurahNums, setSelectedSurahNums] = useState<number[]>([1, 112, 113, 114]);
   const [dailyTarget, setDailyTarget] = useState(15);
   const [durationDays, setDurationDays] = useState(14);
+  const [reminderSettings, setReminderSettings] =
+    useState<RevisionReminderSettings>(getRevisionReminderSettings);
+  const [reminderNotice, setReminderNotice] = useState('');
+  const [reminderError, setReminderError] = useState('');
+  const [isSavingReminder, setIsSavingReminder] = useState(false);
 
   const getSurahName = (num: number) => {
     return ALL_SURAHS.find((s) => s.number === num)?.name || `سورة ${num}`;
@@ -99,6 +109,35 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
     onRefreshPlans();
   };
 
+  const updateReminderSettings = async (nextSettings: RevisionReminderSettings) => {
+    setReminderError('');
+    setReminderNotice('');
+    try {
+      saveRevisionReminderSettings(nextSettings);
+      setReminderSettings(nextSettings);
+      setIsSavingReminder(true);
+      const result = await scheduleDueReviewReminder(nextSettings.enabled);
+      if (result === 'permission-denied') {
+        setReminderError('لم يُسمح بالإشعارات. فعّلها من إعدادات النظام ثم أعد المحاولة.');
+      } else if (result === 'no-upcoming-reviews') {
+        setReminderNotice('سيُجدول التذكير عند وجود آيات مستحقة أو لها موعد مراجعة قادم.');
+      } else if (result === 'disabled') {
+        setReminderNotice('تم إيقاف تذكير المراجعة.');
+      } else if (result === 'scheduled') {
+        setReminderNotice(`تم ضبط التذكير اليومي على ${nextSettings.time}.`);
+      } else {
+        setReminderError('التنبيهات المحلية متاحة في تطبيق Android أو iOS فقط.');
+      }
+    } catch (error) {
+      console.error('Unable to update revision reminder:', error);
+      setReminderError(
+        error instanceof Error ? error.message : 'تعذر ضبط تذكير المراجعة. حاول مجددًا.',
+      );
+    } finally {
+      setIsSavingReminder(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Hero Header */}
@@ -128,6 +167,59 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
           </button>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-bold text-stone-900">تذكير المراجعة اليومي</h2>
+            <p className="mt-1 text-xs leading-5 text-stone-500">
+              يصلك تنبيه محلي في الوقت المحدد عند وجود مراجعات مستحقة أو قادمة.
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+              <input
+                type="checkbox"
+                checked={reminderSettings.enabled}
+                disabled={!Capacitor.isNativePlatform() || isSavingReminder}
+                onChange={(event) =>
+                  void updateReminderSettings({
+                    ...reminderSettings,
+                    enabled: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 accent-emerald-700"
+              />
+              تفعيل التنبيه
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+              الساعة
+              <input
+                type="time"
+                value={reminderSettings.time}
+                disabled={!Capacitor.isNativePlatform() || isSavingReminder}
+                onChange={(event) =>
+                  void updateReminderSettings({ ...reminderSettings, time: event.target.value })
+                }
+                className="rounded-lg border border-stone-300 bg-white px-2 py-1.5"
+              />
+            </label>
+          </div>
+        </div>
+        {!Capacitor.isNativePlatform() && (
+          <p className="mt-3 text-xs text-stone-500">التنبيهات المحلية تعمل في تطبيق Android أو iOS.</p>
+        )}
+        {reminderNotice && (
+          <p className="mt-3 text-xs text-emerald-800" role="status">
+            {reminderNotice}
+          </p>
+        )}
+        {reminderError && (
+          <p className="mt-3 text-xs text-rose-800" role="alert">
+            {reminderError}
+          </p>
+        )}
+      </section>
 
       {/* SECTION 1: Forgotten Verses / Verses Needing Reinforcement Alerts */}
       <div className="space-y-4">

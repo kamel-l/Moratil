@@ -39,6 +39,9 @@ export interface VerseMastery {
   level: MasteryLevel;
   consecutiveSuccessCount: number;
   mistakeCount: number;
+  repetitionCount?: number;
+  easeFactor?: number;
+  intervalDays?: number;
   lastReviewedAt: string; // ISO date
   nextReviewAt: string; // ISO date for spaced repetition
   recentMistakes: {
