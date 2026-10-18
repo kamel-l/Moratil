@@ -61,6 +61,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
 
   const [mode, setMode] = useState<RecitationMode>('karaoke');
+  const [useWhisperRecitation, setUseWhisperRecitation] = useState(false);
   const [repeatCount, setRepeatCount] = useState(1);
   const [showAyahText, setShowAyahText] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -121,6 +122,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     surah.number !== 1 && currentAyah.numberInSurah === 1
       ? removeOpeningBasmalah(currentAyah.text)
       : currentAyah.text;
+  const isWhisperRecitation = isQuranAsrConfigured && useWhisperRecitation;
 
   // استخراج كلمات الآية الحالية للمقارنة كلمة بكلمة
   const verseWords = useMemo(() => {
@@ -587,7 +589,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     setIsSurahRecitationMode(true);
     setIsListening(true);
 
-    if (isQuranAsrConfigured) {
+    if (isWhisperRecitation) {
       if (
         !Capacitor.isNativePlatform() &&
         !window.isSecureContext &&
@@ -1285,6 +1287,47 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
           {/* الزر الرئيسي: الميكروفون */}
           <div className="flex items-center gap-3 flex-wrap justify-center">
+            {isQuranAsrConfigured && (
+              <div
+                className="flex w-full flex-wrap justify-center gap-2"
+                role="group"
+                aria-label="محرك التعرف على التلاوة"
+              >
+                <button
+                  type="button"
+                  onClick={() => setUseWhisperRecitation(false)}
+                  disabled={isListening || isTranscribing}
+                  aria-pressed={!useWhisperRecitation}
+                  className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    !useWhisperRecitation
+                      ? 'bg-emerald-800 text-white'
+                      : 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-100'
+                  }`}
+                  title="ابدأ مرة واحدة، وسينتقل التسميع تلقائيًا بين الآيات"
+                >
+                  تسميع متواصل
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseWhisperRecitation(true)}
+                  disabled={isListening || isTranscribing}
+                  aria-pressed={useWhisperRecitation}
+                  className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    useWhisperRecitation
+                      ? 'bg-emerald-800 text-white'
+                      : 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-100'
+                  }`}
+                  title="يسجل آية واحدة ويرسلها إلى محرك Whisper عند إيقاف التسجيل"
+                >
+                  تحليل Whisper لكل آية
+                </button>
+                <p className="w-full text-center text-[11px] text-stone-500">
+                  {useWhisperRecitation
+                    ? 'هذا الوضع يتطلب إيقاف التسجيل بعد كل آية لتحليلها.'
+                    : 'ابدأ التسميع مرة واحدة؛ يستمر الميكروفون تلقائيًا عند الانتقال للآية التالية.'}
+                </p>
+              </div>
+            )}
             <button
               onClick={toggleListening}
               disabled={isTranscribing}
@@ -1298,7 +1341,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 <>
                   <MicOff className="w-5 h-5" />
                   <span>
-                    {isQuranAsrConfigured
+                    {isWhisperRecitation
                       ? 'جارٍ التسجيل... انقر للتحليل'
                       : 'جارٍ الاستماع... انقر للإيقاف'}
                   </span>
@@ -1306,7 +1349,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               ) : (
                 <>
                   <Mic className="w-5 h-5" />
-                  <span>{isQuranAsrConfigured ? 'ابدأ تسجيل الآية' : 'ابدأ تسميع السورة'}</span>
+                  <span>
+                    {isWhisperRecitation ? 'ابدأ تسجيل الآية' : 'ابدأ التسميع مرة واحدة'}
+                  </span>
                 </>
               )}
             </button>
@@ -1319,7 +1364,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 يجري تحليل التلاوة بمحرك Whisper القرآني...
               </p>
             )}
-            {isQuranAsrConfigured && (
+            {isWhisperRecitation && (
               <p className="w-full text-center text-[11px] text-stone-500">
                 يُرسل التسجيل إلى خادم Whisper المهيأ بعد إيقاف التسجيل.
               </p>
@@ -1336,7 +1381,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
             {!isListening && !isTranscribing && (
               <span className="w-full text-center text-[11px] text-stone-500">
-                {isQuranAsrConfigured
+                {isWhisperRecitation
                   ? 'سجّل تلاوة الآية ثم أوقف التسجيل لإرسالها للتحليل.'
                   : 'ينتقل تلقائيًا بين الآيات حتى نهاية السورة.'}
               </span>

@@ -28,6 +28,8 @@ Users can create an account, sign in, and request a password-reset email. Progre
 
 ## Quran Whisper service
 
+Recitation uses continuous speech recognition by default: start once and the app advances through ayahs automatically. The optional Whisper mode analyzes one recorded ayah at a time after you stop the recording.
+
 To use the dedicated recitation recognizer, set `VITE_QURAN_ASR_URL` to your HTTPS Whisper transcription endpoint and `VITE_QURAN_ASR_MODEL` to the model identifier accepted by that service. The app records one ayah locally and uploads it when recording stops, along with the surah/ayah context. The service must accept multipart fields `file`, `model`, `language`, `response_format`, `surah_number`, and `ayah_number`, validate the Supabase access token sent as a Bearer token, and return JSON shaped as `{ "text": "recognized Arabic text" }`. Configure CORS to allow the app origin. Do not put a provider or service secret in a `VITE_` variable; the client does not bundle Whisper weights or host the model.
 
 ## Révisions et rappels locaux
