@@ -313,32 +313,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         isAudioPlaying={isAudioPlayerOpen}
       />
 
-      {syncStatus !== 'synced' && (
-        <div className="mx-auto mt-3 max-w-7xl px-4 sm:px-6 lg:px-8">
-          {syncStatus === 'error' ? (
-            <div
-              role="alert"
-              className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-            >
-              <span>
-                {syncErrorMessage ??
-                  'تعذرت مزامنة التقدم. بياناتك محفوظة على هذا الجهاز.'}
-              </span>
-              <button
-                type="button"
-                onClick={handleRetrySync}
-                className="shrink-0 rounded-lg border border-amber-500 px-3 py-1.5 font-semibold hover:bg-amber-100"
-              >
-                إعادة المحاولة
-              </button>
-            </div>
-          ) : (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900" role="status">
-              جارٍ مزامنة تقدمك...
-            </p>
-          )}
-        </div>
-      )}
+      
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
