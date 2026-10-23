@@ -76,11 +76,7 @@ export function evaluateSpokenText(
       nextMatchedWords.push(matchedIndex);
       delete nextFailedWords[matchedIndex];
       nextWordIdx = matchedIndex + 1;
-      if (
-        !skippedExpectedWord &&
-        nextMistake &&
-        !Object.hasOwn(nextFailedWords, nextMistake.wordIdx)
-      ) {
+      if (!skippedExpectedWord && nextMistake && !Object.hasOwn(nextFailedWords, nextMistake.wordIdx)) {
         nextMistake = null;
       }
       continue;
@@ -101,9 +97,7 @@ export function evaluateSpokenText(
 
   const completed = nextWordIdx >= verseWords.length;
   const isFlawless =
-    completed &&
-    nextMatchedWords.length === verseWords.length &&
-    Object.keys(nextFailedWords).length === 0;
+    completed && nextMatchedWords.length === verseWords.length && Object.keys(nextFailedWords).length === 0;
 
   return {
     currentWordIdx: nextWordIdx,
@@ -122,6 +116,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
   const [activeMistakeAlert, setActiveMistakeAlert] =
     useState<RecognitionState['activeMistakeAlert']>(null);
   const [isAyahCompleted, setIsAyahCompleted] = useState(false);
+
   const completionLockRef = useRef(false);
   const currentWordIdxRef = useRef(0);
   const matchedWordsRef = useRef<number[]>([]);
@@ -146,11 +141,10 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
       spokenText: string,
       confidence?: number,
     ): (RecognitionState & { completed: boolean; isFlawless: boolean }) | undefined => {
-      if (
-        completionLockRef.current ||
-        isAyahCompleted ||
-        currentWordIdxRef.current >= verseWords.length
-      ) {
+      if (completionLockRef.current) {
+        return undefined;
+      }
+      if (currentWordIdxRef.current >= verseWords.length) {
         return undefined;
       }
 
@@ -182,7 +176,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
 
       return nextState;
     },
-    [isAyahCompleted, verseWords],
+    [verseWords],
   );
 
   return {

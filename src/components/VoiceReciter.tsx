@@ -57,8 +57,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const isAyahCompletedRef = useRef(false);
   const ayahCompletionHandledRef = useRef(false);
   const surahRecitationSummaryRef = useRef({ completedAyahs: 0, accuratelyMatchedAyahs: 0 });
-  // ✅ يُمنع معالجة نص وارد أثناء لحظة الانتقال (تجنّب تسرّب نهاية الآية السابقة)
+  // ✅ حاجز زمني قصير لمنع تسرّب نهاية الآية السابقة إلى الآية الجديدة
   const cooldownUntilRef = useRef(0);
+  // ✅ مرجع لدالة التشغيل الأصلي لتفادي الاعتماد على إعادة الرسم
+  const nativeListeningStateHandlerRef = useRef<() => void>(() => {});
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
   const verseWords = useMemo(() => extractWords(currentAyah.text), [currentAyah]);
@@ -72,7 +74,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const { isPlayingAudio, playAudio, stopAudio } = useAyahAudio();
 
   // ============================================================
-  // ✅ معالج إتمام الآية (لا يتوقف عن التعرف للآيات غير الأخيرة)
+  // ✅ معالج إتمام الآية — التعرف لا يتوقف بين الآيات (ويب + أندرويد)
   // ============================================================
   function handleAyahCompletion(isFlawless: boolean) {
     if (ayahCompletionHandledRef.current) return;
@@ -110,10 +112,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     addPointsAndVerses(isFlawless ? 35 : 20, 1, 30, isFlawless ? 100 : 85);
     onStatsUpdate();
 
-    // ③ الانتقال للآية التالية — بدون إيقاف التعرف
+    // ③ الانتقال للآية التالية
     if (shouldContinueSurah) {
       if (isFinalAyah) {
-        // فقط عند آخر آية: أوقف كل شيء نهائيًا
+        // آخر آية → إيقاف نهائي
         isSurahRecitationModeRef.current = false;
         recognitionEnabledRef.current = false;
         setIsSurahRecitationMode(false);
@@ -127,8 +129,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           try { recognitionRef.current.stop(); } catch (e) { /* ignore */ }
         }
       } else {
-        // ✅ آية عادية: لا توقف التعرف! فقط ضع cooldown قصير
-        cooldownUntilRef.current = Date.now() + 400;
+        // ✅ آية عادية → لا توقف التعرف. فقط cooldown قصير
+        cooldownUntilRef.current = Date.now() + 500;
         setCurrentAyahIndex((prev) => prev + 1);
       }
       return;
@@ -143,12 +145,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   ayahCompletionHandlerRef.current = handleAyahCompletion;
 
   // ============================================================
-  // ✅ useEffect: تصفير الحالة فقط — لا إعادة تشغيل التعرف
+  // ✅ useEffect: تصفير الحالة فقط عند تغيير الآية
   // ============================================================
   useEffect(() => {
     console.log('[AyahTransition] new index:', currentAyahIndex);
 
-    // فتح الأقفال وتصفير حالة التسميع
     ayahCompletionHandledRef.current = false;
     isAyahCompletedRef.current = false;
     completionLockRef.current = false;
@@ -173,7 +174,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   useEffect(() => { isAyahCompletedRef.current = isAyahCompleted; }, [isAyahCompleted]);
 
   // ============================================================
-  // تهيئة التعرف الصوتي
+  // تهيئة التعرف الصوتي (Web)
   // ============================================================
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -202,19 +203,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       };
 
       recognition.onend = () => {
-        console.log('[Web SR] onend');
-        // إعادة تشغيل تلقائي فقط إذا لم تنتهِ الآية
-        if (
-          recognitionEnabledRef.current &&
-          isSurahRecitationModeRef.current &&
-          !isAyahCompletedRef.current
-        ) {
+        console.log('[Web SR] onend, enabled?', recognitionEnabledRef.current);
+        if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
           setTimeout(() => {
-            if (
-              recognitionEnabledRef.current &&
-              isSurahRecitationModeRef.current &&
-              !isAyahCompletedRef.current
-            ) {
+            if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
               try { recognition.start(); setIsListening(true); }
               catch (error) {
                 if (error instanceof DOMException && error.name === 'InvalidStateError') {
@@ -243,8 +235,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       recognition.onresult = (event: any) => {
         if (!recognitionEnabledRef.current) return;
-        // تجاهل النتائج أثناء cooldown الانتقال
-        if (Date.now() < cooldownUntilRef.current) return;
+        if (Date.now() < cooldownUntilRef.current) {
+          console.log('[Web SR] cooldown — ignored');
+          return;
+        }
 
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -277,14 +271,19 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   incomingSpeechHandlerRef.current = handleIncomingSpokenText;
 
   // ============================================================
-  // التعرف الأصلي على الجوال
+  // ✅ التعرف الأصلي على Android/iOS — استمرارية مع معالجة أخطاء الصمت
   // ============================================================
   const listenWithNativeRecognition = async () => {
     if (!nativeRecognitionActiveRef.current) return;
+
     try {
       const { matches } = await SpeechRecognition.start({
-        language: 'ar-SA', maxResults: 1, partialResults: false, popup: false,
+        language: 'ar-SA',
+        maxResults: 1,
+        partialResults: false,
+        popup: false,
       });
+
       if (!nativeRecognitionActiveRef.current) return;
 
       const recognizedText = matches?.[0]?.trim();
@@ -296,15 +295,36 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         }
       }
 
-      if (nativeRecognitionActiveRef.current && !isAyahCompletedRef.current) {
+      // ✅ استمر في الحلقة طالما المشغل نشط
+      if (nativeRecognitionActiveRef.current) {
         setTimeout(() => {
-          if (nativeRecognitionActiveRef.current && !isAyahCompletedRef.current) {
+          if (nativeRecognitionActiveRef.current) {
             void nativeRecognitionRunnerRef.current();
           }
         }, 250);
       }
-    } catch (error) {
-      console.warn('Native SR error:', error);
+    } catch (error: any) {
+      const message = String(error?.message || error || '').toLowerCase();
+      console.warn('[Native SR] error:', message);
+
+      // ✅ لا تعطّل المشغل عند أخطاء الصمت — أعد المحاولة
+      const isSilenceError =
+        message.includes('no match') ||
+        message.includes('speech timeout') ||
+        message.includes('no speech') ||
+        message.includes('error_no_match') ||
+        message.includes('timed out');
+
+      if (isSilenceError && nativeRecognitionActiveRef.current) {
+        setTimeout(() => {
+          if (nativeRecognitionActiveRef.current) {
+            void nativeRecognitionRunnerRef.current();
+          }
+        }, 800);
+        return;
+      }
+
+      // أخطاء حقيقية (أذونات، شبكة، إلخ) → عطّل المشغل
       nativeRecognitionActiveRef.current = false;
       recognitionEnabledRef.current = false;
       setIsListening(false);
@@ -312,6 +332,54 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
   };
   nativeRecognitionRunnerRef.current = listenWithNativeRecognition;
+
+  // ============================================================
+  // ✅ مستمع listeningState على Android/iOS — إعادة تشغيل تلقائية
+  // ============================================================
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listenerHandle: any = null;
+    let cancelled = false;
+
+    const setupListener = async () => {
+      try {
+        listenerHandle = await SpeechRecognition.addListener(
+          'listeningState',
+          (data: { status: 'started' | 'stopped' }) => {
+            if (cancelled) return;
+            console.log('[Native SR] listeningState:', data.status);
+
+            if (
+              data.status === 'stopped' &&
+              nativeRecognitionActiveRef.current &&
+              isSurahRecitationModeRef.current
+            ) {
+              setTimeout(() => {
+                if (
+                  nativeRecognitionActiveRef.current &&
+                  isSurahRecitationModeRef.current
+                ) {
+                  void nativeRecognitionRunnerRef.current();
+                }
+              }, 300);
+            }
+          },
+        );
+      } catch (error) {
+        console.warn('[Native SR] addListener listeningState failed:', error);
+      }
+    };
+
+    void setupListener();
+
+    return () => {
+      cancelled = true;
+      if (listenerHandle) {
+        listenerHandle.remove().catch(() => {});
+      }
+    };
+  }, []);
 
   // ============================================================
   // بدء / إيقاف الاستماع
@@ -452,7 +520,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   };
 
   // ============================================================
-  // الواجهة (JSX كما هو تمامًا)
+  // الواجهة
   // ============================================================
   return (
     <div className="max-w-4xl mx-auto space-y-6">
