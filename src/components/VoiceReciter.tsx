@@ -4,7 +4,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import {
   Mic, MicOff, RotateCcw, Volume2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, HelpCircle, BookOpen, Headphones, Sparkles,
-  Eye, EyeOff,
+  Eye, EyeOff, Info,
 } from 'lucide-react';
 import { Surah, Ayah, Reciter } from '../types/quran';
 import { extractWords } from '../utils/arabicUtils';
@@ -40,7 +40,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
   );
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
-  const [hideUnrecitedWords, setHideUnrecitedWords] = useState(true); // ✅ جديد
+  const [hideUnrecitedWords, setHideUnrecitedWords] = useState(true);
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
     completedAyahs: number; accuratelyMatchedAyahs: number;
   } | null>(null);
@@ -130,9 +130,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       return;
     }
 
-    if (isFlawless && !isFinalAyah) {
-      handleNextAyah();
-    }
+    if (isFlawless && !isFinalAyah) handleNextAyah();
   }
 
   ayahCompletionHandlerRef.current = handleAyahCompletion;
@@ -183,10 +181,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       recognition.maxAlternatives = 3;
       recognition.lang = 'ar-SA';
 
-      recognition.onstart = () => {
-        if (recognitionEnabledRef.current) setIsListening(true);
-      };
-
+      recognition.onstart = () => { if (recognitionEnabledRef.current) setIsListening(true); };
       recognition.onend = () => {
         if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
           setTimeout(() => {
@@ -206,7 +201,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         }
         setIsListening(false);
       };
-
       recognition.onerror = (event: any) => {
         console.warn('[Web SR] error:', event.error);
         if (['not-allowed', 'service-not-allowed', 'audio-capture', 'network'].includes(event.error)) {
@@ -216,7 +210,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           try { recognitionRef.current?.stop(); } catch (e) { /* ignore */ }
         }
       };
-
       recognition.onresult = (event: any) => {
         if (!recognitionEnabledRef.current) return;
         if (Date.now() < cooldownUntilRef.current) return;
@@ -224,33 +217,23 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const result = event.results[i];
           if (!result.isFinal) continue;
-
           const maxAlts = Math.min(result.length, 3);
           let progressed = false;
-
           for (let alt = 0; alt < maxAlts; alt++) {
             const transcript = result[alt].transcript.trim();
             const confidence = result[alt].confidence ?? 0.5;
             if (!transcript) continue;
-
             const beforeIdx = currentWordIdxForAltRef.current;
             const nextState = incomingSpeechHandlerRef.current(transcript, confidence);
-
             if (nextState?.completed) {
               ayahCompletionHandlerRef.current(nextState.isFlawless);
               return;
             }
-
-            if (currentWordIdxForAltRef.current > beforeIdx) {
-              progressed = true;
-              break;
-            }
+            if (currentWordIdxForAltRef.current > beforeIdx) { progressed = true; break; }
           }
-
           if (progressed) break;
         }
       };
-
       recognitionRef.current = recognition;
     } catch (e) {
       console.warn('[Web SR] init error:', e);
@@ -271,15 +254,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   // ============================================================
   const listenWithNativeRecognition = async () => {
     if (!nativeRecognitionActiveRef.current) return;
-
     try {
       const { matches } = await SpeechRecognition.start({
-        language: 'ar-SA',
-        maxResults: 3,
-        partialResults: false,
-        popup: false,
+        language: 'ar-SA', maxResults: 3, partialResults: false, popup: false,
       });
-
       if (!nativeRecognitionActiveRef.current) return;
 
       if (Date.now() >= cooldownUntilRef.current) {
@@ -287,26 +265,19 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         for (const raw of alts) {
           const text = raw?.trim();
           if (!text) continue;
-
           const beforeIdx = currentWordIdxForAltRef.current;
           const nextState = incomingSpeechHandlerRef.current(text);
-
           if (nextState?.completed) {
             ayahCompletionHandlerRef.current(nextState.isFlawless);
             break;
           }
-
-          if (currentWordIdxForAltRef.current > beforeIdx) {
-            break;
-          }
+          if (currentWordIdxForAltRef.current > beforeIdx) break;
         }
       }
 
       if (nativeRecognitionActiveRef.current) {
         setTimeout(() => {
-          if (nativeRecognitionActiveRef.current) {
-            void nativeRecognitionRunnerRef.current();
-          }
+          if (nativeRecognitionActiveRef.current) void nativeRecognitionRunnerRef.current();
         }, 200);
       }
     } catch (error: any) {
@@ -317,9 +288,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       if (isSilenceError && nativeRecognitionActiveRef.current) {
         setTimeout(() => {
-          if (nativeRecognitionActiveRef.current) {
-            void nativeRecognitionRunnerRef.current();
-          }
+          if (nativeRecognitionActiveRef.current) void nativeRecognitionRunnerRef.current();
         }, 600);
         return;
       }
@@ -334,7 +303,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-
     let listenerHandle: any = null;
     let cancelled = false;
 
@@ -361,7 +329,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         console.warn('[Native SR] addListener failed:', error);
       }
     };
-
     void setupListener();
 
     return () => {
@@ -397,7 +364,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         const { available } = await SpeechRecognition.available();
         if (requestId !== recognitionRequestIdRef.current) return;
         if (!available) { setSpeechSupported(false); setShowSimulatedInput(true); setIsListening(false); return; }
-
         let perm = await SpeechRecognition.checkPermissions();
         if (perm.speechRecognition !== 'granted') perm = await SpeechRecognition.requestPermissions();
         if (requestId !== recognitionRequestIdRef.current) return;
@@ -415,7 +381,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
 
     if (!speechSupported) { setShowSimulatedInput(true); setIsListening(false); return; }
-
     if (recognitionRef.current) {
       recognitionEnabledRef.current = true;
       try { recognitionRef.current.start(); setIsListening(true); }
@@ -507,74 +472,70 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
   };
 
-  // ✅ حالة الإخفاء
   const allWordsProcessed = currentWordIdx >= verseWords.length;
-  const shouldHideUnrecited =
-    hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
+  const shouldHideUnrecited = hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
 
   // ============================================================
-  // الواجهة
+  // ✅ الواجهة — h-[50dvh] مع تخطيط flex صارم
   // ============================================================
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* الشريط العلوي */}
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <select
-              value={surah.number}
-              onChange={(e) => { void stopSurahRecitation(); onSelectSurahChange(Number(e.target.value)); }}
-              className="min-w-0 flex-1 sm:flex-initial bg-stone-50 border border-stone-300 text-stone-900 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-600 cursor-pointer"
-            >
-              {allSurahsList.map((s) => (
-                <option key={s.number} value={s.number}>
-                  {s.number}. سورة {s.name} ({s.numberOfAyahs} آيات)
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-1 bg-stone-100 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-700">
-              <span>الآية</span>
-              <span className="font-bold text-emerald-800 text-sm">{currentAyah.numberInSurah}</span>
-              <span>من</span><span>{surah.ayahs.length}</span>
-            </div>
+    <div
+      className="h-[50dvh] max-w-4xl mx-auto flex flex-col bg-stone-100 overflow-hidden"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      {/* ══════════════ الرأس المضغوط ══════════════ */}
+      <header className="shrink-0 bg-white border-b border-stone-200 px-3 py-2">
+        <div className="flex items-center gap-2">
+          {/* اختيار السورة */}
+          <select
+            value={surah.number}
+            onChange={(e) => { void stopSurahRecitation(); onSelectSurahChange(Number(e.target.value)); }}
+            className="min-w-0 max-w-[45%] sm:max-w-none bg-stone-50 border border-stone-300 text-stone-900 rounded-lg px-2 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-600 cursor-pointer"
+          >
+            {allSurahsList.map((s) => (
+              <option key={s.number} value={s.number}>
+                {s.number}. {s.name}
+              </option>
+            ))}
+          </select>
+
+          {/* مؤشر الآية */}
+          <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg text-[11px] sm:text-xs font-medium text-emerald-800 shrink-0">
+            <span>{currentAyah.numberInSurah}</span>
+            <span className="text-emerald-500">/</span>
+            <span>{surah.ayahs.length}</span>
           </div>
 
-          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl w-full sm:w-auto justify-center">
-            <button
-              onClick={() => setMode(mode === 'listen_repeat' ? 'karaoke' : 'listen_repeat')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                mode === 'listen_repeat' ? 'bg-white text-emerald-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              <Headphones className="w-3.5 h-3.5 text-emerald-600" />
-              <span>استمع ثم ردّد</span>
-            </button>
-          </div>
+          {/* الوضع */}
+          <button
+            onClick={() => setMode(mode === 'listen_repeat' ? 'karaoke' : 'listen_repeat')}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold shrink-0 ${
+              mode === 'listen_repeat'
+                ? 'bg-emerald-100 text-emerald-900'
+                : 'bg-stone-100 text-stone-600'
+            }`}
+            title="استمع ثم ردّد"
+          >
+            <Headphones className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">استمع ثم ردّد</span>
+          </button>
 
+          {/* التفسير */}
           <button
             onClick={() => onOpenTafsir(currentAyah)}
-            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
           >
-            <BookOpen className="w-3.5 h-3.5" /><span>التفسير الميسر</span>
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">تفسير</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* ساحة التسميع */}
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden relative">
-        <div className="px-6 py-4 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-xs text-stone-500">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-stone-800">سورة {surah.name} ({surah.revelationType})</span>
-            <span>·</span><span>الجزء {currentAyah.juz}</span>
-          </div>
-          <button onClick={giveHint} className="flex items-center gap-1 text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 px-2 py-1 rounded-md text-[11px]">
-            <HelpCircle className="w-3.5 h-3.5 text-amber-600" /><span>تلميح</span>
-          </button>
-        </div>
-
-        {/* ✅ شريط تقدم الكلمات — مع إخفاء غير المسموع */}
-        <div className="px-4 sm:px-6 py-4 bg-white border-b border-stone-100">
-          <div className="flex flex-wrap gap-1.5 text-base sm:text-lg leading-loose font-quran">
+      {/* ══════════════ منطقة الآية (تتمدد) ══════════════ */}
+      <main className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+        {/* شريط الكلمات — يُمرّر داخليًا فقط عند الحاجة */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4">
+          <div className="flex flex-wrap gap-1.5 text-xl sm:text-2xl leading-[2.2] font-quran">
             {verseWords.map((w, idx) => {
               const isMatched = matchedWords.includes(idx);
               const isFailed = idx in failedWordsRef.current;
@@ -590,8 +551,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                       : isMatched
                       ? 'bg-emerald-100 text-emerald-800'
                       : isHidden
-                      ? `bg-stone-100 text-stone-400 blur-[5px] select-none ${
-                          isCurrent ? 'ring-2 ring-amber-400' : 'ring-1 ring-stone-200'
+                      ? `bg-stone-200/70 text-stone-400 blur-[6px] select-none ${
+                          isCurrent ? 'ring-2 ring-amber-400' : ''
                         }`
                       : isCurrent
                       ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-400'
@@ -605,168 +566,206 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
 
           {shouldHideUnrecited && (
-            <p className="mt-2 text-[11px] text-stone-500 flex items-center gap-1">
+            <p className="mt-3 text-[11px] text-stone-500 flex items-center gap-1">
               <EyeOff className="w-3 h-3" />
-              <span>وضع التسميع من الذاكرة — الكلمات تُكشف عند نطقها بشكل صحيح</span>
+              <span>وضع التسميع من الذاكرة — الكلمات تُكشف عند نطقها</span>
             </p>
           )}
         </div>
 
-        <div className="flex min-h-56 items-center justify-center bg-stone-50 px-4 py-8">
-          {activeMistakeAlert && !isAyahCompleted && (
-            <div className="w-full max-w-lg bg-rose-50 border border-rose-200 rounded-2xl p-4 text-right shadow-xs" role="alert">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                <div className="space-y-1.5 text-xs text-rose-900 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-rose-800">
-                      {activeMistakeAlert.heard === 'تلميح استحضار' ? 'تلميح للكلمة التالية' : 'كلمة غير صحيحة'}
+        {/* تنبيه الخطأ — Overlay فوق منطقة الآية */}
+        {activeMistakeAlert && !isAyahCompleted && (
+          <div className="absolute bottom-2 left-2 right-2 sm:left-4 sm:right-4">
+            <div className="bg-rose-50 border border-rose-300 rounded-xl p-2.5 shadow-lg" role="alert">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-xs text-rose-800 truncate">
+                      {activeMistakeAlert.heard === 'تلميح استحضار'
+                        ? 'تلميح'
+                        : `الصحيح: ${activeMistakeAlert.expected}`}
                     </span>
-                    <button onClick={playAyahAudio} className="flex items-center gap-1 text-[11px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2.5 py-1 rounded-md font-semibold">
-                      <Volume2 className="w-3.5 h-3.5" /><span>استمع للفظ الصحيح</span>
+                    <button
+                      onClick={playAyahAudio}
+                      className="flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded font-semibold shrink-0"
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      <span>استمع</span>
                     </button>
                   </div>
-                  <p className="text-stone-600">
-                    الكلمة الصحيحة:{' '}
-                    <span className="font-quran text-lg font-bold text-emerald-800 px-1">{activeMistakeAlert.expected}</span>
-                  </p>
-                  {activeMistakeAlert.heard && activeMistakeAlert.heard !== 'تلميح استحضار' && (
-                    <p className="text-stone-500 text-[11px]">
-                      ما سُمِع: <span className="text-rose-600 font-medium">{activeMistakeAlert.heard}</span>
-                    </p>
-                  )}
+                  {activeMistakeAlert.heard &&
+                    activeMistakeAlert.heard !== 'تلميح استحضار' && (
+                      <p className="text-[10px] text-stone-500 mt-0.5 truncate">
+                        سُمِع: <span className="text-rose-600 font-medium">{activeMistakeAlert.heard}</span>
+                      </p>
+                    )}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {surahRecitationResult && isAyahCompleted && currentAyahIndex === surah.ayahs.length - 1 && (
-            <div className="mt-6 w-full max-w-md bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-center shadow-xs">
-              <div className="flex items-center justify-center gap-2 text-emerald-800 font-bold text-base mb-1">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" /><span>ما شاء الله! اكتمل التسميع</span>
-              </div>
-              <p className="text-sm font-bold text-emerald-800">
-                جودة مطابقة الكلمات:{' '}
-                {Math.round((surahRecitationResult.accuratelyMatchedAyahs / surahRecitationResult.completedAyahs) * 100)}%
-              </p>
-              <p className="mt-1 text-xs text-emerald-700">
-                {surahRecitationResult.accuratelyMatchedAyahs} من {surahRecitationResult.completedAyahs} آية طوبقت دون أخطاء.
-              </p>
-              <p className="mt-2 text-[11px] text-stone-600">
-                التقييم يعتمد على مطابقة النص عبر التعرّف الصوتي، ولا يقيّم أحكام التجويد.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-stone-50 px-6 py-4 border-t border-stone-200 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <button onClick={handlePrevAyah} disabled={currentAyahIndex === 0}
-              className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronRight className="w-5 h-5" />
-            </button>
-            <button onClick={handleNextAyah} disabled={currentAyahIndex === surah.ayahs.length - 1}
-              className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button onClick={() => {
-              ayahCompletionHandledRef.current = false;
-              completionLockRef.current = false;
-              resetRecitationState();
-            }} className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-600 hover:text-stone-900 hover:bg-stone-100">
-              <RotateCcw className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap justify-center">
-            <button onClick={toggleListening}
-              className={`relative flex items-center justify-center gap-2 px-6 py-3 rounded-full font-bold text-sm shadow-md transition-all cursor-pointer ${
-                isListening
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-4 ring-rose-200'
-                  : 'bg-emerald-700 hover:bg-emerald-800 text-white ring-4 ring-emerald-100'
-              }`}>
-              {isListening ? (<><MicOff className="w-5 h-5" /><span>جارٍ الاستماع... انقر للإيقاف</span></>)
-                : (<><Mic className="w-5 h-5" /><span>ابدأ تسميع السورة</span></>)}
-            </button>
-            {!isListening && (
-              <span className="w-full text-center text-[11px] text-stone-500">ينتقل تلقائيًا بين الآيات حتى نهاية السورة.</span>
-            )}
-            <button onClick={() => void stopSurahRecitation()}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 font-semibold text-xs">
-              <MicOff className="w-4 h-4 text-rose-600" /><span>إيقاف السورة</span>
-            </button>
-            <button onClick={playAyahAudio}
-              className={`flex items-center gap-1.5 px-4 py-3 rounded-xl border font-semibold text-xs transition-colors cursor-pointer ${
-                isPlayingAudio ? 'bg-emerald-100 border-emerald-300 text-emerald-800 animate-pulse'
-                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
-              }`}>
-              <Volume2 className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">
-                {isPlayingAudio ? 'جارٍ التشغيل...' : `استمع (${selectedReciter.name.split(' ')[1] || 'القارئ'})`}
-              </span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* ✅ زر تبديل إخفاء النص */}
-            <button
-              onClick={() => setHideUnrecitedWords(!hideUnrecitedWords)}
-              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
-                hideUnrecitedWords
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-stone-100 text-stone-700 border border-stone-200 hover:bg-stone-200'
-              }`}
-              title={hideUnrecitedWords ? 'كشف النص (وضع التعلم)' : 'إخفاء النص (وضع التسميع)'}
-            >
-              {hideUnrecitedWords ? (
-                <><EyeOff className="w-3.5 h-3.5" /><span>إخفاء النص</span></>
-              ) : (
-                <><Eye className="w-3.5 h-3.5" /><span>كشف النص</span></>
-              )}
-            </button>
-
-            <button
-              onClick={() => setShowSimulatedInput(!showSimulatedInput)}
-              className="text-xs text-stone-500 hover:text-stone-800 underline decoration-dotted"
-            >
-              {showSimulatedInput ? 'إخفاء محاكي التسميع' : 'محاكي التسميع والكلمات'}
-            </button>
-          </div>
-        </div>
-
-        {showSimulatedInput && (
-          <div className="bg-amber-50/70 border-t border-amber-200 p-4 text-xs text-amber-950">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <span className="font-bold">محاكي التسميع التفاعلي:</span>
-                <p className="text-stone-600 text-[11px]">انقر على الكلمة التالية لنطقها، أو اكتب ما تحفظه للتحقق الفوري.</p>
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                {currentWordIdx < verseWords.length && (
-                  <button onClick={() => submitSimulatedWord(verseWords[currentWordIdx].original)}
-                    className="bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-800">
-                    نطق كلمة: "{verseWords[currentWordIdx].original}"
-                  </button>
-                )}
-                <button onClick={() => submitSimulatedWord('كلمة_خاطئة')}
-                  className="bg-rose-100 text-rose-800 border border-rose-300 font-medium px-2.5 py-1.5 rounded-lg text-xs hover:bg-rose-200">
-                  اختبار خطأ
-                </button>
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-stone-50 rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex items-start gap-4">
-        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-          <Sparkles className="w-5 h-5 text-emerald-700" />
+        {/* بانر إتمام السورة — Overlay */}
+        {surahRecitationResult &&
+          isAyahCompleted &&
+          currentAyahIndex === surah.ayahs.length - 1 && (
+            <div className="absolute inset-2 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-sm">
+              <div className="w-full max-w-sm bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-center shadow-2xl">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1" />
+                <p className="font-bold text-emerald-800 text-sm mb-1">ما شاء الله! اكتمل التسميع</p>
+                <p className="text-xs text-emerald-700">
+                  جودة المطابقة:{' '}
+                  <span className="font-bold">
+                    {Math.round(
+                      (surahRecitationResult.accuratelyMatchedAyahs /
+                        surahRecitationResult.completedAyahs) *
+                        100,
+                    )}
+                    %
+                  </span>
+                </p>
+                <p className="mt-1 text-[10px] text-stone-500">
+                  التقييم يعتمد على مطابقة النص، ولا يقيّم التجويد.
+                </p>
+                <button
+                  onClick={() => setSurahRecitationResult(null)}
+                  className="mt-3 px-4 py-1.5 bg-emerald-700 text-white text-xs font-semibold rounded-lg"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          )}
+      </main>
+
+      {/* ══════════════ شريط التحكم المضغوط ══════════════ */}
+      <footer className="shrink-0 bg-white border-t border-stone-200 px-2 sm:px-4 py-2">
+        <div className="flex items-center justify-between gap-1 sm:gap-2">
+          {/* اليسار: تنقل */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handlePrevAyah}
+              disabled={currentAyahIndex === 0}
+              className="p-2 rounded-lg border border-stone-200 bg-stone-50 text-stone-700 disabled:opacity-30"
+              title="السابق"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleNextAyah}
+              disabled={currentAyahIndex === surah.ayahs.length - 1}
+              className="p-2 rounded-lg border border-stone-200 bg-stone-50 text-stone-700 disabled:opacity-30"
+              title="التالي"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                ayahCompletionHandledRef.current = false;
+                completionLockRef.current = false;
+                resetRecitationState();
+              }}
+              className="p-2 rounded-lg border border-stone-200 bg-stone-50 text-stone-600"
+              title="إعادة"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* الوسط: زر الميكروفون الضخم */}
+          <button
+            onClick={toggleListening}
+            className={`flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 rounded-full font-bold text-sm shadow-lg transition-all ${
+              isListening
+                ? 'bg-rose-600 hover:bg-rose-700 text-white ring-4 ring-rose-200 animate-pulse'
+                : 'bg-emerald-700 hover:bg-emerald-800 text-white ring-4 ring-emerald-100'
+            }`}
+          >
+            {isListening ? (
+              <>
+                <MicOff className="w-5 h-5" />
+                <span>إيقاف</span>
+              </>
+            ) : (
+              <>
+                <Mic className="w-5 h-5" />
+                <span>ابدأ التسميع</span>
+              </>
+            )}
+          </button>
+
+          {/* اليمين: أدوات */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setHideUnrecitedWords(!hideUnrecitedWords)}
+              className={`p-2 rounded-lg border ${
+                hideUnrecitedWords
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-stone-50 text-stone-600 border-stone-200'
+              }`}
+              title={hideUnrecitedWords ? 'كشف النص' : 'إخفاء النص'}
+            >
+              {hideUnrecitedWords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={giveHint}
+              className="p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-700"
+              title="تلميح"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={playAyahAudio}
+              className={`p-2 rounded-lg border ${
+                isPlayingAudio
+                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800 animate-pulse'
+                  : 'bg-stone-50 border-stone-200 text-emerald-600'
+              }`}
+              title="استمع للشيخ"
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <div className="space-y-1 text-xs text-stone-600">
-          <span className="font-bold text-stone-900 text-sm">نصيحة إتقان الحفظ: التكرار المتباعد والتصحيح الفوري</span>
-          <p>تسميع الآية غيباً بالصوت ينشّط الذاكرة السمعية والبصرية. عند التردد في أي كلمة، استمع للشيخ لتثبيت النطق السليم.</p>
+
+        {/* سطر ثانوي صغير: إيقاف السورة + المحاكي */}
+        <div className="flex items-center justify-center gap-3 mt-1.5 text-[10px] text-stone-500">
+          <button
+            onClick={() => void stopSurahRecitation()}
+            className="hover:text-rose-600 underline decoration-dotted"
+          >
+            إيقاف السورة
+          </button>
+          <span>·</span>
+          <button
+            onClick={() => setShowSimulatedInput(!showSimulatedInput)}
+            className="hover:text-stone-800 underline decoration-dotted"
+          >
+            {showSimulatedInput ? 'إخفاء المحاكي' : 'محاكي'}
+          </button>
         </div>
-      </div>
+
+        {/* المحاكي — Drawer صغير */}
+        {showSimulatedInput && (
+          <div className="mt-2 pt-2 border-t border-amber-200 flex items-center justify-center gap-2">
+            {currentWordIdx < verseWords.length && (
+              <button
+                onClick={() => submitSimulatedWord(verseWords[currentWordIdx].original)}
+                className="bg-emerald-700 text-white text-[10px] font-medium px-2 py-1 rounded"
+              >
+                نطق: "{verseWords[currentWordIdx].original}"
+              </button>
+            )}
+            <button
+              onClick={() => submitSimulatedWord('كلمة_خاطئة')}
+              className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-medium px-2 py-1 rounded"
+            >
+              خطأ
+            </button>
+          </div>
+        )}
+      </footer>
     </div>
   );
 };
