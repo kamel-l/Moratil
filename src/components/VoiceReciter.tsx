@@ -4,6 +4,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import {
   Mic, MicOff, RotateCcw, Volume2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, HelpCircle, BookOpen, Headphones, Sparkles,
+  Eye, EyeOff,
 } from 'lucide-react';
 import { Surah, Ayah, Reciter } from '../types/quran';
 import { extractWords } from '../utils/arabicUtils';
@@ -39,6 +40,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
   );
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
+  const [hideUnrecitedWords, setHideUnrecitedWords] = useState(true); // ✅ جديد
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
     completedAyahs: number; accuratelyMatchedAyahs: number;
   } | null>(null);
@@ -57,9 +59,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const isAyahCompletedRef = useRef(false);
   const ayahCompletionHandledRef = useRef(false);
   const surahRecitationSummaryRef = useRef({ completedAyahs: 0, accuratelyMatchedAyahs: 0 });
-  // ✅ حاجز زمني قصير لمنع تسرّب نهاية الآية السابقة إلى الآية الجديدة
   const cooldownUntilRef = useRef(0);
-  // ✅ مرجع لمؤشر الكلمة الحالية للقراءة داخل callbacks دون stale closure
   const currentWordIdxForAltRef = useRef(0);
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
@@ -71,7 +71,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     resetRecitationState, failedWordsRef,
   } = useRecitationSession(verseWords);
 
-  // ✅ مزامنة مؤشر الكلمة الحالية في ref لاستخدامه مع البدائل
   useEffect(() => {
     currentWordIdxForAltRef.current = currentWordIdx;
   }, [currentWordIdx]);
@@ -79,7 +78,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const { isPlayingAudio, playAudio, stopAudio } = useAyahAudio();
 
   // ============================================================
-  // ✅ معالج إتمام الآية — التعرف لا يتوقف بين الآيات
+  // ✅ معالج إتمام الآية
   // ============================================================
   function handleAyahCompletion(isFlawless: boolean) {
     if (ayahCompletionHandledRef.current) return;
@@ -90,12 +89,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     const isFinalAyah = currentAyahIndex >= surah.ayahs.length - 1;
     const shouldContinueSurah = isSurahRecitationModeRef.current;
 
-    console.log('[AyahComplete]', {
-      ayah: currentAyah.numberInSurah,
-      isFlawless, isFinalAyah, shouldContinueSurah,
-    });
-
-    // ① تراكم ملخص السورة
     if (shouldContinueSurah) {
       const summary = {
         completedAyahs: surahRecitationSummaryRef.current.completedAyahs + 1,
@@ -108,7 +101,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
     setIsAyahCompleted(isFinalAyah);
 
-    // ② تسجيل النتيجة + النقاط
     const mistakesArray = Object.entries(failedWordsRef.current).map(([idx, heard]) => ({
       expectedWord: verseWords[parseInt(idx, 10)]?.original || '',
       recitedWord: heard,
@@ -117,10 +109,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     addPointsAndVerses(isFlawless ? 35 : 20, 1, 30, isFlawless ? 100 : 85);
     onStatsUpdate();
 
-    // ③ الانتقال للآية التالية
     if (shouldContinueSurah) {
       if (isFinalAyah) {
-        // آخر آية → إيقاف نهائي
         isSurahRecitationModeRef.current = false;
         recognitionEnabledRef.current = false;
         setIsSurahRecitationMode(false);
@@ -134,14 +124,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           try { recognitionRef.current.stop(); } catch (e) { /* ignore */ }
         }
       } else {
-        // ✅ آية عادية → لا توقف التعرف. cooldown قصير فقط (200ms)
         cooldownUntilRef.current = Date.now() + 200;
         setCurrentAyahIndex((prev) => prev + 1);
       }
       return;
     }
 
-    // وضع الآية الواحدة: إيقاف + انتقال فقط عند الإتقان
     if (isFlawless && !isFinalAyah) {
       handleNextAyah();
     }
@@ -149,12 +137,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   ayahCompletionHandlerRef.current = handleAyahCompletion;
 
-  // ============================================================
-  // ✅ useEffect: تصفير الحالة فقط عند تغيير الآية
-  // ============================================================
   useEffect(() => {
-    console.log('[AyahTransition] new index:', currentAyahIndex);
-
     ayahCompletionHandledRef.current = false;
     isAyahCompletedRef.current = false;
     completionLockRef.current = false;
@@ -162,9 +145,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAyahIndex, surah.number]);
 
-  // ============================================================
-  // useEffect: عند تغيير السورة أو الآية الأولية
-  // ============================================================
   useEffect(() => {
     setCurrentAyahIndex(Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)));
     setSurahRecitationResult(null);
@@ -179,7 +159,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   useEffect(() => { isAyahCompletedRef.current = isAyahCompleted; }, [isAyahCompleted]);
 
   // ============================================================
-  // تهيئة التعرف الصوتي (Web) — مع maxAlternatives = 3
+  // تهيئة التعرف الصوتي (Web)
   // ============================================================
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -200,16 +180,14 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       const recognition = new SR();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.maxAlternatives = 3; // ✅ 3 بدائل لكل نتيجة
+      recognition.maxAlternatives = 3;
       recognition.lang = 'ar-SA';
 
       recognition.onstart = () => {
-        console.log('[Web SR] onstart');
         if (recognitionEnabledRef.current) setIsListening(true);
       };
 
       recognition.onend = () => {
-        console.log('[Web SR] onend, enabled?', recognitionEnabledRef.current);
         if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
           setTimeout(() => {
             if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
@@ -241,16 +219,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       recognition.onresult = (event: any) => {
         if (!recognitionEnabledRef.current) return;
-        if (Date.now() < cooldownUntilRef.current) {
-          console.log('[Web SR] cooldown — ignored');
-          return;
-        }
+        if (Date.now() < cooldownUntilRef.current) return;
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const result = event.results[i];
           if (!result.isFinal) continue;
 
-          // ✅ جرّب البدائل بالترتيب حتى يُحدث أحدها تقدمًا
           const maxAlts = Math.min(result.length, 3);
           let progressed = false;
 
@@ -263,20 +237,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             const nextState = incomingSpeechHandlerRef.current(transcript, confidence);
 
             if (nextState?.completed) {
-              console.log('[Web SR] completed via alt', alt, ':', transcript);
               ayahCompletionHandlerRef.current(nextState.isFlawless);
               return;
             }
 
-            // ✅ تحقق من التقدم عبر ref (لأن state قد لا يكون محدثًا بعد)
             if (currentWordIdxForAltRef.current > beforeIdx) {
-              console.log('[Web SR] progress via alt', alt, ':', transcript);
               progressed = true;
               break;
             }
           }
 
-          if (progressed) break; // لا داعي للبحث في نتائج أخرى بعد إحراز تقدم
+          if (progressed) break;
         }
       };
 
@@ -296,7 +267,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   incomingSpeechHandlerRef.current = handleIncomingSpokenText;
 
   // ============================================================
-  // ✅ التعرف الأصلي على Android/iOS — 3 بدائل + معالجة أخطاء الصمت
+  // التعرف الأصلي (Android/iOS)
   // ============================================================
   const listenWithNativeRecognition = async () => {
     if (!nativeRecognitionActiveRef.current) return;
@@ -304,14 +275,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     try {
       const { matches } = await SpeechRecognition.start({
         language: 'ar-SA',
-        maxResults: 3,        // ✅ 3 بدائل
+        maxResults: 3,
         partialResults: false,
         popup: false,
       });
 
       if (!nativeRecognitionActiveRef.current) return;
 
-      // ✅ جرّب البدائل بالترتيب
       if (Date.now() >= cooldownUntilRef.current) {
         const alts = (matches || []).slice(0, 3);
         for (const raw of alts) {
@@ -322,19 +292,16 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           const nextState = incomingSpeechHandlerRef.current(text);
 
           if (nextState?.completed) {
-            console.log('[Native SR] completed:', text);
             ayahCompletionHandlerRef.current(nextState.isFlawless);
             break;
           }
 
           if (currentWordIdxForAltRef.current > beforeIdx) {
-            console.log('[Native SR] progress:', text);
             break;
           }
         }
       }
 
-      // استمرار الحلقة (200ms بدلًا من 250ms)
       if (nativeRecognitionActiveRef.current) {
         setTimeout(() => {
           if (nativeRecognitionActiveRef.current) {
@@ -344,14 +311,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       }
     } catch (error: any) {
       const message = String(error?.message || error || '').toLowerCase();
-      console.warn('[Native SR] error:', message);
-
-      // ✅ أخطاء الصمت طبيعية — لا تعطّل المشغل
       const isSilenceError =
-        message.includes('no match') ||
-        message.includes('speech timeout') ||
-        message.includes('no speech') ||
-        message.includes('timed out');
+        message.includes('no match') || message.includes('speech timeout') ||
+        message.includes('no speech') || message.includes('timed out');
 
       if (isSilenceError && nativeRecognitionActiveRef.current) {
         setTimeout(() => {
@@ -362,7 +324,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         return;
       }
 
-      // أخطاء حقيقية (أذونات، شبكة، إلخ) → عطّل المشغل
       nativeRecognitionActiveRef.current = false;
       recognitionEnabledRef.current = false;
       setIsListening(false);
@@ -371,9 +332,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   };
   nativeRecognitionRunnerRef.current = listenWithNativeRecognition;
 
-  // ============================================================
-  // ✅ مستمع listeningState على Android/iOS — إعادة تشغيل تلقائية
-  // ============================================================
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -386,18 +344,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           'listeningState',
           (data: { status: 'started' | 'stopped' }) => {
             if (cancelled) return;
-            console.log('[Native SR] listeningState:', data.status);
-
             if (
               data.status === 'stopped' &&
               nativeRecognitionActiveRef.current &&
               isSurahRecitationModeRef.current
             ) {
               setTimeout(() => {
-                if (
-                  nativeRecognitionActiveRef.current &&
-                  isSurahRecitationModeRef.current
-                ) {
+                if (nativeRecognitionActiveRef.current && isSurahRecitationModeRef.current) {
                   void nativeRecognitionRunnerRef.current();
                 }
               }, 300);
@@ -405,7 +358,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           },
         );
       } catch (error) {
-        console.warn('[Native SR] addListener listeningState failed:', error);
+        console.warn('[Native SR] addListener failed:', error);
       }
     };
 
@@ -413,9 +366,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
     return () => {
       cancelled = true;
-      if (listenerHandle) {
-        listenerHandle.remove().catch(() => {});
-      }
+      if (listenerHandle) listenerHandle.remove().catch(() => {});
     };
   }, []);
 
@@ -456,7 +407,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         recognitionEnabledRef.current = true;
         void listenWithNativeRecognition();
       } catch (error) {
-        console.warn('Native setup error:', error);
         recognitionEnabledRef.current = false;
         setIsListening(false);
         setShowSimulatedInput(true);
@@ -557,6 +507,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     }
   };
 
+  // ✅ حالة الإخفاء
+  const allWordsProcessed = currentWordIdx >= verseWords.length;
+  const shouldHideUnrecited =
+    hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
+
   // ============================================================
   // الواجهة
   // ============================================================
@@ -607,7 +562,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       {/* ساحة التسميع */}
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden relative">
-        {/* رأس الصندوق */}
         <div className="px-6 py-4 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-xs text-stone-500">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-stone-800">سورة {surah.name} ({surah.revelationType})</span>
@@ -618,21 +572,27 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </button>
         </div>
 
-        {/* ✅ شريط تقدم الكلمات */}
-        <div className="px-4 sm:px-6 py-3 bg-white border-b border-stone-100">
-          <div className="flex flex-wrap gap-1 text-sm leading-relaxed font-quran">
+        {/* ✅ شريط تقدم الكلمات — مع إخفاء غير المسموع */}
+        <div className="px-4 sm:px-6 py-4 bg-white border-b border-stone-100">
+          <div className="flex flex-wrap gap-1.5 text-base sm:text-lg leading-loose font-quran">
             {verseWords.map((w, idx) => {
               const isMatched = matchedWords.includes(idx);
               const isFailed = idx in failedWordsRef.current;
               const isCurrent = idx === currentWordIdx && !isAyahCompleted;
+              const isHidden = shouldHideUnrecited && !isMatched && !isFailed;
+
               return (
                 <span
                   key={idx}
-                  className={`px-1.5 py-0.5 rounded transition-colors ${
+                  className={`px-1.5 py-0.5 rounded transition-all duration-300 ${
                     isFailed
                       ? 'bg-rose-100 text-rose-700 line-through'
                       : isMatched
                       ? 'bg-emerald-100 text-emerald-800'
+                      : isHidden
+                      ? `bg-stone-100 text-stone-400 blur-[5px] select-none ${
+                          isCurrent ? 'ring-2 ring-amber-400' : 'ring-1 ring-stone-200'
+                        }`
                       : isCurrent
                       ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-400'
                       : 'text-stone-500'
@@ -643,6 +603,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               );
             })}
           </div>
+
+          {shouldHideUnrecited && (
+            <p className="mt-2 text-[11px] text-stone-500 flex items-center gap-1">
+              <EyeOff className="w-3 h-3" />
+              <span>وضع التسميع من الذاكرة — الكلمات تُكشف عند نطقها بشكل صحيح</span>
+            </p>
+          )}
         </div>
 
         <div className="flex min-h-56 items-center justify-center bg-stone-50 px-4 py-8">
@@ -692,7 +659,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           )}
         </div>
 
-        {/* شريط التحكم السفلي */}
         <div className="bg-stone-50 px-6 py-4 border-t border-stone-200 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <button onClick={handlePrevAyah} disabled={currentAyahIndex === 0}
@@ -741,15 +707,33 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowSimulatedInput(!showSimulatedInput)}
-              className="text-xs text-stone-500 hover:text-stone-800 underline decoration-dotted">
+          <div className="flex items-center gap-3">
+            {/* ✅ زر تبديل إخفاء النص */}
+            <button
+              onClick={() => setHideUnrecitedWords(!hideUnrecitedWords)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+                hideUnrecitedWords
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-stone-100 text-stone-700 border border-stone-200 hover:bg-stone-200'
+              }`}
+              title={hideUnrecitedWords ? 'كشف النص (وضع التعلم)' : 'إخفاء النص (وضع التسميع)'}
+            >
+              {hideUnrecitedWords ? (
+                <><EyeOff className="w-3.5 h-3.5" /><span>إخفاء النص</span></>
+              ) : (
+                <><Eye className="w-3.5 h-3.5" /><span>كشف النص</span></>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowSimulatedInput(!showSimulatedInput)}
+              className="text-xs text-stone-500 hover:text-stone-800 underline decoration-dotted"
+            >
               {showSimulatedInput ? 'إخفاء محاكي التسميع' : 'محاكي التسميع والكلمات'}
             </button>
           </div>
         </div>
 
-        {/* المحاكي اليدوي */}
         {showSimulatedInput && (
           <div className="bg-amber-50/70 border-t border-amber-200 p-4 text-xs text-amber-950">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -774,7 +758,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         )}
       </div>
 
-      {/* بطاقة النصيحة */}
       <div className="bg-stone-50 rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex items-start gap-4">
         <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
           <Sparkles className="w-5 h-5 text-emerald-700" />
