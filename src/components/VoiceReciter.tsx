@@ -4,10 +4,10 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import {
   Mic, MicOff, RotateCcw, Volume2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, HelpCircle, BookOpen, Headphones, Sparkles,
-  Eye, EyeOff, Info,
+  Eye, EyeOff,
 } from 'lucide-react';
 import { Surah, Ayah, Reciter } from '../types/quran';
-import { extractWords } from '../utils/arabicUtils';
+import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
 import { getAyahAudioUrl } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
@@ -24,6 +24,21 @@ interface VoiceReciterProps {
 }
 
 type RecitationMode = 'karaoke' | 'listen_repeat';
+
+// ✅ يتحقق إن كانت أول 4 كلمات هي البسملة (بعد التطبيع)
+function isBasmalahPrefix(words: { original: string }[]): boolean {
+  if (words.length < 4) return false;
+  const n0 = normalizeArabicText(words[0].original);
+  const n1 = normalizeArabicText(words[1].original);
+  const n2 = normalizeArabicText(words[2].original);
+  const n3 = normalizeArabicText(words[3].original);
+  return (
+    n0 === 'بسم' &&
+    n1 === 'الله' &&
+    (n2 === 'الرحمن' || n2 === 'الرحمان') &&
+    n3 === 'الرحيم'
+  );
+}
 
 export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   surah, initialAyahNumber = 1, selectedReciter,
@@ -63,7 +78,20 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const currentWordIdxForAltRef = useRef(0);
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
-  const verseWords = useMemo(() => extractWords(currentAyah.text), [currentAyah]);
+
+  // ✅ استبعاد البسملة من أول آية (ما عدا الفاتحة والتوبة)
+  const verseWords = useMemo(() => {
+    const allWords = extractWords(currentAyah.text);
+    if (
+      currentAyah.numberInSurah === 1 &&
+      surah.number !== 1 &&
+      surah.number !== 9 &&
+      isBasmalahPrefix(allWords)
+    ) {
+      return allWords.slice(4);
+    }
+    return allWords;
+  }, [currentAyah, surah.number]);
 
   const {
     currentWordIdx, matchedWords, activeMistakeAlert, isAyahCompleted, setIsAyahCompleted,
@@ -476,17 +504,15 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const shouldHideUnrecited = hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
 
   // ============================================================
-  // ✅ الواجهة — h-[50dvh] مع تخطيط flex صارم
+  // الواجهة
   // ============================================================
   return (
     <div
-      className="h-[50dvh] max-w-4xl mx-auto flex flex-col bg-stone-100 overflow-hidden"
+      className="h-[82dvh] max-w-4xl mx-auto flex flex-col bg-stone-100 overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {/* ══════════════ الرأس المضغوط ══════════════ */}
       <header className="shrink-0 bg-white border-b border-stone-200 px-3 py-2">
         <div className="flex items-center gap-2">
-          {/* اختيار السورة */}
           <select
             value={surah.number}
             onChange={(e) => { void stopSurahRecitation(); onSelectSurahChange(Number(e.target.value)); }}
@@ -499,14 +525,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             ))}
           </select>
 
-          {/* مؤشر الآية */}
           <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg text-[11px] sm:text-xs font-medium text-emerald-800 shrink-0">
             <span>{currentAyah.numberInSurah}</span>
             <span className="text-emerald-500">/</span>
             <span>{surah.ayahs.length}</span>
           </div>
 
-          {/* الوضع */}
           <button
             onClick={() => setMode(mode === 'listen_repeat' ? 'karaoke' : 'listen_repeat')}
             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold shrink-0 ${
@@ -520,7 +544,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             <span className="hidden sm:inline">استمع ثم ردّد</span>
           </button>
 
-          {/* التفسير */}
           <button
             onClick={() => onOpenTafsir(currentAyah)}
             className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
@@ -531,9 +554,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         </div>
       </header>
 
-      {/* ══════════════ منطقة الآية (تتمدد) ══════════════ */}
       <main className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
-        {/* شريط الكلمات — يُمرّر داخليًا فقط عند الحاجة */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4">
           <div className="flex flex-wrap gap-1.5 text-xl sm:text-2xl leading-[2.2] font-quran">
             {verseWords.map((w, idx) => {
@@ -573,7 +594,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           )}
         </div>
 
-        {/* تنبيه الخطأ — Overlay فوق منطقة الآية */}
         {activeMistakeAlert && !isAyahCompleted && (
           <div className="absolute bottom-2 left-2 right-2 sm:left-4 sm:right-4">
             <div className="bg-rose-50 border border-rose-300 rounded-xl p-2.5 shadow-lg" role="alert">
@@ -606,7 +626,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
         )}
 
-        {/* بانر إتمام السورة — Overlay */}
         {surahRecitationResult &&
           isAyahCompleted &&
           currentAyahIndex === surah.ayahs.length - 1 && (
@@ -639,10 +658,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           )}
       </main>
 
-      {/* ══════════════ شريط التحكم المضغوط ══════════════ */}
       <footer className="shrink-0 bg-white border-t border-stone-200 px-2 sm:px-4 py-2">
         <div className="flex items-center justify-between gap-1 sm:gap-2">
-          {/* اليسار: تنقل */}
           <div className="flex items-center gap-1">
             <button
               onClick={handlePrevAyah}
@@ -673,7 +690,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             </button>
           </div>
 
-          {/* الوسط: زر الميكروفون الضخم */}
           <button
             onClick={toggleListening}
             className={`flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 rounded-full font-bold text-sm shadow-lg transition-all ${
@@ -695,7 +711,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             )}
           </button>
 
-          {/* اليمين: أدوات */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => setHideUnrecitedWords(!hideUnrecitedWords)}
@@ -729,7 +744,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
         </div>
 
-        {/* سطر ثانوي صغير: إيقاف السورة + المحاكي */}
         <div className="flex items-center justify-center gap-3 mt-1.5 text-[10px] text-stone-500">
           <button
             onClick={() => void stopSurahRecitation()}
@@ -746,7 +760,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </button>
         </div>
 
-        {/* المحاكي — Drawer صغير */}
         {showSimulatedInput && (
           <div className="mt-2 pt-2 border-t border-amber-200 flex items-center justify-center gap-2">
             {currentWordIdx < verseWords.length && (
