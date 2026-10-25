@@ -21,6 +21,7 @@ interface VoiceReciterProps {
   onStatsUpdate: () => void;
   onSelectSurahChange: (surahNum: number, ayahNum?: number) => void;
   allSurahsList: { number: number; name: string; numberOfAyahs: number }[];
+  embedded?: boolean; // ✅ عند التضمين داخل تبويبات، لا نفرض ارتفاع الشاشة
 }
 
 type RecitationMode = 'karaoke' | 'listen_repeat';
@@ -41,8 +42,14 @@ function isBasmalahPrefix(words: { original: string }[]): boolean {
 }
 
 export const VoiceReciter: React.FC<VoiceReciterProps> = ({
-  surah, initialAyahNumber = 1, selectedReciter,
-  onOpenTafsir, onStatsUpdate, onSelectSurahChange, allSurahsList,
+  surah,
+  initialAyahNumber = 1,
+  selectedReciter,
+  onOpenTafsir,
+  onStatsUpdate,
+  onSelectSurahChange,
+  allSurahsList,
+  embedded = false, // ✅ القيمة الافتراضية
 }) => {
   const [currentAyahIndex, setCurrentAyahIndex] = useState(() =>
     Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)),
@@ -57,7 +64,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
   const [hideUnrecitedWords, setHideUnrecitedWords] = useState(true);
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
-    completedAyahs: number; accuratelyMatchedAyahs: number;
+    completedAyahs: number;
+    accuratelyMatchedAyahs: number;
   } | null>(null);
 
   // ============ Refs ============
@@ -94,9 +102,16 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   }, [currentAyah, surah.number]);
 
   const {
-    currentWordIdx, matchedWords, activeMistakeAlert, isAyahCompleted, setIsAyahCompleted,
-    setActiveMistakeAlert, completionLockRef, handleIncomingSpokenText,
-    resetRecitationState, failedWordsRef,
+    currentWordIdx,
+    matchedWords,
+    activeMistakeAlert,
+    isAyahCompleted,
+    setIsAyahCompleted,
+    setActiveMistakeAlert,
+    completionLockRef,
+    handleIncomingSpokenText,
+    resetRecitationState,
+    failedWordsRef,
   } = useRecitationSession(verseWords);
 
   useEffect(() => {
@@ -149,7 +164,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           SpeechRecognition.stop().catch(() => {});
         }
         if (recognitionRef.current) {
-          try { recognitionRef.current.stop(); } catch (e) { /* ignore */ }
+          try {
+            recognitionRef.current.stop();
+          } catch (e) {
+            /* ignore */
+          }
         }
       } else {
         cooldownUntilRef.current = Date.now() + 200;
@@ -181,8 +200,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     setIsListening(false);
   }, [initialAyahNumber, surah.number, surah.ayahs.length]);
 
-  useEffect(() => { isSurahRecitationModeRef.current = isSurahRecitationMode; }, [isSurahRecitationMode]);
-  useEffect(() => { isAyahCompletedRef.current = isAyahCompleted; }, [isAyahCompleted]);
+  useEffect(() => {
+    isSurahRecitationModeRef.current = isSurahRecitationMode;
+  }, [isSurahRecitationMode]);
+
+  useEffect(() => {
+    isAyahCompletedRef.current = isAyahCompleted;
+  }, [isAyahCompleted]);
 
   // ============================================================
   // تهيئة التعرف الصوتي (Web)
@@ -209,15 +233,21 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       recognition.maxAlternatives = 3;
       recognition.lang = 'ar-SA';
 
-      recognition.onstart = () => { if (recognitionEnabledRef.current) setIsListening(true); };
+      recognition.onstart = () => {
+        if (recognitionEnabledRef.current) setIsListening(true);
+      };
+
       recognition.onend = () => {
         if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
           setTimeout(() => {
             if (recognitionEnabledRef.current && isSurahRecitationModeRef.current) {
-              try { recognition.start(); setIsListening(true); }
-              catch (error) {
+              try {
+                recognition.start();
+                setIsListening(true);
+              } catch (error) {
                 if (error instanceof DOMException && error.name === 'InvalidStateError') {
-                  setIsListening(true); return;
+                  setIsListening(true);
+                  return;
                 }
                 recognitionEnabledRef.current = false;
                 setIsListening(false);
@@ -229,15 +259,21 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         }
         setIsListening(false);
       };
+
       recognition.onerror = (event: any) => {
         console.warn('[Web SR] error:', event.error);
         if (['not-allowed', 'service-not-allowed', 'audio-capture', 'network'].includes(event.error)) {
           recognitionEnabledRef.current = false;
           setIsListening(false);
           setShowSimulatedInput(true);
-          try { recognitionRef.current?.stop(); } catch (e) { /* ignore */ }
+          try {
+            recognitionRef.current?.stop();
+          } catch (e) {
+            /* ignore */
+          }
         }
       };
+
       recognition.onresult = (event: any) => {
         if (!recognitionEnabledRef.current) return;
         if (Date.now() < cooldownUntilRef.current) return;
@@ -257,11 +293,15 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               ayahCompletionHandlerRef.current(nextState.isFlawless);
               return;
             }
-            if (currentWordIdxForAltRef.current > beforeIdx) { progressed = true; break; }
+            if (currentWordIdxForAltRef.current > beforeIdx) {
+              progressed = true;
+              break;
+            }
           }
           if (progressed) break;
         }
       };
+
       recognitionRef.current = recognition;
     } catch (e) {
       console.warn('[Web SR] init error:', e);
@@ -284,7 +324,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     if (!nativeRecognitionActiveRef.current) return;
     try {
       const { matches } = await SpeechRecognition.start({
-        language: 'ar-SA', maxResults: 3, partialResults: false, popup: false,
+        language: 'ar-SA',
+        maxResults: 3,
+        partialResults: false,
+        popup: false,
       });
       if (!nativeRecognitionActiveRef.current) return;
 
@@ -311,8 +354,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     } catch (error: any) {
       const message = String(error?.message || error || '').toLowerCase();
       const isSilenceError =
-        message.includes('no match') || message.includes('speech timeout') ||
-        message.includes('no speech') || message.includes('timed out');
+        message.includes('no match') ||
+        message.includes('speech timeout') ||
+        message.includes('no speech') ||
+        message.includes('timed out');
 
       if (isSilenceError && nativeRecognitionActiveRef.current) {
         setTimeout(() => {
@@ -391,11 +436,20 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       try {
         const { available } = await SpeechRecognition.available();
         if (requestId !== recognitionRequestIdRef.current) return;
-        if (!available) { setSpeechSupported(false); setShowSimulatedInput(true); setIsListening(false); return; }
+        if (!available) {
+          setSpeechSupported(false);
+          setShowSimulatedInput(true);
+          setIsListening(false);
+          return;
+        }
         let perm = await SpeechRecognition.checkPermissions();
         if (perm.speechRecognition !== 'granted') perm = await SpeechRecognition.requestPermissions();
         if (requestId !== recognitionRequestIdRef.current) return;
-        if (perm.speechRecognition !== 'granted') { setShowSimulatedInput(true); setIsListening(false); return; }
+        if (perm.speechRecognition !== 'granted') {
+          setShowSimulatedInput(true);
+          setIsListening(false);
+          return;
+        }
 
         nativeRecognitionActiveRef.current = true;
         recognitionEnabledRef.current = true;
@@ -408,13 +462,20 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       return;
     }
 
-    if (!speechSupported) { setShowSimulatedInput(true); setIsListening(false); return; }
+    if (!speechSupported) {
+      setShowSimulatedInput(true);
+      setIsListening(false);
+      return;
+    }
     if (recognitionRef.current) {
       recognitionEnabledRef.current = true;
-      try { recognitionRef.current.start(); setIsListening(true); }
-      catch (error) {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (error) {
         if (error instanceof DOMException && error.name === 'InvalidStateError') {
-          setIsListening(true); return;
+          setIsListening(true);
+          return;
         }
         recognitionEnabledRef.current = false;
         setIsListening(false);
@@ -439,12 +500,20 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     if (Capacitor.isNativePlatform()) {
       if (nativeRecognitionActiveRef.current) {
         nativeRecognitionActiveRef.current = false;
-        try { await SpeechRecognition.stop(); } catch (e) { /* ignore */ }
+        try {
+          await SpeechRecognition.stop();
+        } catch (e) {
+          /* ignore */
+        }
       }
       return;
     }
     if (recognitionRef.current && wasEnabled) {
-      try { recognitionRef.current.stop(); } catch (e) { /* ignore */ }
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        /* ignore */
+      }
     }
   };
 
@@ -467,8 +536,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   // ============================================================
   const playAyahAudio = () => {
     const url = getAyahAudioUrl(selectedReciter.id, surah.number, currentAyah.numberInSurah);
-    if (isPlayingAudio) { stopAudio(); return; }
-    playAudio(url, () => { if (mode === 'listen_repeat') void toggleListening(); });
+    if (isPlayingAudio) {
+      stopAudio();
+      return;
+    }
+    playAudio(url, () => {
+      if (mode === 'listen_repeat') void toggleListening();
+    });
   };
 
   const handleNextAyah = () => {
@@ -504,18 +578,24 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const shouldHideUnrecited = hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
 
   // ============================================================
-  // الواجهة
+  // ✅ الواجهة — الحاوية تتكيّف مع embedded
   // ============================================================
   return (
     <div
-      className="h-[82dvh] max-w-4xl mx-auto flex flex-col bg-stone-100 overflow-hidden"
+      className={`${
+        embedded ? 'h-full' : 'h-[100dvh]'
+      } max-w-4xl mx-auto flex flex-col bg-stone-100 overflow-hidden`}
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
+      {/* ══════════════ الرأس المضغوط ══════════════ */}
       <header className="shrink-0 bg-white border-b border-stone-200 px-3 py-2">
         <div className="flex items-center gap-2">
           <select
             value={surah.number}
-            onChange={(e) => { void stopSurahRecitation(); onSelectSurahChange(Number(e.target.value)); }}
+            onChange={(e) => {
+              void stopSurahRecitation();
+              onSelectSurahChange(Number(e.target.value));
+            }}
             className="min-w-0 max-w-[45%] sm:max-w-none bg-stone-50 border border-stone-300 text-stone-900 rounded-lg px-2 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-600 cursor-pointer"
           >
             {allSurahsList.map((s) => (
@@ -554,6 +634,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         </div>
       </header>
 
+      {/* ══════════════ منطقة الآية ══════════════ */}
       <main className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4">
           <div className="flex flex-wrap gap-1.5 text-xl sm:text-2xl leading-[2.2] font-quran">
@@ -596,7 +677,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
         {activeMistakeAlert && !isAyahCompleted && (
           <div className="absolute bottom-2 left-2 right-2 sm:left-4 sm:right-4">
-            <div className="bg-rose-50 border border-rose-300 rounded-xl p-2.5 shadow-lg" role="alert">
+            <div
+              className="bg-rose-50 border border-rose-300 rounded-xl p-2.5 shadow-lg"
+              role="alert"
+            >
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
@@ -614,12 +698,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                       <span>استمع</span>
                     </button>
                   </div>
-                  {activeMistakeAlert.heard &&
-                    activeMistakeAlert.heard !== 'تلميح استحضار' && (
-                      <p className="text-[10px] text-stone-500 mt-0.5 truncate">
-                        سُمِع: <span className="text-rose-600 font-medium">{activeMistakeAlert.heard}</span>
-                      </p>
-                    )}
+                  {activeMistakeAlert.heard && activeMistakeAlert.heard !== 'تلميح استحضار' && (
+                    <p className="text-[10px] text-stone-500 mt-0.5 truncate">
+                      سُمِع:{' '}
+                      <span className="text-rose-600 font-medium">{activeMistakeAlert.heard}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -632,7 +716,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             <div className="absolute inset-2 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-sm">
               <div className="w-full max-w-sm bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-center shadow-2xl">
                 <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1" />
-                <p className="font-bold text-emerald-800 text-sm mb-1">ما شاء الله! اكتمل التسميع</p>
+                <p className="font-bold text-emerald-800 text-sm mb-1">
+                  ما شاء الله! اكتمل التسميع
+                </p>
                 <p className="text-xs text-emerald-700">
                   جودة المطابقة:{' '}
                   <span className="font-bold">
@@ -658,6 +744,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           )}
       </main>
 
+      {/* ══════════════ شريط التحكم ══════════════ */}
       <footer className="shrink-0 bg-white border-t border-stone-200 px-2 sm:px-4 py-2">
         <div className="flex items-center justify-between gap-1 sm:gap-2">
           <div className="flex items-center gap-1">
