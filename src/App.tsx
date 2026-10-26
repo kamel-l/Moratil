@@ -297,74 +297,36 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab(tab);
   };
 
+  const reciteActive = currentTab === 'recite';
+
   return (
-    <div className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20">
-      {/* Top Navbar */}
-      <Navbar
-        userEmail={userEmail}
-        onSignOut={onSignOut}
-        currentTab={currentTab}
-        onSelectTab={handleSelectTab}
-        stats={stats}
-        forgottenVersesCount={forgottenVerses.length}
-        onOpenForgottenVerses={() => setCurrentTab('revision')}
-        onOpenRewards={() => setIsRewardsModalOpen(true)}
-        onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
-        isAudioPlaying={isAudioPlayerOpen}
-      />
+    <div
+      dir="rtl"
+      className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
+        reciteActive
+          ? 'h-[100dvh] pb-28 flex flex-col overflow-hidden'
+          : 'min-h-screen pb-28'
+      }`}
+    >
+      {/* ═══════════ شريط التنقل العلوي — يبقى ظاهرًا دائمًا ═══════════ */}
+      <div className="shrink-0">
+        <Navbar
+          userEmail={userEmail}
+          onSignOut={onSignOut}
+          currentTab={currentTab}
+          onSelectTab={handleSelectTab}
+          stats={stats}
+          forgottenVersesCount={forgottenVerses.length}
+          onOpenForgottenVerses={() => setCurrentTab('revision')}
+          onOpenRewards={() => setIsRewardsModalOpen(true)}
+          onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
+          isAudioPlaying={isAudioPlayerOpen}
+        />
+      </div>
 
-      {syncStatus !== 'synced' && (
-        <div className="mx-auto mt-3 max-w-7xl px-4 sm:px-6 lg:px-8">
-          {syncStatus === 'error' ? (
-            <div
-              role="alert"
-              className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-            >
-              <span>
-                {syncErrorMessage ??
-                  'تعذرت مزامنة التقدم. بياناتك محفوظة على هذا الجهاز.'}
-              </span>
-              <button
-                type="button"
-                onClick={handleRetrySync}
-                className="shrink-0 rounded-lg border border-amber-500 px-3 py-1.5 font-semibold hover:bg-amber-100"
-              >
-                إعادة المحاولة
-              </button>
-            </div>
-          ) : (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900" role="status">
-              جارٍ مزامنة تقدمك...
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {currentTab === 'home' && (
-          <HomeDashboard
-            stats={stats}
-            verseMasteryMap={verseMasteryMap}
-            forgottenVersesCount={forgottenVerses.length}
-            onStartSession={() => setCurrentTab('recite')}
-            onOpenMemorization={() => setCurrentTab('memorize')}
-            onResumeVerse={handleStartPracticingVerse}
-            onOpenReview={() => setCurrentTab('revision')}
-            onOpenStats={() => setCurrentTab('stats')}
-          />
-        )}
-
-        {currentTab === 'memorize' && (
-          <MemorizationMode
-            allSurahs={ALL_SURAHS}
-            selectedReciter={selectedReciter}
-            onSelectReciter={setSelectedReciter}
-          />
-        )}
-
-        {/* Tab 1: Voice Recitation & Real-time Error Correction */}
-        {currentTab === 'recite' && (
+      {/* ═══════════ المحتوى ═══════════ */}
+      {reciteActive ? (
+        <div className="flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto">
           <VoiceReciter
             surah={currentSurah}
             initialAyahNumber={initialAyahForReciter}
@@ -376,48 +338,69 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               setInitialAyahForReciter(ayahNum);
             }}
             allSurahsList={ALL_SURAHS}
+            embedded
+            onClose={() => setCurrentTab('home')}
           />
-        )}
+        </div>
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full">
+          {currentTab === 'home' && (
+            <HomeDashboard
+              stats={stats}
+              verseMasteryMap={verseMasteryMap}
+              forgottenVersesCount={forgottenVerses.length}
+              onStartSession={() => setCurrentTab('recite')}
+              onOpenMemorization={() => setCurrentTab('memorize')}
+              onResumeVerse={handleStartPracticingVerse}
+              onOpenReview={() => setCurrentTab('revision')}
+              onOpenStats={() => setCurrentTab('stats')}
+            />
+          )}
 
-        {/* Tab 2: Periodic Revision Plans & Forgotten Verses (SRS) */}
-        {currentTab === 'revision' && (
-          <RevisionPlans
-            plans={plans}
-            forgottenVerses={forgottenVerses}
-            onStartPracticingVerse={handleStartPracticingVerse}
-            onRefreshPlans={refreshAllState}
-          />
-        )}
+          {currentTab === 'memorize' && (
+            <MemorizationMode
+              allSurahs={ALL_SURAHS}
+              selectedReciter={selectedReciter}
+              onSelectReciter={setSelectedReciter}
+            />
+          )}
 
-        {/* Tab 3: Quran Explorer & Tafsir Al-Muyassar */}
-        {currentTab === 'explorer' && (
-          <SurahExplorer
-            onSelectSurahForRecitation={(num) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(1);
-              setCurrentTab('recite');
-            }}
-            onPlaySurahAudio={handlePlaySurahAudio}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            completedSurahs={stats.completedSurahs}
-          />
-        )}
+          {currentTab === 'revision' && (
+            <RevisionPlans
+              plans={plans}
+              forgottenVerses={forgottenVerses}
+              onStartPracticingVerse={handleStartPracticingVerse}
+              onRefreshPlans={refreshAllState}
+            />
+          )}
 
-        {/* Tab 4: Friends Competition & Leaderboard */}
-        {currentTab === 'competition' && (
-          <CompetitionLeaderboard
-            challenges={challenges}
-            onStartChallenge={handleStartChallenge}
-          />
-        )}
+          {currentTab === 'explorer' && (
+            <SurahExplorer
+              onSelectSurahForRecitation={(num) => {
+                setSelectedSurahNumber(num);
+                setInitialAyahForReciter(1);
+                setCurrentTab('recite');
+              }}
+              onPlaySurahAudio={handlePlaySurahAudio}
+              onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+              completedSurahs={stats.completedSurahs}
+            />
+          )}
 
-        {/* Tab 5: Daily Performance Statistics */}
-        {currentTab === 'stats' && (
-          <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
-        )}
-      </main>
+          {currentTab === 'competition' && (
+            <CompetitionLeaderboard
+              challenges={challenges}
+              onStartChallenge={handleStartChallenge}
+            />
+          )}
 
-      {/* Sticky Bottom Audio Player Bar */}
+          {currentTab === 'stats' && (
+            <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
+          )}
+        </main>
+      )}
+
+      {/* ═══════════ مشغل الصوت (fixed) ═══════════ */}
       <AudioPlayerBar
         currentSurah={currentSurah}
         currentAyahNumber={audioAyahNumber}
@@ -428,7 +411,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         isOpen={isAudioPlayerOpen}
       />
 
-      {/* Tafsir Al-Muyassar Modal */}
+      {/* ═══════════ نافذة التفسير ═══════════ */}
       {activeTafsirAyah && (
         <TafsirModal
           ayah={activeTafsirAyah}
@@ -441,7 +424,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         />
       )}
 
-      {/* Rewards & Badges Modal */}
+      {/* ═══════════ نافذة المكافآت ═══════════ */}
       {isRewardsModalOpen && (
         <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
       )}

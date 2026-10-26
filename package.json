@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
+    "postinstall": "node scripts/patch-speech-recognition.cjs",
     "lint": "tsc --noEmit && eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "test": "vitest run"

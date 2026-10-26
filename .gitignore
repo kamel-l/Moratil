@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+android/.idea/
+lintreport.json
+*.jpg
+*.txt
