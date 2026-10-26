@@ -38,6 +38,7 @@ import {
   getVersesNeedingReinforcement,
   getRevisionPlans,
   getChallenges,
+  saveChallenges,
   retryProgressSync,
   setStorageUserId,
   stopProgressSync,
@@ -285,6 +286,12 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
+  const handleCreateChallenge = (challenge: QuranChallenge) => {
+    const updatedChallenges = [...getChallenges(), challenge];
+    saveChallenges(updatedChallenges);
+    setChallenges(updatedChallenges);
+  };
+
   // Play audio for a specific surah
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
@@ -391,6 +398,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
             <CompetitionLeaderboard
               challenges={challenges}
               onStartChallenge={handleStartChallenge}
+              onCreateChallenge={handleCreateChallenge}
             />
           )}
 
