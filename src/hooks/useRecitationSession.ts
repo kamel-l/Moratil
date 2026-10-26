@@ -14,28 +14,20 @@ export interface RecognitionState {
   } | null;
 }
 
-// ============================================================
-// ✅ طبقة التطبيع الصوتي — تُقلّل أخطاء ASR في القرآن
-// ============================================================
+// تطبيع صوتي لتقليل أخطاء ASR في القرآن
 const ARABIC_PHONETIC_MAP: Record<string, string> = {
-  // الهمزات → ألف
   'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا',
-  // تاء مربوطة → هاء
   'ة': 'ه',
-  // ياء/همزة على ياء → ياء
   'ى': 'ي', 'ئ': 'ي',
-  // واو مهموزة → واو
   'ؤ': 'و',
-  // همزة قطع
   'ء': '',
-  // حروف متشابهة صوتيًا (أكثر الأخطاء شيوعًا في ASR العربي)
-  'ط': 'ت',   // ط/ت
-  'ظ': 'ذ',   // ظ/ذ
-  'ض': 'د',   // ض/د
-  'ص': 'س',   // ص/س
-  'ث': 'س',   // ث/س
-  'ح': 'ه',   // ح/ه
-  'ق': 'ك',   // ق/ك (لهجات + أخطاء ASR)
+  'ط': 'ت',
+  'ظ': 'ذ',
+  'ض': 'د',
+  'ص': 'س',
+  'ث': 'س',
+  'ح': 'ه',
+  'ق': 'ك',
 };
 
 function phoneticNormalize(text: string): string {
@@ -45,10 +37,10 @@ function phoneticNormalize(text: string): string {
   return out;
 }
 
-// Levenshtein محسّن بذاكرة متجددة (يقلل التخصيص)
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
-  const m = a.length, n = b.length;
+  const m = a.length,
+    n = b.length;
   if (!m) return n;
   if (!n) return m;
   let prev = new Array<number>(n + 1);
@@ -65,33 +57,25 @@ function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
-// درجة تشابه متعددة المستويات
 function smartSimilarity(spoken: string, expected: string): number {
   const ns = phoneticNormalize(spoken);
   const ne = phoneticNormalize(expected);
   if (!ns || !ne) return 0;
   if (ns === ne) return 1;
 
-  // تجريد السوابق الشائعة (ال، وال، بال، كال، فال، و، ب، ك، ف، ل)
   const strip = (s: string) => s.replace(/^(وال|بال|كال|فال|ال|و|ب|ك|ف|ل)/, '');
   if (strip(ns) === strip(ne)) return 0.97;
 
-  // أحد الطرفين بادئة للآخر (كلمة مقطوعة)
   if (ne.startsWith(ns) && ns.length >= Math.ceil(ne.length * 0.55)) return 0.85;
   if (ns.startsWith(ne) && ne.length >= Math.ceil(ns.length * 0.55)) return 0.85;
 
-  // Levenshtein على الصيغة الصوتية
   const lev = levenshtein(ns, ne);
   const maxLen = Math.max(ns.length, ne.length);
   const levSim = 1 - lev / maxLen;
-
-  // مكافأة إذا تطابق أول حرف (ASR غالبًا يحافظ عليه)
   const firstBoost = ns[0] === ne[0] ? 0.05 : 0;
-
   return Math.min(1, levSim + firstBoost);
 }
 
-// اكتشاف دمج عدة كلمات قرآنية في توكن ASR واحد
 function mergedWordCount(
   spoken: string,
   expectedWords: QuranWordMeta[],
@@ -109,13 +93,10 @@ function mergedWordCount(
   return 0;
 }
 
-// ============================================================
-// ✅ محرك التقييم المحسّن
-// ============================================================
-const STRONG_MATCH = 0.85;  // مطابقة قوية → تقدم مؤكد
-const WEAK_MATCH = 0.60;    // مطابقة ضعيفة → لا تُحسب خطأ
-const MIN_MATCH = 0.45;     // أقل من ذلك → خطأ
-const LOOKAHEAD = 3;        // نافذة البحث الأمامي
+const STRONG_MATCH = 0.85;
+const WEAK_MATCH = 0.6;
+const MIN_MATCH = 0.45;
+const LOOKAHEAD = 3;
 
 export function evaluateSpokenText(
   verseWords: QuranWordMeta[],
@@ -128,7 +109,6 @@ export function evaluateSpokenText(
     return { ...state, completed: false, isFlawless: false };
   }
 
-  // ثقة منخفضة جدًا → لا تُعاقب
   if (confidence !== undefined && confidence < 0.35) {
     return { ...state, completed: false, isFlawless: false };
   }
@@ -142,7 +122,6 @@ export function evaluateSpokenText(
     const normSpoken = normalizeArabicText(latestSpoken);
     if (normSpoken.length < 2 || normSpoken === 'ال') continue;
 
-    // تجاهل التكرار (تأتأة): إذا كان يشبه آخر كلمة مطابقة بشدة
     const lastMatched = state.matchedWords[state.matchedWords.length - 1];
     if (lastMatched !== undefined) {
       const lastExpected = verseWords[lastMatched]?.original ?? '';
@@ -151,11 +130,10 @@ export function evaluateSpokenText(
         smartSimilarity(latestSpoken, lastExpected) >= 0.9 &&
         smartSimilarity(latestSpoken, curExpected) < 0.5
       ) {
-        continue; // إعادة نفس الكلمة → تجاهل
+        continue;
       }
     }
 
-    // ① دمج عدة كلمات في توكن واحد
     const merged = mergedWordCount(latestSpoken, verseWords, nextWordIdx, 4);
     if (merged >= 2) {
       for (let k = 0; k < merged; k++) {
@@ -167,7 +145,6 @@ export function evaluateSpokenText(
       continue;
     }
 
-    // ② مطابقة قوية مع الكلمة الحالية
     const currentExpected = verseWords[nextWordIdx];
     if (!currentExpected) break;
 
@@ -180,7 +157,6 @@ export function evaluateSpokenText(
       continue;
     }
 
-    // ③ بحث أمامي: هل الكلمة تطابق كلمة قادمة؟
     let matchedIndex = -1;
     const lookLimit = Math.min(nextWordIdx + LOOKAHEAD, verseWords.length - 1);
     for (let i = nextWordIdx + 1; i <= lookLimit; i++) {
@@ -191,7 +167,6 @@ export function evaluateSpokenText(
     }
 
     if (matchedIndex >= 0) {
-      // كلمات متخطّاة
       let skipped: QuranWordMeta | null = null;
       for (let i = nextWordIdx; i < matchedIndex; i++) {
         nextFailedWords[i] = 'تم تخطيها';
@@ -211,7 +186,6 @@ export function evaluateSpokenText(
       continue;
     }
 
-    // ④ مطابقة ضعيفة → اقبل مؤقتًا بدون معاقبة
     if (curScore >= WEAK_MATCH) {
       matchedSet.add(nextWordIdx);
       delete nextFailedWords[nextWordIdx];
@@ -220,9 +194,7 @@ export function evaluateSpokenText(
       continue;
     }
 
-    // ⑤ خطأ حقيقي
     if (curScore >= MIN_MATCH) {
-      // منطقة رمادية → لا نعاقب لكن ننبّه
       nextMistake = {
         expected: currentExpected.original,
         heard: latestSpoken,
