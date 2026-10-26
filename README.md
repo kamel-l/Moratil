@@ -67,3 +67,9 @@ npx cap copy
 npx cap open android
 
 ./gradlew clean assembleDebug
+
+npm run build
+npx cap sync android
+npx cap run android
+
+npm run dev
