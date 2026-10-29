@@ -82,6 +82,26 @@ export interface NormalizedProgress {
   mastery: Record<string, VerseMastery>;
 }
 
+/**
+ * Tells whether the normalized snapshot carries real progress. The signup
+ * trigger creates a zeroed `user_stats` row for every account, so the row alone
+ * does not prove that the account was migrated: only counters, badges, record
+ * lists or verse rows do.
+ */
+export function hasNormalizedProgress(progress: NormalizedProgress): boolean {
+  const stats = progress.stats;
+  const statsCarryData =
+    stats !== null &&
+    (stats.points > 0 ||
+      stats.streakDays > 0 ||
+      stats.totalVersesRecited > 0 ||
+      stats.totalRecitedSeconds > 0 ||
+      stats.mistakesFixedCount > 0 ||
+      stats.completedSurahs.length > 0 ||
+      stats.unlockedBadgeIds.length > 0);
+  return statsCarryData || Object.keys(progress.mastery).length > 0;
+}
+
 export class AyahIndexError extends Error {
   constructor(message: string) {
     super(message);

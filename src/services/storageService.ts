@@ -7,7 +7,13 @@ import type {
   QuranChallenge,
 } from '../types/quran';
 import { supabase } from './supabase';
-import { fetchNormalizedProgress, saveNormalizedProgress } from './normalizedProgressService';
+import {
+  fetchNormalizedProgress,
+  hasNormalizedProgress,
+  saveNormalizedProgress,
+} from './normalizedProgressService';
+
+type ProgressClient = NonNullable<typeof supabase>;
 
 const STATS_KEY = 'murattil_user_stats';
 const MASTERY_KEY = 'murattil_verse_mastery';
@@ -176,16 +182,16 @@ function notifySyncStatus(status: ProgressSyncStatus, error?: unknown): void {
 let lastNormalizedSyncWarning: string | null = null;
 
 /**
- * The normalized tables are written next to the legacy ones during phase 2.
- * A failure there must not degrade the user experience as long as the legacy
- * tables are up to date, so it is logged once instead of surfaced as a sync
- * error.
+ * The normalized tables are written next to the legacy ones until the legacy
+ * model is dropped. A failure there does not degrade the app as long as the
+ * legacy tables still hold a copy, so it is logged once instead of surfaced as
+ * a sync error.
  */
 function warnNormalizedSync(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   if (message === lastNormalizedSyncWarning) return;
   lastNormalizedSyncWarning = message;
-  console.warn('Normalized progress sync failed; legacy tables remain authoritative.', message);
+  console.warn('Normalized progress access failed; the legacy copy still holds the data.', message);
 }
 
 function scheduleProgressSync(): void {
@@ -275,7 +281,9 @@ async function uploadProgressSnapshot(generation = syncGeneration): Promise<void
     ),
   ]);
 
-  // Phase 2 double write: the normalized schema receives the same snapshot.
+  // Phase 3 reads from the normalized tables, but both models are still written
+  // until the legacy tables are dropped. This also backfills accounts that have
+  // not connected since the migration.
   const normalizedError = await saveNormalizedProgress(client, userId, {
     stats,
     mastery,
@@ -296,6 +304,38 @@ async function uploadProgressSnapshot(generation = syncGeneration): Promise<void
   notifySyncStatus('synced');
 }
 
+interface LegacyProgress {
+  stats: UserStats | null;
+  mastery: Record<string, VerseMastery>;
+  error: { message: string } | null;
+}
+
+/**
+ * Reads the legacy JSON tables. Phase 3 calls this only to fill a section the
+ * normalized model has not received yet, so data written before the migration is
+ * carried over exactly once.
+ */
+async function fetchLegacyProgress(
+  client: ProgressClient,
+  userId: string,
+): Promise<LegacyProgress> {
+  const [statsResult, masteryResult] = await Promise.all([
+    client.from('user_progress').select('stats').eq('user_id', userId).maybeSingle(),
+    client.from('verse_mastery').select('mastery').eq('user_id', userId),
+  ]);
+
+  return {
+    stats: (statsResult.data?.stats as UserStats | undefined) ?? null,
+    mastery: Object.fromEntries(
+      (masteryResult.data ?? []).map((row) => {
+        const mastery = row.mastery as VerseMastery;
+        return [`${mastery.surahNumber}_${mastery.ayahNumber}`, mastery];
+      }),
+    ) as Record<string, VerseMastery>,
+    error: statsResult.error || masteryResult.error,
+  };
+}
+
 export async function syncProgressFromCloud(
   userId: string,
   onStatus: (status: ProgressSyncStatus, error?: unknown) => void,
@@ -312,40 +352,43 @@ export async function syncProgressFromCloud(
   syncTimer = undefined;
   notifySyncStatus('syncing');
 
-  const [statsResult, masteryResult, activityResult] = await Promise.all([
-    supabase.from('user_progress').select('stats').eq('user_id', userId).maybeSingle(),
-    supabase.from('verse_mastery').select('mastery').eq('user_id', userId),
+  const localStats = getUserStats();
+  const [normalized, activityResult] = await Promise.all([
+    fetchNormalizedProgress(supabase, userId, localStats.level).catch(
+      (normalizedError: unknown) => {
+        warnNormalizedSync(normalizedError);
+        return null;
+      },
+    ),
     supabase.from('daily_activity').select('activity_date,verses,sessions').eq('user_id', userId),
   ]);
   if (storageUserId !== userId || syncGeneration !== generation) return;
-  const error = statsResult.error || masteryResult.error || activityResult.error;
-  if (error) {
-    notifySyncStatus('error', error);
-    throw error;
+  if (activityResult.error) {
+    notifySyncStatus('error', activityResult.error);
+    throw activityResult.error;
   }
 
-  const localStats = getUserStats();
-  const remoteStats = (statsResult.data?.stats as UserStats | undefined) ?? null;
-
-  // Phase 2: read the normalized snapshot too. On a first run after the
-  // migration it is empty, and the merged legacy data is written back to it.
-  const normalized = await fetchNormalizedProgress(supabase, userId, localStats.level).catch(
-    (normalizedError: unknown) => {
-      warnNormalizedSync(normalizedError);
-      return null;
-    },
-  );
+  // Phase 3: the normalized snapshot is authoritative. The legacy tables are
+  // read only to fill a section the normalized model has not received yet:
+  // either the whole account predates the migration, or a normalized progress
+  // write failed while `user_stats` succeeded. The merged result is written back
+  // to both models by `uploadProgressSnapshot`.
+  const useLegacyStats = !normalized || !hasNormalizedProgress(normalized);
+  const useLegacyMastery = !normalized || Object.keys(normalized.mastery).length === 0;
+  const legacy =
+    useLegacyStats || useLegacyMastery ? await fetchLegacyProgress(supabase, userId) : null;
   if (storageUserId !== userId || syncGeneration !== generation) return;
+  if (legacy?.error) {
+    notifySyncStatus('error', legacy.error);
+    throw legacy.error;
+  }
 
-  const mergedStats = mergeStats(mergeStats(localStats, remoteStats), normalized?.stats ?? null);
-  const remoteMastery = Object.fromEntries(
-    (masteryResult.data ?? []).map((row) => {
-      const mastery = row.mastery as VerseMastery;
-      return [`${mastery.surahNumber}_${mastery.ayahNumber}`, mastery];
-    }),
-  ) as Record<string, VerseMastery>;
+  const mergedStats = mergeStats(
+    mergeStats(localStats, useLegacyStats ? (legacy?.stats ?? null) : null),
+    normalized?.stats ?? null,
+  );
   const mergedMastery = mergeMastery(
-    mergeMastery(getVerseMasteryMap(), remoteMastery),
+    mergeMastery(getVerseMasteryMap(), legacy?.mastery ?? {}),
     normalized?.mastery ?? {},
   );
   const activityByDate = new Map(readLocalDailyActivity().map((day) => [day.date, day]));

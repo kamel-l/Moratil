@@ -12,10 +12,12 @@ interface Write {
 
 const writes: Write[] = [];
 const tables: Record<string, Row[]> = {};
+const reads: string[] = [];
 
 function resetTables() {
   for (const key of Object.keys(tables)) delete tables[key];
   writes.length = 0;
+  reads.length = 0;
 }
 
 function createFakeClient(): SupabaseClient {
@@ -33,7 +35,10 @@ function createFakeClient(): SupabaseClient {
       };
 
       const builder = {
-        select: () => builder,
+        select: () => {
+          reads.push(table);
+          return builder;
+        },
         eq(column: string, value: unknown) {
           filters[column] = value;
           return builder;
@@ -299,5 +304,119 @@ describe('phase 2 double write', () => {
     expect(storageModule.getDailyVerseGoal()).toBe(15);
     expect(storageModule.getRevisionReminderSettings()).toEqual({ enabled: false, time: '07:30' });
     expect(writeFor('profiles')[0]).toMatchObject({ daily_verse_goal: 15 });
+  });
+
+  it('ignores the legacy tables once normalized progress exists', async () => {
+    // The legacy copy is stale: higher counters and a more recent verse state.
+    tables.user_progress = [{ user_id: 'user-e', stats: legacyStats({ points: 5000 }) }];
+    tables.verse_mastery = [
+      {
+        user_id: 'user-e',
+        mastery: mastery({ level: 'mastered', lastReviewedAt: '2026-02-01T08:00:00.000Z' }),
+      },
+    ];
+    tables.user_stats = [
+      {
+        user_id: 'user-e',
+        points: 900,
+        level: 'فارس الحُفاظ',
+        streak_days: 9,
+        last_active_date: '2026-01-10',
+        total_verses_recited: 400,
+        total_recited_seconds: 7200,
+        accuracy_rate: 95.4,
+        mistakes_fixed_count: 8,
+        completed_surahs: [1, 2],
+        unlocked_badge_ids: ['streak_7'],
+      },
+    ];
+    tables.memorization_progress = [
+      {
+        user_id: 'user-e',
+        ayah_id: 1,
+        status: 'good',
+        consecutive_success_count: 2,
+        mistake_count: 1,
+        last_reviewed_at: '2026-01-05T08:00:00.000Z',
+      },
+    ];
+    tables.review_schedule = [
+      {
+        user_id: 'user-e',
+        ayah_id: 1,
+        due_at: '2026-01-06T08:00:00.000Z',
+        last_result: 'success',
+        last_reviewed_at: '2026-01-05T08:00:00.000Z',
+        interval_days: 1,
+        ease_factor: 2.5,
+        repetition_count: 1,
+        status: 'due',
+      },
+    ];
+
+    await storageModule.syncProgressFromCloud('user-e', () => {});
+
+    // The legacy JSON tables were not even queried.
+    expect(reads).not.toContain('user_progress');
+    expect(reads).not.toContain('verse_mastery');
+
+    expect(localStats()).toMatchObject({ points: 900, streakDays: 9 });
+    expect(localMastery()['1_1']).toMatchObject({
+      level: 'good',
+      consecutiveSuccessCount: 2,
+      mistakeCount: 1,
+    });
+  });
+
+  it('falls back to the legacy tables when the normalized snapshot is empty', async () => {
+    tables.user_stats = [
+      {
+        user_id: 'user-f',
+        points: 0,
+        level: 'مبتدئ',
+        streak_days: 0,
+        last_active_date: null,
+        total_verses_recited: 0,
+        total_recited_seconds: 0,
+        accuracy_rate: 0,
+        mistakes_fixed_count: 0,
+        completed_surahs: [],
+        unlocked_badge_ids: [],
+      },
+    ];
+    tables.verse_mastery = [{ user_id: 'user-f', mastery: mastery({ level: 'mastered' }) }];
+
+    await storageModule.syncProgressFromCloud('user-f', () => {});
+
+    expect(reads).toContain('verse_mastery');
+    expect(localMastery()['1_1']).toMatchObject({ level: 'mastered' });
+    expect(writeFor('memorization_progress')[0]).toMatchObject({ ayah_id: 1, status: 'mastered' });
+  });
+
+  it('recovers legacy verses when only the normalized stats were written', async () => {
+    tables.user_stats = [
+      {
+        user_id: 'user-g',
+        points: 300,
+        level: 'حافظ مبتدئ',
+        streak_days: 2,
+        last_active_date: '2026-01-08',
+        total_verses_recited: 80,
+        total_recited_seconds: 1200,
+        accuracy_rate: 88,
+        mistakes_fixed_count: 2,
+        completed_surahs: [1],
+        unlocked_badge_ids: [],
+      },
+    ];
+    tables.verse_mastery = [{ user_id: 'user-g', mastery: mastery({ level: 'mastered' }) }];
+
+    await storageModule.syncProgressFromCloud('user-g', () => {});
+
+    // The stats section stays authoritative…
+    expect(localStats()).toMatchObject({ points: 300, streakDays: 2 });
+    // …while the missing verses are recovered from the legacy copy.
+    expect(localMastery()['1_1']).toMatchObject({ level: 'mastered' });
+    expect(writeFor('memorization_progress')[0]).toMatchObject({ ayah_id: 1, status: 'mastered' });
   });
 });

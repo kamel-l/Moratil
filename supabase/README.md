@@ -7,10 +7,10 @@ Le dossier `supabase/` contient deux migrations **additives** :
 | 1     | [`20261015200000_progress_sync.sql`](migrations/20261015200000_progress_sync.sql)                     | Tables de synchronisation historiques : `user_progress`, `verse_mastery`, `daily_activity`. |
 | 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs. |
 
-La migration 2 ne supprime rien. Le client écrit dans les deux modèles et lit
-les deux à la connexion ; les tables historiques restent autoritaires jusqu'à la
-bascule des lectures (voir
-[Phase 2](#phase-2--double-écriture-et-reprise-des-données)).
+La migration 2 ne supprime rien. Le client écrit encore dans les deux modèles,
+mais **lit désormais le modèle normalisé** ; les tables historiques ne servent
+plus que de secours pour les comptes jamais revenus depuis la migration (voir
+[Phase 3](#phase-3--bascule-des-lectures)).
 
 ## Modèle relationnel
 
@@ -284,9 +284,9 @@ select tablename, policyname, cmd, roles
 
 ## Phase 2 — double écriture et reprise des données
 
-Le client (`src/services/storageService.ts`) écrit désormais **les deux modèles à
-chaque synchronisation**. Le modèle historique reste autoritaire : une erreur sur
-le schéma normalisé est journalisée une seule fois par
+Le client (`src/services/storageService.ts`) écrit **les deux modèles à chaque
+synchronisation**. La phase 2 conserve le modèle historique comme secours : une
+erreur sur le schéma normalisé est journalisée une seule fois par
 `warnNormalizedSync`, sans changer le statut de synchronisation affiché à
 l'utilisateur.
 
@@ -307,26 +307,44 @@ traduit cette clé en `ayahs.id` grâce à un index chargé paginé (1 000 ligne
 requête) et mis en cache dans `localStorage` sous `murattil_ayah_index:v1` ;
 `resetAyahIndexCache()` invalide ce cache.
 
-Comportement de reprise lors d'une connexion :
+La reprise fusionne le progrès local (éventuellement hors ligne), les tables
+historiques et le snapshot normalisé : maximum pour les compteurs, version la
+plus récente pour chaque verset (`lastReviewedAt`), date d'activité la plus
+récente. Un compte neuf n'a pas de date d'activité et n'écrase donc pas une date
+distante. Le résultat est réécrit dans les deux modèles, ce qui reprend les
+comptes créés avant la migration dès leur première connexion.
 
-1. Lecture des tables historiques **et** du snapshot normalisé.
-2. Fusion : maximum pour les compteurs, version la plus récente pour chaque
-   verset (`lastReviewedAt`), date d'activité la plus récente — un compte neuf
-   n'a pas de date d'activité et n'écrase donc pas une date distante.
-3. Les réglages (`daily_verse_goal`, rappel) sont repris depuis `profiles`
-   uniquement si l'appareil n'a jamais enregistré de préférence locale.
-4. Le résultat fusionné est réécrit dans les deux modèles : un utilisateur qui
-   n'avait utilisé que l'ancien client est ainsi repris dans le schéma normalisé
-   dès sa première connexion.
+## Phase 3 — bascule des lectures
+
+Depuis la phase 3, le snapshot normalisé est **la source de vérité en lecture**.
+À chaque connexion :
+
+1. `profiles`, `user_stats`, `memorization_progress` et `review_schedule` sont
+   lus en premier ; `daily_activity` est commune aux deux modèles.
+2. Les tables historiques `user_progress` et `verse_mastery` ne servent plus que
+   de secours : `user_progress` est lu si `user_stats` ne contient encore aucun
+   progrès (`hasNormalizedProgress`), et `verse_mastery` si
+   `memorization_progress` est vide. La ligne `user_stats` créée à l'inscription
+   est nulle, elle ne suffit donc pas : seuls les compteurs, badges, listes ou
+   versets comptent. Ce découpage évite qu'une écriture normalisée partielle
+   fasse perdre les versets déjà présents dans l'ancien modèle.
+3. Le progrès local plus récent est conservé (fusion par date pour les versets,
+   maximum pour les compteurs), puis réécrit dans les deux modèles. Un appareil
+   qui a travaillé hors ligne ne perd rien.
+4. Les réglages restent repris depuis `profiles` si l'appareil n'a jamais
+   enregistré de préférence locale.
+
+Si la lecture normalisée échoue (réseau, index des versets indisponible), le
+client retombe sur les tables historiques et journalise un avertissement unique :
+la bascule ne dégrade pas l'expérience tant que ces tables existent.
 
 Couverture : `src/services/normalizedProgressService.test.ts` (mapping,
-pagination, cache, conversion des `numeric` PostgREST) et
-`src/services/progressSync.test.ts` (double écriture, reprise legacy, reprise du
-normalisé, priorité des réglages locaux).
+pagination, cache, conversion des `numeric` PostgREST, détection d'un snapshot
+vide) et `src/services/progressSync.test.ts` (double écriture, reprise legacy,
+priorité du normalisé, priorité des réglages locaux).
 
-### Étapes suivantes
+### Étape suivante
 
-La migration reste progressive : après une période de validation des compteurs
-en production, les lectures basculeront sur le schéma normalisé, puis l'écriture
-historique sera arrêtée. Les tables `user_progress`, `verse_mastery` et
-`daily_activity` ne seront supprimées qu'après cette bascule.
+Après une période de validation en production, l'écriture historique sera
+arrêtée, puis les tables `user_progress` et `verse_mastery` supprimées
+(`daily_activity` est déjà commune aux deux modèles et sera conservée).

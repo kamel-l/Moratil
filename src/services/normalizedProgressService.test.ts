@@ -6,6 +6,7 @@ import {
   buildScheduleRows,
   createAyahIndex,
   getAyahIndex,
+  hasNormalizedProgress,
   resetAyahIndexCache,
   rowToStats,
   rowsToMastery,
@@ -347,5 +348,45 @@ describe('stats mapping', () => {
 
     expect(restored.level).toBe('حافظ مبتدئ');
     expect(restored.completedSurahs).toEqual([]);
+  });
+});
+
+describe('normalized progress detection', () => {
+  function emptyProgress() {
+    return {
+      stats: {
+        points: 0,
+        level: 'مبتدئ',
+        streakDays: 0,
+        lastActiveDate: '',
+        totalVersesRecited: 0,
+        totalRecitedSeconds: 0,
+        accuracyRate: 0,
+        mistakesFixedCount: 0,
+        completedSurahs: [],
+        unlockedBadgeIds: [],
+      },
+      profile: null,
+      mastery: {},
+    };
+  }
+
+  it('treats the zeroed signup row as empty', () => {
+    expect(hasNormalizedProgress(emptyProgress())).toBe(false);
+    expect(hasNormalizedProgress({ ...emptyProgress(), stats: null })).toBe(false);
+  });
+
+  it('detects aggregate, badge and verse progress', () => {
+    const withPoints = emptyProgress();
+    withPoints.stats.points = 10;
+    expect(hasNormalizedProgress(withPoints)).toBe(true);
+
+    const withBadge = emptyProgress();
+    withBadge.stats.unlockedBadgeIds = ['first_recitation'];
+    expect(hasNormalizedProgress(withBadge)).toBe(true);
+
+    const withVerse = emptyProgress();
+    withVerse.mastery = { '1_1': verse() };
+    expect(hasNormalizedProgress(withVerse)).toBe(true);
   });
 });
