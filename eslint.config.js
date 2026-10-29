@@ -20,6 +20,15 @@ export default [
     },
   },
   {
+    files: ['scripts/**/*.{js,mjs}', '**/*.test.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
