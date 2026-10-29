@@ -7,6 +7,7 @@ import type {
   QuranChallenge,
 } from '../types/quran';
 import { supabase } from './supabase';
+import { fetchNormalizedProgress, saveNormalizedProgress } from './normalizedProgressService';
 
 const STATS_KEY = 'murattil_user_stats';
 const MASTERY_KEY = 'murattil_verse_mastery';
@@ -122,7 +123,9 @@ function asNumberArray(value: unknown): number[] {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function readJsonArray<T>(key: string, isValid: (item: unknown) => item is T): T[] {
@@ -168,6 +171,21 @@ export function setStorageUserId(userId: string | null): void {
 
 function notifySyncStatus(status: ProgressSyncStatus, error?: unknown): void {
   syncStatusListener?.(status, error);
+}
+
+let lastNormalizedSyncWarning: string | null = null;
+
+/**
+ * The normalized tables are written next to the legacy ones during phase 2.
+ * A failure there must not degrade the user experience as long as the legacy
+ * tables are up to date, so it is logged once instead of surfaced as a sync
+ * error.
+ */
+function warnNormalizedSync(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === lastNormalizedSyncWarning) return;
+  lastNormalizedSyncWarning = message;
+  console.warn('Normalized progress sync failed; legacy tables remain authoritative.', message);
 }
 
 function scheduleProgressSync(): void {
@@ -229,14 +247,15 @@ function mergeMastery(
 async function uploadProgressSnapshot(generation = syncGeneration): Promise<void> {
   if (!storageUserId || !supabase) return;
   const userId = storageUserId;
+  const client = supabase;
   notifySyncStatus('syncing');
 
   const stats = getUserStats();
   const mastery = getVerseMasteryMap();
   const activity = readLocalDailyActivity();
   const [statsResult, masteryResult, activityResult] = await Promise.all([
-    supabase.from('user_progress').upsert({ user_id: userId, stats }, { onConflict: 'user_id' }),
-    supabase.from('verse_mastery').upsert(
+    client.from('user_progress').upsert({ user_id: userId, stats }, { onConflict: 'user_id' }),
+    client.from('verse_mastery').upsert(
       Object.values(mastery).map((verse) => ({
         user_id: userId,
         surah_number: verse.surahNumber,
@@ -245,7 +264,7 @@ async function uploadProgressSnapshot(generation = syncGeneration): Promise<void
       })),
       { onConflict: 'user_id,surah_number,ayah_number' },
     ),
-    supabase.from('daily_activity').upsert(
+    client.from('daily_activity').upsert(
       activity.map((day) => ({
         user_id: userId,
         activity_date: day.date,
@@ -255,7 +274,20 @@ async function uploadProgressSnapshot(generation = syncGeneration): Promise<void
       { onConflict: 'user_id,activity_date' },
     ),
   ]);
+
+  // Phase 2 double write: the normalized schema receives the same snapshot.
+  const normalizedError = await saveNormalizedProgress(client, userId, {
+    stats,
+    mastery,
+    dailyVerseGoal: getDailyVerseGoal(),
+    reminder: getRevisionReminderSettings(),
+  }).then(
+    () => null,
+    (error: unknown) => error,
+  );
+
   if (storageUserId !== userId || syncGeneration !== generation) return;
+  if (normalizedError) warnNormalizedSync(normalizedError);
   const error = statsResult.error || masteryResult.error || activityResult.error;
   if (error) {
     notifySyncStatus('error', error);
@@ -294,14 +326,28 @@ export async function syncProgressFromCloud(
 
   const localStats = getUserStats();
   const remoteStats = (statsResult.data?.stats as UserStats | undefined) ?? null;
-  const mergedStats = mergeStats(localStats, remoteStats);
+
+  // Phase 2: read the normalized snapshot too. On a first run after the
+  // migration it is empty, and the merged legacy data is written back to it.
+  const normalized = await fetchNormalizedProgress(supabase, userId, localStats.level).catch(
+    (normalizedError: unknown) => {
+      warnNormalizedSync(normalizedError);
+      return null;
+    },
+  );
+  if (storageUserId !== userId || syncGeneration !== generation) return;
+
+  const mergedStats = mergeStats(mergeStats(localStats, remoteStats), normalized?.stats ?? null);
   const remoteMastery = Object.fromEntries(
     (masteryResult.data ?? []).map((row) => {
       const mastery = row.mastery as VerseMastery;
       return [`${mastery.surahNumber}_${mastery.ayahNumber}`, mastery];
     }),
   ) as Record<string, VerseMastery>;
-  const mergedMastery = mergeMastery(getVerseMasteryMap(), remoteMastery);
+  const mergedMastery = mergeMastery(
+    mergeMastery(getVerseMasteryMap(), remoteMastery),
+    normalized?.mastery ?? {},
+  );
   const activityByDate = new Map(readLocalDailyActivity().map((day) => [day.date, day]));
   for (const row of activityResult.data ?? []) {
     const date = row.activity_date as string;
@@ -318,6 +364,18 @@ export async function syncProgressFromCloud(
     saveUserStats(mergedStats);
     saveVerseMasteryMap(mergedMastery);
     saveDailyActivity([...activityByDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
+
+    // Settings live in `profiles` now. Adopt the remote value only when this
+    // device never stored an explicit preference, so a fresh install inherits
+    // the account settings without overwriting local choices.
+    if (normalized?.profile) {
+      if (readRaw(storageKey(DAILY_GOAL_KEY)) === null) {
+        saveDailyVerseGoal(normalized.profile.dailyVerseGoal);
+      }
+      if (readRaw(storageKey(REVISION_REMINDER_KEY)) === null) {
+        saveRevisionReminderSettings(normalized.profile.reminder);
+      }
+    }
   } finally {
     isHydratingFromCloud = false;
   }
@@ -454,7 +512,9 @@ function createDefaultStats(): UserStats {
     points: 0,
     level: 'مبتدئ',
     streakDays: 0,
-    lastActiveDate: new Date().toISOString(),
+    // A brand-new account has not recited yet. Keeping the field empty lets the
+    // merge prefer a real remote date instead of "now".
+    lastActiveDate: '',
     totalVersesRecited: 0,
     totalRecitedSeconds: 0,
     accuracyRate: 0,
@@ -471,10 +531,7 @@ function normalizeStats(value: unknown): UserStats {
     points,
     level: typeof value.level === 'string' && value.level ? value.level : resolveLevel(points),
     streakDays: asNonNegativeInteger(value.streakDays),
-    lastActiveDate:
-      typeof value.lastActiveDate === 'string'
-        ? value.lastActiveDate
-        : new Date().toISOString(),
+    lastActiveDate: typeof value.lastActiveDate === 'string' ? value.lastActiveDate : '',
     totalVersesRecited: asNonNegativeInteger(value.totalVersesRecited),
     totalRecitedSeconds: Math.max(0, asFiniteNumber(value.totalRecitedSeconds)),
     accuracyRate: Math.max(0, asFiniteNumber(value.accuracyRate)),

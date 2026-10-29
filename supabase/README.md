@@ -7,9 +7,10 @@ Le dossier `supabase/` contient deux migrations **additives** :
 | 1     | [`20261015200000_progress_sync.sql`](migrations/20261015200000_progress_sync.sql)                     | Tables de synchronisation historiques : `user_progress`, `verse_mastery`, `daily_activity`. |
 | 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs. |
 
-La migration 2 ne supprime rien. Le client actuel continue d'utiliser les tables
-historiques jusqu'à la migration de la couche de synchronisation (voir
-[Phase 2](#phase-2--migration-du-client)).
+La migration 2 ne supprime rien. Le client écrit dans les deux modèles et lit
+les deux à la connexion ; les tables historiques restent autoritaires jusqu'à la
+bascule des lectures (voir
+[Phase 2](#phase-2--double-écriture-et-reprise-des-données)).
 
 ## Modèle relationnel
 
@@ -281,25 +282,51 @@ select tablename, policyname, cmd, roles
  order by tablename, policyname;
 ```
 
-## Phase 2 — migration du client
+## Phase 2 — double écriture et reprise des données
 
-Le client actuel (`src/services/storageService.ts`) synchronise encore :
+Le client (`src/services/storageService.ts`) écrit désormais **les deux modèles à
+chaque synchronisation**. Le modèle historique reste autoritaire : une erreur sur
+le schéma normalisé est journalisée une seule fois par
+`warnNormalizedSync`, sans changer le statut de synchronisation affiché à
+l'utilisateur.
 
-- `user_progress.stats` (JSON) ;
-- `verse_mastery.mastery` (JSON par verset) ;
-- `daily_activity`.
-
-Correspondance prévue :
+Correspondance appliquée par `src/services/normalizedProgressService.ts` :
 
 | Client actuel                                                                | Modèle normalisé                      |
 | ---------------------------------------------------------------------------- | ------------------------------------- |
 | `UserStats`                                                                  | `user_stats`                          |
+| `dailyVerseGoal`, rappel de révision                                         | `profiles`                            |
 | `VerseMastery.level`                                                         | `memorization_progress.status`        |
 | `VerseMastery.consecutiveSuccessCount`, `mistakeCount`                       | colonnes de `memorization_progress`   |
 | `VerseMastery.repetitionCount`, `easeFactor`, `intervalDays`, `nextReviewAt` | `review_schedule`                     |
 | `VerseMastery.recentMistakes`                                                | `recitation_errors` (via une session) |
 | `daily_activity`                                                             | `daily_activity`                      |
 
-La migration devra être progressive : double écriture, reprise des données
-existantes, vérification des compteurs, puis bascule des lectures. Les tables
-historiques ne seront supprimées qu'après une période de validation.
+Les versets restent identifiés côté client par `surahNumber:ayahNumber`. Le pont
+traduit cette clé en `ayahs.id` grâce à un index chargé paginé (1 000 lignes par
+requête) et mis en cache dans `localStorage` sous `murattil_ayah_index:v1` ;
+`resetAyahIndexCache()` invalide ce cache.
+
+Comportement de reprise lors d'une connexion :
+
+1. Lecture des tables historiques **et** du snapshot normalisé.
+2. Fusion : maximum pour les compteurs, version la plus récente pour chaque
+   verset (`lastReviewedAt`), date d'activité la plus récente — un compte neuf
+   n'a pas de date d'activité et n'écrase donc pas une date distante.
+3. Les réglages (`daily_verse_goal`, rappel) sont repris depuis `profiles`
+   uniquement si l'appareil n'a jamais enregistré de préférence locale.
+4. Le résultat fusionné est réécrit dans les deux modèles : un utilisateur qui
+   n'avait utilisé que l'ancien client est ainsi repris dans le schéma normalisé
+   dès sa première connexion.
+
+Couverture : `src/services/normalizedProgressService.test.ts` (mapping,
+pagination, cache, conversion des `numeric` PostgREST) et
+`src/services/progressSync.test.ts` (double écriture, reprise legacy, reprise du
+normalisé, priorité des réglages locaux).
+
+### Étapes suivantes
+
+La migration reste progressive : après une période de validation des compteurs
+en production, les lectures basculeront sur le schéma normalisé, puis l'écriture
+historique sera arrêtée. Les tables `user_progress`, `verse_mastery` et
+`daily_activity` ne seront supprimées qu'après cette bascule.

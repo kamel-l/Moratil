@@ -53,6 +53,8 @@ Le schéma normalisé, les relations, les politiques RLS et la procédure d'impo
 
 Le progrès local est conservé en cas d'échec de synchronisation et retenté à la session suivante. Le premier compte connecté reprend l'ancien progrès local ; les comptes suivants disposent d'un stockage séparé.
 
+Depuis la phase 2, chaque synchronisation alimente simultanément le schéma historique et le schéma normalisé, et la connexion fusionne les deux sources. Le modèle historique reste autoritaire jusqu'à la bascule des lectures ; voir la section [Phase 2](supabase/README.md#phase-2--double-écriture-et-reprise-des-données) pour le détail et les étapes restantes.
+
 ## Scripts
 
 | Commande                         | Rôle                                                                |
