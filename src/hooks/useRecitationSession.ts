@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { QuranWordMeta } from '../utils/arabicUtils';
-import { normalizeArabicText, wordSimilarity } from '../utils/arabicUtils';
+import { normalizeArabicText } from '../utils/arabicUtils';
 
 export interface RecognitionState {
   currentWordIdx: number;

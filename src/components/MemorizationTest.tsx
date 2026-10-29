@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import {
   CheckCircle2, XCircle, RotateCcw, Trophy, Play,
   Eye, EyeOff, StopCircle, CalendarClock, Sparkles,
@@ -10,6 +8,7 @@ import { Surah, Reciter } from '../types/quran';
 import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
+import { nowMs, useSpeechRecognition } from '../hooks/useSpeechRecognition';
 
 function isBasmalahPrefix(words: { original: string }[]): boolean {
   if (words.length < 4) return false;
@@ -32,7 +31,6 @@ interface MemorizationTestProps {
   surah: Surah;
   selectedReciter: Reciter;
   onStatsUpdate: () => void;
-  embedded?: boolean;
 }
 
 type TestPhase = 'setup' | 'testing' | 'results';
@@ -41,7 +39,6 @@ type HintMode = 'blind' | 'letter';
 export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   surah,
   onStatsUpdate,
-  embedded = false,
 }) => {
   const [phase, setPhase] = useState<TestPhase>('setup');
   const [hintMode, setHintMode] = useState<HintMode>('blind');
@@ -49,24 +46,11 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const [endAyah, setEndAyah] = useState(() => Math.min(3, surah.ayahs.length));
   const [currentTestAyah, setCurrentTestAyah] = useState(1);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
-  const [isListening, setIsListening] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [endedAt, setEndedAt] = useState(0);
 
   // Refs
-  const recognitionRef = useRef<any>(null);
-  const incomingSpeechHandlerRef = useRef<
-    (text: string, confidence?: number) => { completed: boolean; isFlawless: boolean } | undefined
-  >(() => undefined);
-  const verseCompletionHandlerRef = useRef<(isFlawless: boolean) => void>(() => {});
-  const nativeRecognitionRunnerRef = useRef<() => Promise<void>>(async () => {});
-  const nativeRecognitionActiveRef = useRef(false);
-  const recognitionEnabledRef = useRef(false);
-  const recognitionRequestIdRef = useRef(0);
-  const isAyahCompletedRef = useRef(false);
   const completionHandledRef = useRef(false);
-  const cooldownUntilRef = useRef(0);
-  const currentWordIdxForAltRef = useRef(0);
   const phaseRef = useRef<TestPhase>('setup');
 
   useEffect(() => {
@@ -91,26 +75,34 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
   const {
     currentWordIdx,
+    currentWordIdxRef,
     matchedWords,
+    failedWords,
+    failedWordsRef,
     isAyahCompleted,
     completionLockRef,
     handleIncomingSpokenText,
     resetRecitationState,
-    failedWordsRef,
   } = useRecitationSession(verseWords);
 
-  useEffect(() => {
-    currentWordIdxForAltRef.current = currentWordIdx;
-  }, [currentWordIdx]);
+  const {
+    isListening,
+    start: startRecognition,
+    stop: stopRecognition,
+    setCooldown,
+  } = useSpeechRecognition({
+    onTranscript: handleIncomingSpokenText,
+    onComplete: handleVerseComplete,
+    getCurrentWordIndex: () => currentWordIdxRef.current,
+    shouldListen: () => phaseRef.current === 'testing',
+  });
 
   useEffect(() => {
     if (phase !== 'testing') return;
     completionHandledRef.current = false;
-    isAyahCompletedRef.current = false;
     completionLockRef.current = false;
     resetRecitationState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTestAyah, phase]);
+  }, [currentTestAyah, phase, completionLockRef, resetRecitationState]);
 
   useEffect(() => {
     setPhase('setup');
@@ -118,11 +110,8 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
     setEndAyah(Math.min(3, surah.ayahs.length));
     setCurrentTestAyah(1);
     setTestResults([]);
-    setIsListening(false);
-    recognitionEnabledRef.current = false;
-    nativeRecognitionActiveRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surah.number]);
+    void stopRecognition();
+  }, [surah.number, surah.ayahs.length, stopRecognition]);
 
   // إتمام آية
   function handleVerseComplete(isFlawless: boolean) {
@@ -146,281 +135,31 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
     onStatsUpdate();
 
     if (currentTestAyah < endAyah) {
-      cooldownUntilRef.current = Date.now() + 200;
+      setCooldown();
       setCurrentTestAyah((prev) => prev + 1);
     } else {
       void finalizeTest();
     }
   }
-  verseCompletionHandlerRef.current = handleVerseComplete;
 
   async function finalizeTest() {
-    setEndedAt(Date.now());
+    setEndedAt(nowMs());
     setPhase('results');
-    await stopListeningInternal();
-  }
-
-  // التعرف الصوتي — الويب
-  useEffect(() => {
-    if (Capacitor.isNativePlatform()) return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-
-    try {
-      const recognition = new SR();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 3;
-      recognition.lang = 'ar-SA';
-
-      recognition.onstart = () => {
-        if (recognitionEnabledRef.current) setIsListening(true);
-      };
-      recognition.onend = () => {
-        if (recognitionEnabledRef.current && phaseRef.current === 'testing') {
-          setTimeout(() => {
-            if (recognitionEnabledRef.current && phaseRef.current === 'testing') {
-              try {
-                recognition.start();
-                setIsListening(true);
-              } catch (e) {
-                if (e instanceof DOMException && e.name === 'InvalidStateError') {
-                  setIsListening(true);
-                  return;
-                }
-                recognitionEnabledRef.current = false;
-                setIsListening(false);
-              }
-            }
-          }, 250);
-          return;
-        }
-        setIsListening(false);
-      };
-      recognition.onerror = (event: any) => {
-        if (
-          ['not-allowed', 'service-not-allowed', 'audio-capture', 'network'].includes(event.error)
-        ) {
-          recognitionEnabledRef.current = false;
-          setIsListening(false);
-          try {
-            recognitionRef.current?.stop();
-          } catch (e) {
-            /* ignore */
-          }
-        }
-      };
-      recognition.onresult = (event: any) => {
-        if (!recognitionEnabledRef.current) return;
-        if (phaseRef.current !== 'testing') return;
-        if (Date.now() < cooldownUntilRef.current) return;
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const result = event.results[i];
-          if (!result.isFinal) continue;
-          const maxAlts = Math.min(result.length, 3);
-          let progressed = false;
-          for (let alt = 0; alt < maxAlts; alt++) {
-            const transcript = result[alt].transcript.trim();
-            const confidence = result[alt].confidence ?? 0.5;
-            if (!transcript) continue;
-            const beforeIdx = currentWordIdxForAltRef.current;
-            const nextState = incomingSpeechHandlerRef.current(transcript, confidence);
-            if (nextState?.completed) {
-              verseCompletionHandlerRef.current(nextState.isFlawless);
-              return;
-            }
-            if (currentWordIdxForAltRef.current > beforeIdx) {
-              progressed = true;
-              break;
-            }
-          }
-          if (progressed) break;
-        }
-      };
-      recognitionRef.current = recognition;
-    } catch (e) {
-      console.warn('[Test SR] init error:', e);
-    }
-
-    return () => {
-      recognitionRequestIdRef.current += 1;
-      recognitionEnabledRef.current = false;
-      if (recognitionRef.current) recognitionRef.current.abort();
-    };
-  }, []);
-
-  incomingSpeechHandlerRef.current = handleIncomingSpokenText;
-
-  // التعرف الصوتي — الجوال
-  const listenWithNativeRecognition = async () => {
-    if (!nativeRecognitionActiveRef.current) return;
-    try {
-      const { matches } = await SpeechRecognition.start({
-        language: 'ar-SA',
-        maxResults: 3,
-        partialResults: false,
-        popup: false,
-      });
-      if (!nativeRecognitionActiveRef.current) return;
-
-      if (phaseRef.current === 'testing' && Date.now() >= cooldownUntilRef.current) {
-        const alts = (matches || []).slice(0, 3);
-        for (const raw of alts) {
-          const text = raw?.trim();
-          if (!text) continue;
-          const beforeIdx = currentWordIdxForAltRef.current;
-          const nextState = incomingSpeechHandlerRef.current(text);
-          if (nextState?.completed) {
-            verseCompletionHandlerRef.current(nextState.isFlawless);
-            break;
-          }
-          if (currentWordIdxForAltRef.current > beforeIdx) break;
-        }
-      }
-
-      if (nativeRecognitionActiveRef.current) {
-        setTimeout(() => {
-          if (nativeRecognitionActiveRef.current) void nativeRecognitionRunnerRef.current();
-        }, 200);
-      }
-    } catch (error: any) {
-      const msg = String(error?.message || error || '').toLowerCase();
-      const isSilence =
-        msg.includes('no match') ||
-        msg.includes('speech timeout') ||
-        msg.includes('no speech') ||
-        msg.includes('timed out');
-      if (isSilence && nativeRecognitionActiveRef.current) {
-        setTimeout(() => {
-          if (nativeRecognitionActiveRef.current) void nativeRecognitionRunnerRef.current();
-        }, 600);
-        return;
-      }
-      nativeRecognitionActiveRef.current = false;
-      recognitionEnabledRef.current = false;
-      setIsListening(false);
-    }
-  };
-  nativeRecognitionRunnerRef.current = listenWithNativeRecognition;
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let handle: any = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        handle = await SpeechRecognition.addListener(
-          'listeningState',
-          (data: { status: 'started' | 'stopped' }) => {
-            if (cancelled) return;
-            if (
-              data.status === 'stopped' &&
-              nativeRecognitionActiveRef.current &&
-              phaseRef.current === 'testing'
-            ) {
-              setTimeout(() => {
-                if (nativeRecognitionActiveRef.current && phaseRef.current === 'testing') {
-                  void nativeRecognitionRunnerRef.current();
-                }
-              }, 300);
-            }
-          },
-        );
-      } catch (e) {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (handle) handle.remove().catch(() => {});
-    };
-  }, []);
-
-  // بدء / إيقاف
-  async function startListeningInternal() {
-    recognitionEnabledRef.current = true;
-    recognitionRequestIdRef.current += 1;
-    const reqId = recognitionRequestIdRef.current;
-    setIsListening(true);
-    cooldownUntilRef.current = 0;
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const { available } = await SpeechRecognition.available();
-        if (reqId !== recognitionRequestIdRef.current) return;
-        if (!available) {
-          recognitionEnabledRef.current = false;
-          setIsListening(false);
-          return;
-        }
-        let perm = await SpeechRecognition.checkPermissions();
-        if (perm.speechRecognition !== 'granted')
-          perm = await SpeechRecognition.requestPermissions();
-        if (reqId !== recognitionRequestIdRef.current) return;
-        if (perm.speechRecognition !== 'granted') {
-          recognitionEnabledRef.current = false;
-          setIsListening(false);
-          return;
-        }
-        nativeRecognitionActiveRef.current = true;
-        void listenWithNativeRecognition();
-      } catch (e) {
-        recognitionEnabledRef.current = false;
-        setIsListening(false);
-      }
-      return;
-    }
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        if (e instanceof DOMException && e.name === 'InvalidStateError') return;
-        recognitionEnabledRef.current = false;
-        setIsListening(false);
-      }
-    } else {
-      recognitionEnabledRef.current = false;
-      setIsListening(false);
-    }
-  }
-
-  async function stopListeningInternal() {
-    recognitionRequestIdRef.current += 1;
-    recognitionEnabledRef.current = false;
-    if (Capacitor.isNativePlatform()) {
-      if (nativeRecognitionActiveRef.current) {
-        nativeRecognitionActiveRef.current = false;
-        try {
-          await SpeechRecognition.stop();
-        } catch (e) {
-          /* ignore */
-        }
-      }
-    } else if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        /* ignore */
-      }
-    }
-    setIsListening(false);
+    await stopRecognition();
   }
 
   async function startTest() {
     if (startAyah < 1 || endAyah > surah.ayahs.length || startAyah > endAyah) return;
     setTestResults([]);
     setCurrentTestAyah(startAyah);
-    setStartedAt(Date.now());
+    setStartedAt(nowMs());
     setEndedAt(0);
     completionHandledRef.current = false;
-    isAyahCompletedRef.current = false;
     completionLockRef.current = false;
     resetRecitationState();
     setPhase('testing');
     setTimeout(() => {
-      void startListeningInternal();
+      void startRecognition();
     }, 300);
   }
 
@@ -448,13 +187,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const durationStr = `${Math.floor(durationSec / 60)}:${(durationSec % 60)
     .toString()
     .padStart(2, '0')}`;
-
-  const scoreColor =
-    accuracyPercent >= 80
-      ? 'text-emerald-600'
-      : accuracyPercent >= 50
-      ? 'text-amber-600'
-      : 'text-rose-600';
 
   const scoreBadge =
     accuracyPercent >= 80
@@ -685,7 +417,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     <div className="flex flex-wrap gap-1.5">
                       {verseWords.map((_, idx) => {
                         const isMatched = matchedWords.includes(idx);
-                        const isFailed = idx in failedWordsRef.current;
+                        const isFailed = idx in failedWords;
                         const isCurrent = idx === currentWordIdx && !isAyahCompleted;
                         return (
                           <div
@@ -713,7 +445,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       <div className="text-center text-lg font-quran leading-loose flex flex-wrap gap-2 justify-center">
                         {verseWords.map((w, idx) => {
                           const isMatched = matchedWords.includes(idx);
-                          const isFailed = idx in failedWordsRef.current;
+                          const isFailed = idx in failedWords;
                           const isCurrent = idx === currentWordIdx && !isAyahCompleted;
                           const firstLetter = w.original[0] || '';
                           return (

@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Check,
   Eye,
   EyeOff,
   Headphones,
+  Loader2,
   Pause,
   Play,
   RotateCcw,
@@ -15,6 +16,7 @@ import { getSurahWithAyahs } from '../data/quranData';
 import { SurahMeta } from '../data/quranSurahsList';
 import { getAyahAudioUrl, POPULAR_RECITERS } from '../utils/audioReciters';
 import { removeOpeningBasmalah } from '../utils/arabicUtils';
+import { Button, PageHero } from './ui';
 
 interface MemorizationModeProps {
   allSurahs: SurahMeta[];
@@ -27,6 +29,7 @@ interface PlaybackSession {
   repetitions: number;
   ayahIndex: number;
   repetition: number;
+  scope: 'unit' | 'passage';
 }
 
 function splitIntoUnits(ayahs: Ayah[], unitSize: number): Ayah[][] {
@@ -55,7 +58,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -100,8 +103,9 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   useEffect(() => {
     if (!playbackSession || !surah) return;
 
-    const audio = audioRef.current ?? new Audio();
-    audioRef.current = audio;
+    const audio = audioRef.current;
+    if (!audio) return;
+
     const ayahNumber = playbackSession.ayahNumbers[playbackSession.ayahIndex];
     audio.src = getAyahAudioUrl(selectedReciter.id, surah.number, ayahNumber);
     audio.onended = () => {
@@ -137,9 +141,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
   useEffect(
     () => () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
       }
     },
     [],
@@ -154,16 +159,17 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   );
   const units = useMemo(() => splitIntoUnits(selectedAyahs, unitSize), [selectedAyahs, unitSize]);
 
-  const stopPlayback = () => {
+  const stopPlayback = useCallback(() => {
     setPlaybackSession(null);
     setPlaybackError(null);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
     }
-  };
+  }, []);
 
-  const playAyahs = (ayahs: Ayah[]) => {
+  const playAyahs = (ayahs: Ayah[], scope: PlaybackSession['scope']) => {
     if (ayahs.length === 0) return;
     setPlaybackError(null);
     setPlaybackSession({
@@ -171,6 +177,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
       repetitions: repeatCount,
       ayahIndex: 0,
       repetition: 0,
+      scope,
     });
   };
 
@@ -198,24 +205,19 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   };
 
   const maxAyah = surah?.ayahs.length ?? 1;
+  const activeScope = playbackSession?.scope ?? null;
+  const activeUnitStart = activeScope === 'unit' ? playbackSession?.ayahNumbers[0] : undefined;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6" dir="rtl">
-      <section className="rounded-3xl bg-emerald-950 px-6 py-7 text-white shadow-sm sm:px-9">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-emerald-900 p-3 text-amber-200">
-            <BookOpen className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-amber-200">خطوة خطوة، آية آية</p>
-            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">وضع الحفظ</h1>
-          </div>
-        </div>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-emerald-100">
-          اختر مقطعك، استمع إلى وحداته القصيرة ورددها، ثم أخفِ الآيات تدريجيًا واختبر حفظك في تسميع
-          كامل.
-        </p>
-      </section>
+      <audio ref={audioRef} preload="metadata" className="hidden" />
+
+      <PageHero
+        eyebrow="خطوة خطوة، آية آية"
+        icon={<BookOpen className="h-4 w-4" />}
+        title="وضع الحفظ"
+        description="اختر مقطعك، استمع إلى وحداته القصيرة ورددها، ثم أخفِ الآيات تدريجيًا واختبر حفظك في تسميع كامل."
+      />
 
       <section className="grid gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-xs sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-2 text-sm font-semibold text-stone-700">
@@ -289,7 +291,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
       </section>
 
       {isLoading && (
-        <p className="rounded-xl border border-stone-200 bg-white p-4 text-center text-sm text-stone-600">
+        <p
+          className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white p-4 text-center text-sm text-stone-600"
+          role="status"
+        >
+          <Loader2 className="h-4 w-4 animate-spin text-emerald-700" />
           جارٍ تحميل آيات السورة...
         </p>
       )}
@@ -366,82 +372,92 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               </button>
             </div>
 
-            {units.map((unit, unitIndex) => (
-              <article
-                key={unit[0].numberInSurah}
-                className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:p-5"
-              >
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-bold text-emerald-900">
-                    الوحدة {(unitIndex + 1).toLocaleString('ar-EG')}
-                    <span className="mr-2 font-normal text-stone-500">
-                      الآيات {unit[0].numberInSurah.toLocaleString('ar-EG')}–
-                      {unit[unit.length - 1].numberInSurah.toLocaleString('ar-EG')}
-                    </span>
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => (playbackSession ? stopPlayback() : playAyahs(unit))}
-                    className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
-                    aria-label={
-                      playbackSession ? 'إيقاف التلاوة' : `استماع إلى الوحدة ${unitIndex + 1}`
-                    }
-                  >
-                    {playbackSession ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Headphones className="h-4 w-4" />
-                    )}
-                    {playbackSession ? 'إيقاف' : 'استمع وردد'}
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {unit.map((ayah) => {
-                    const passageIndex = ayah.numberInSurah - startAyah;
-                    const isHidden =
-                      isFullRecitation ||
-                      passageIndex < hiddenAyahCount ||
-                      revealedAyahs.has(ayah.numberInSurah);
-                    const shouldMask = isFullRecitation
-                      ? !revealedAyahs.has(ayah.numberInSurah)
-                      : passageIndex < hiddenAyahCount && !revealedAyahs.has(ayah.numberInSurah);
+            {units.map((unit, unitIndex) => {
+              const isUnitPlaying =
+                activeScope === 'unit' && activeUnitStart === unit[0].numberInSurah;
 
-                    return (
-                      <div
-                        key={ayah.numberInSurah}
-                        className="flex items-start gap-3 rounded-xl bg-stone-50 p-3 sm:p-4"
-                      >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white text-xs font-bold text-emerald-800">
-                          {ayah.numberInSurah.toLocaleString('ar-EG')}
-                        </span>
-                        <p
-                          className={`font-quran flex-1 text-right text-xl leading-[2.2] text-stone-900 sm:text-2xl ${
-                            shouldMask ? 'select-none blur-sm' : ''
-                          }`}
+              return (
+                <article
+                  key={unit[0].numberInSurah}
+                  className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:p-5"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-bold text-emerald-900">
+                      الوحدة {(unitIndex + 1).toLocaleString('ar-EG')}
+                      <span className="mr-2 font-normal text-stone-500">
+                        الآيات {unit[0].numberInSurah.toLocaleString('ar-EG')}–
+                        {unit[unit.length - 1].numberInSurah.toLocaleString('ar-EG')}
+                      </span>
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant={isUnitPlaying ? 'danger' : 'primary'}
+                      icon={
+                        isUnitPlaying ? (
+                          <Pause className="h-4 w-4" />
+                        ) : (
+                          <Headphones className="h-4 w-4" />
+                        )
+                      }
+                      onClick={() => {
+                        if (isUnitPlaying) stopPlayback();
+                        else playAyahs(unit, 'unit');
+                      }}
+                      aria-label={
+                        isUnitPlaying ? 'إيقاف التلاوة' : `استماع إلى الوحدة ${unitIndex + 1}`
+                      }
+                    >
+                      {isUnitPlaying ? 'إيقاف' : 'استمع وردد'}
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {unit.map((ayah) => {
+                      const passageIndex = ayah.numberInSurah - startAyah;
+                      const isHidden =
+                        isFullRecitation ||
+                        passageIndex < hiddenAyahCount ||
+                        revealedAyahs.has(ayah.numberInSurah);
+                      const shouldMask = isFullRecitation
+                        ? !revealedAyahs.has(ayah.numberInSurah)
+                        : passageIndex < hiddenAyahCount && !revealedAyahs.has(ayah.numberInSurah);
+
+                      return (
+                        <div
+                          key={ayah.numberInSurah}
+                          className="flex items-start gap-3 rounded-xl bg-stone-50 p-3 sm:p-4"
                         >
-                          {ayah.text}
-                        </p>
-                        {isHidden && (
-                          <button
-                            type="button"
-                            onClick={() => toggleRevealedAyah(ayah.numberInSurah)}
-                            className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[11px] font-semibold text-stone-600 hover:bg-stone-100"
-                            aria-label={shouldMask ? 'إظهار الآية' : 'إخفاء الآية'}
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white text-xs font-bold text-emerald-800">
+                            {ayah.numberInSurah.toLocaleString('ar-EG')}
+                          </span>
+                          <p
+                            className={`font-quran flex-1 text-right text-xl leading-[2.2] text-stone-900 sm:text-2xl ${
+                              shouldMask ? 'select-none blur-sm' : ''
+                            }`}
                           >
-                            {shouldMask ? (
-                              <Eye className="h-3.5 w-3.5" />
-                            ) : (
-                              <EyeOff className="h-3.5 w-3.5" />
-                            )}
-                            {shouldMask ? 'أظهر' : 'أخفِ'}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </article>
-            ))}
+                            {ayah.text}
+                          </p>
+                          {isHidden && (
+                            <button
+                              type="button"
+                              onClick={() => toggleRevealedAyah(ayah.numberInSurah)}
+                              className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+                              aria-label={shouldMask ? 'إظهار الآية' : 'إخفاء الآية'}
+                            >
+                              {shouldMask ? (
+                                <Eye className="h-3.5 w-3.5" />
+                              ) : (
+                                <EyeOff className="h-3.5 w-3.5" />
+                              )}
+                              {shouldMask ? 'أظهر' : 'أخفِ'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
           </section>
 
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
@@ -456,26 +472,32 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
+                <Button
+                  icon={<Check className="h-4 w-4" />}
                   onClick={() => {
                     stopPlayback();
                     setIsFullRecitation(true);
                     setRevealedAyahs(new Set());
                   }}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-xs font-bold text-white hover:bg-emerald-700"
                 >
-                  <Check className="h-4 w-4" />
                   ابدأ التسميع الكامل
-                </button>
-                <button
-                  type="button"
-                  onClick={() => (playbackSession ? stopPlayback() : playAyahs(selectedAyahs))}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-xs font-bold text-emerald-900 hover:bg-emerald-100"
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={
+                    activeScope === 'passage' ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )
+                  }
+                  onClick={() => {
+                    if (activeScope === 'passage') stopPlayback();
+                    else playAyahs(selectedAyahs, 'passage');
+                  }}
                 >
-                  {playbackSession ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  {playbackSession ? 'إيقاف' : 'استمع للمقطع'}
-                </button>
+                  {activeScope === 'passage' ? 'إيقاف' : 'استمع للمقطع'}
+                </Button>
               </div>
             </div>
             {(isFullRecitation || hiddenAyahCount > 0) && (

@@ -109,7 +109,6 @@ export const RecitationTabs: React.FC<RecitationTabsProps> = ({
             surah={surah}
             selectedReciter={selectedReciter}
             onStatsUpdate={onStatsUpdate}
-            embedded
           />
         )}
       </main>

@@ -1,6 +1,13 @@
 import { Surah, Ayah } from '../types/quran';
 import { ALL_SURAHS } from './quranSurahsList';
 
+interface ApiAyah {
+  numberInSurah: number;
+  text: string;
+  juz: number;
+  page: number;
+}
+
 // Core pre-loaded surahs with Uthmani Arabic script and authentic Tafsir Al-Muyassar (التفسير الميسر)
 export const PRELOADED_SURAHS: Record<number, Surah> = {
   1: {
@@ -903,7 +910,7 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
           throw new Error(`Incomplete ayah data returned for surah ${surahNumber}.`);
         }
 
-        const ayahs: Ayah[] = textEdition.ayahs.map((item: any, idx: number) => {
+        const ayahs: Ayah[] = (textEdition.ayahs as ApiAyah[]).map((item, idx: number) => {
           const tafsirItem = tafsirEdition.ayahs[idx];
           return {
             numberInSurah: item.numberInSurah,

@@ -1,75 +1,112 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# مُرتِّل — Murattil
 
-# Run and deploy your AI Studio app
+Application web de mémorisation et de révision du Coran, en arabe (RTL), pensée pour le mobile et empaquetable avec Capacitor pour Android.
 
-This contains everything you need to run your app locally.
+## Fonctionnalités
 
-View your app in AI Studio: https://ai.studio/apps/de034915-7fd9-444a-a842-fcaf8114d74c
+- **Récitation guidée** : suivi de la récitation à la voix, progression automatique entre les versets et mise en évidence des écarts détectés.
+- **Mode mémorisation** : découpage du passage en unités, écoute répétée, masquage progressif et récitation complète de mémoire.
+- **Révision espacée (SM-2)** : plans de révision, échéances calculées, rappels locaux et suivi des versets à consolider.
+- **Explorateur de sourates** : recherche, filtres (Juz 30, mecquoise, médinoise), lecture avec le Tafsir Al-Muyassar et lecture audio.
+- **Statistiques** : activité hebdomadaire, répartition de la maîtrise, erreurs récurrentes et objectif quotidien.
+- **Récompenses et défis** : points, niveaux, badges et défis de récitation.
+- **Synchronisation Supabase** : sauvegarde du progrès par compte, avec reprise locale si le réseau est indisponible.
 
-## Run Locally
+## Stack
 
-**Prerequisites:** Node.js
+- React 19 + TypeScript + Vite
+- Tailwind CSS v4
+- lucide-react
+- Vitest + Testing Library (jsdom)
+- Capacitor (Android)
+- Supabase (authentification et synchronisation)
 
-1. Install dependencies:
-   `npm install`
-2. Configure Supabase Authentication:
-   - Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from Supabase **Project Settings > API**.
-   - Enable email authentication in Supabase **Authentication > Providers** and configure email confirmation as desired.
-   - Set the app's local/deployed URL in **Authentication > URL Configuration** so confirmation and password-reset links return to the app.
-   - Apply [`supabase/migrations/20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql) in the Supabase SQL Editor to create the progress tables and per-user RLS policies.
-   - Restart the development server after changing environment variables.
-3. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key.
-4. Run the app:
-   `npm run dev`
+## Démarrage
 
-Users can create an account, sign in, and request a password-reset email. Progress, verse mastery, and daily recitation activity are stored locally and synchronized to Supabase when connected. Local progress is retained when synchronization fails and retried on the next app session. Legacy local progress is adopted by the first account that signs in after this update; subsequent accounts use separate local storage. Never put a Supabase `service_role` key in the frontend; use only the anon or publishable key.
+**Prérequis :** Node.js 20 ou supérieur.
 
-## Quran Whisper service
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-Recitation uses continuous speech recognition by default: start once and the app advances through ayahs automatically. The optional Whisper mode analyzes one recorded ayah at a time after you stop the recording.
+L'application est disponible sur `http://localhost:3000`.
 
-To use the dedicated recitation recognizer, set `VITE_QURAN_ASR_URL` to your HTTPS Whisper transcription endpoint and `VITE_QURAN_ASR_MODEL` to the model identifier accepted by that service. The app records one ayah locally and uploads it when recording stops, along with the surah/ayah context. The service must accept multipart fields `file`, `model`, `language`, `response_format`, `surah_number`, and `ayah_number`, validate the Supabase access token sent as a Bearer token, and return JSON shaped as `{ "text": "recognized Arabic text" }`. Configure CORS to allow the app origin. Do not put a provider or service secret in a `VITE_` variable; the client does not bundle Whisper weights or host the model.
+### Variables d'environnement
 
-## Révisions et rappels locaux
+| Variable | Description |
+| --- | --- |
+| `VITE_SUPABASE_URL` | URL du projet Supabase |
+| `VITE_SUPABASE_ANON_KEY` | Clé publique `anon` / `publishable` (jamais `service_role`) |
+| `VITE_QURAN_ASR_URL` | Endpoint HTTPS optionnel du service Whisper coranique |
+| `VITE_QURAN_ASR_MODEL` | Identifiant du modèle attendu par ce service |
 
-La révision utilise SM-2 pour calculer la prochaine échéance à partir des récitations réussies ou échouées. Dans l’écran Révision, les utilisateurs peuvent activer un rappel quotidien et choisir son heure locale. Les notifications nécessitent l’autorisation du système et ne sont disponibles que dans une application native; elles sont planifiées lorsqu’il existe des versets à réviser ou une prochaine échéance. Après l’ajout ou la mise à jour du plugin Capacitor, exécutez `npx cap sync android` avant de reconstruire l’application Android.
+### Configuration Supabase
 
-# ERP-NATIVE
+1. Activez l'authentification par e-mail dans **Authentication > Providers**.
+2. Renseignez l'URL locale et l'URL déployée dans **Authentication > URL Configuration**.
+3. Exécutez [`supabase/migrations/20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql) dans le SQL Editor pour créer les tables et les politiques RLS.
+4. Redémarrez le serveur après toute modification des variables d'environnement.
 
-# 1. Installer Capacitor
+Le progrès local est conservé en cas d'échec de synchronisation et retenté à la session suivante. Le premier compte connecté reprend l'ancien progrès local ; les comptes suivants disposent d'un stockage séparé.
 
-npm install @capacitor/core @capacitor/cli
+## Scripts
 
-# 2. Initialiser
+| Commande | Rôle |
+| --- | --- |
+| `npm run dev` | Serveur de développement |
+| `npm run build` | Build de production |
+| `npm run preview` | Prévisualisation du build |
+| `npm run lint` | Vérification TypeScript + ESLint |
+| `npm test` | Tests unitaires Vitest |
+| `npm run format` | Formatage Prettier |
 
-npx cap init
+`postinstall` exécute `scripts/patch-speech-recognition.cjs`, qui adapte le plugin de reconnaissance vocale pour Android.
 
-npm install @capacitor/android
+## Structure du projet
 
-# 3. Ajouter Android
+```text
+src/
+  components/        Écrans et composants UI
+    ui/              Primitives partagées (Button, Modal, Badge, etc.)
+  data/              Sourates préchargées et chargement de l'API
+  hooks/             Hooks partagés (révision, reconnaissance vocale)
+  services/          Stockage local, synchronisation Supabase, rappels
+  types/             Types TypeScript du domaine
+  utils/             Audio, texte arabe, helpers
+supabase/migrations/ Schéma et politiques RLS
+scripts/             Correctifs de build natifs
+```
 
-npx cap add android
+## Reconnaissance vocale
 
-# 4. Modifier webDir dans capacitor.config.json (build ou dist)
+La récitation continue est le mode par défaut : une seule activation permet d'enchaîner les versets. Le mode Whisper optionnel enregistre un verset à la fois et l'envoie à un service compatible OpenAI.
 
-# 5. Construire l'app React
+Le service Whisper doit accepter les champs multipart `file`, `model`, `language`, `response_format`, `surah_number` et `ayah_number`, valider le jeton Supabase envoyé en `Authorization: Bearer`, puis renvoyer `{ "text": "texte arabe reconnu" }`. Configurez CORS pour l'origine de l'application. Ne placez jamais de secret fournisseur dans une variable `VITE_`.
 
-npm run build
+## Révisions et rappels
 
-# 6. Copier les fichiers
+La révision utilise SM-2 pour calculer la prochaine échéance selon la réussite ou l'échec d'une récitation. Depuis l'écran **Révision**, l'utilisateur peut activer un rappel quotidien et choisir son heure locale.
 
-npx cap copy
+Les notifications nécessitent l'autorisation du système et ne fonctionnent que dans une application native. Elles sont planifiées lorsqu'il existe des versets à réviser ou une échéance à venir.
 
-# 7. Ouvrir Android Studio
+## Android (Capacitor)
 
-npx cap open android
-
-./gradlew clean assembleDebug
-
+```bash
 npm run build
 npx cap sync android
-npx cap run android
+npx cap open android
+```
 
-npm run dev
+Après l'ajout ou la mise à jour d'un plugin Capacitor, exécutez `npx cap sync android` avant de reconstruire l'application.
+
+## Qualité
+
+```bash
+npm run lint
+npm test
+npm run build
+```
+
+Les trois commandes doivent passer avant toute publication.

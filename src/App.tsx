@@ -3,21 +3,38 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
-import { VoiceReciter } from './components/VoiceReciter';
-import { RevisionPlans } from './components/RevisionPlans';
-import { SurahExplorer } from './components/SurahExplorer';
-import { CompetitionLeaderboard } from './components/CompetitionLeaderboard';
-import { StatsDashboard } from './components/StatsDashboard';
 import { HomeDashboard } from './components/HomeDashboard';
-import { MemorizationMode } from './components/MemorizationMode';
-import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
+
+const VoiceReciter = lazy(() =>
+  import('./components/VoiceReciter').then((module) => ({ default: module.VoiceReciter })),
+);
+const RevisionPlans = lazy(() =>
+  import('./components/RevisionPlans').then((module) => ({ default: module.RevisionPlans })),
+);
+const SurahExplorer = lazy(() =>
+  import('./components/SurahExplorer').then((module) => ({ default: module.SurahExplorer })),
+);
+const CompetitionLeaderboard = lazy(() =>
+  import('./components/CompetitionLeaderboard').then((module) => ({
+    default: module.CompetitionLeaderboard,
+  })),
+);
+const StatsDashboard = lazy(() =>
+  import('./components/StatsDashboard').then((module) => ({ default: module.StatsDashboard })),
+);
+const MemorizationMode = lazy(() =>
+  import('./components/MemorizationMode').then((module) => ({ default: module.MemorizationMode })),
+);
+const AudioPlayerBar = lazy(() =>
+  import('./components/AudioPlayerBar').then((module) => ({ default: module.AudioPlayerBar })),
+);
 
 import {
   Surah,
@@ -27,6 +44,7 @@ import {
   VerseMastery,
   RevisionPlan,
   QuranChallenge,
+  AppTab,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
@@ -152,6 +170,15 @@ export default function App() {
   );
 }
 
+function TabLoadingFallback() {
+  return (
+    <div className="flex min-h-64 items-center justify-center gap-3 text-emerald-900" role="status">
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+      جارٍ تحميل الصفحة...
+    </div>
+  );
+}
+
 interface AuthenticatedAppProps {
   userId: string;
   userEmail: string;
@@ -161,7 +188,7 @@ interface AuthenticatedAppProps {
 function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProps) {
   const [syncStatus, setSyncStatus] = useState<ProgressSyncStatus>('syncing');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
-  const [currentTab, setCurrentTab] = useState<string>('home');
+  const [currentTab, setCurrentTab] = useState<AppTab>('home');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
@@ -292,7 +319,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setIsAudioPlayerOpen(true);
   };
 
-  const handleSelectTab = (tab: string) => {
+  const handleSelectTab = (tab: AppTab) => {
     if (tab === 'memorize') setIsAudioPlayerOpen(false);
     setCurrentTab(tab);
   };
@@ -321,95 +348,102 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
           onOpenRewards={() => setIsRewardsModalOpen(true)}
           onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
           isAudioPlaying={isAudioPlayerOpen}
+          syncStatus={syncStatus}
+          syncErrorMessage={syncErrorMessage}
+          onRetrySync={handleRetrySync}
         />
       </div>
 
       {/* ═══════════ المحتوى ═══════════ */}
-      {reciteActive ? (
-        <div className="flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto">
-          <VoiceReciter
-            surah={currentSurah}
-            initialAyahNumber={initialAyahForReciter}
-            selectedReciter={selectedReciter}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            onStatsUpdate={refreshAllState}
-            onSelectSurahChange={(num, ayahNum = 1) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(ayahNum);
-            }}
-            allSurahsList={ALL_SURAHS}
-            embedded
-            onClose={() => setCurrentTab('home')}
-          />
-        </div>
-      ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full">
-          {currentTab === 'home' && (
-            <HomeDashboard
-              stats={stats}
-              verseMasteryMap={verseMasteryMap}
-              forgottenVersesCount={forgottenVerses.length}
-              onStartSession={() => setCurrentTab('recite')}
-              onOpenMemorization={() => setCurrentTab('memorize')}
-              onResumeVerse={handleStartPracticingVerse}
-              onOpenReview={() => setCurrentTab('revision')}
-              onOpenStats={() => setCurrentTab('stats')}
-            />
-          )}
-
-          {currentTab === 'memorize' && (
-            <MemorizationMode
-              allSurahs={ALL_SURAHS}
+      <Suspense fallback={<TabLoadingFallback />}>
+        {reciteActive ? (
+          <div className="flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto">
+            <VoiceReciter
+              surah={currentSurah}
+              initialAyahNumber={initialAyahForReciter}
               selectedReciter={selectedReciter}
-              onSelectReciter={setSelectedReciter}
-            />
-          )}
-
-          {currentTab === 'revision' && (
-            <RevisionPlans
-              plans={plans}
-              forgottenVerses={forgottenVerses}
-              onStartPracticingVerse={handleStartPracticingVerse}
-              onRefreshPlans={refreshAllState}
-            />
-          )}
-
-          {currentTab === 'explorer' && (
-            <SurahExplorer
-              onSelectSurahForRecitation={(num) => {
-                setSelectedSurahNumber(num);
-                setInitialAyahForReciter(1);
-                setCurrentTab('recite');
-              }}
-              onPlaySurahAudio={handlePlaySurahAudio}
               onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-              completedSurahs={stats.completedSurahs}
+              onStatsUpdate={refreshAllState}
+              onSelectSurahChange={(num, ayahNum = 1) => {
+                setSelectedSurahNumber(num);
+                setInitialAyahForReciter(ayahNum);
+              }}
+              allSurahsList={ALL_SURAHS}
+              embedded
+              onClose={() => setCurrentTab('home')}
             />
-          )}
+          </div>
+        ) : (
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full">
+            {currentTab === 'home' && (
+              <HomeDashboard
+                stats={stats}
+                verseMasteryMap={verseMasteryMap}
+                forgottenVersesCount={forgottenVerses.length}
+                onStartSession={() => setCurrentTab('recite')}
+                onOpenMemorization={() => setCurrentTab('memorize')}
+                onResumeVerse={handleStartPracticingVerse}
+                onOpenReview={() => setCurrentTab('revision')}
+                onOpenStats={() => setCurrentTab('stats')}
+              />
+            )}
 
-          {currentTab === 'competition' && (
-            <CompetitionLeaderboard
-              challenges={challenges}
-              onStartChallenge={handleStartChallenge}
-            />
-          )}
+            {currentTab === 'memorize' && (
+              <MemorizationMode
+                allSurahs={ALL_SURAHS}
+                selectedReciter={selectedReciter}
+                onSelectReciter={setSelectedReciter}
+              />
+            )}
 
-          {currentTab === 'stats' && (
-            <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
-          )}
-        </main>
-      )}
+            {currentTab === 'revision' && (
+              <RevisionPlans
+                plans={plans}
+                forgottenVerses={forgottenVerses}
+                onStartPracticingVerse={handleStartPracticingVerse}
+                onRefreshPlans={refreshAllState}
+              />
+            )}
+
+            {currentTab === 'explorer' && (
+              <SurahExplorer
+                onSelectSurahForRecitation={(num) => {
+                  setSelectedSurahNumber(num);
+                  setInitialAyahForReciter(1);
+                  setCurrentTab('recite');
+                }}
+                onPlaySurahAudio={handlePlaySurahAudio}
+                onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+                completedSurahs={stats.completedSurahs}
+              />
+            )}
+
+            {currentTab === 'competition' && (
+              <CompetitionLeaderboard
+                challenges={challenges}
+                onStartChallenge={handleStartChallenge}
+              />
+            )}
+
+            {currentTab === 'stats' && (
+              <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
+            )}
+          </main>
+        )}
+      </Suspense>
 
       {/* ═══════════ مشغل الصوت (fixed) ═══════════ */}
-      <AudioPlayerBar
-        currentSurah={currentSurah}
-        currentAyahNumber={audioAyahNumber}
-        selectedReciter={selectedReciter}
-        onSelectReciter={setSelectedReciter}
-        onClose={() => setIsAudioPlayerOpen(false)}
-        onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
-        isOpen={isAudioPlayerOpen}
-      />
+      <Suspense fallback={null}>
+        <AudioPlayerBar
+          currentSurah={currentSurah}
+          currentAyahNumber={audioAyahNumber}
+          selectedReciter={selectedReciter}
+          onSelectReciter={setSelectedReciter}
+          onClose={() => setIsAudioPlayerOpen(false)}
+          onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
+          isOpen={isAudioPlayerOpen}
+        />
+      </Suspense>
 
       {/* ═══════════ نافذة التفسير ═══════════ */}
       {activeTafsirAyah && (

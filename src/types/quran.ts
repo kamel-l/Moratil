@@ -118,3 +118,13 @@ export interface WordMatchStatus {
   status: 'correct' | 'wrong' | 'current' | 'pending';
   heardWord?: string;
 }
+
+export type AppTab =
+  | 'home'
+  | 'memorize'
+  | 'recite'
+  | 'revision'
+  | 'explorer'
+  | 'competition'
+  | 'stats';
+
