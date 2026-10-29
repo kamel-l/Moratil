@@ -1,6 +1,6 @@
 # Base de données Supabase
 
-Le dossier `supabase/` contient trois migrations, appliquées dans l'ordre des
+Le dossier `supabase/` contient quatre migrations, appliquées dans l'ordre des
 noms :
 
 | Ordre | Migration                                                                                             | Rôle                                                                                            |
@@ -8,6 +8,7 @@ noms :
 | 1     | [`20261015200000_progress_sync.sql`](migrations/20261015200000_progress_sync.sql)                     | Tables de synchronisation historiques : `user_progress`, `verse_mastery`, `daily_activity`.     |
 | 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs.     |
 | 3     | [`20261029100000_drop_legacy_progress.sql`](migrations/20261029100000_drop_legacy_progress.sql)       | Bascule finale : reprend les JSON historiques puis supprime `user_progress` et `verse_mastery`. |
+| 4     | [`20261029110000_cap_review_schedule.sql`](migrations/20261029110000_cap_review_schedule.sql)         | Réparation des échéances SM-2 aberrantes : intervalle ≤ 365 j, facilité ≤ 3,00.                 |
 
 La migration 3 est la seule qui supprime des tables. Elle recopie d'abord le
 contenu de `user_progress` et `verse_mastery` dans le modèle normalisé, puis
@@ -72,6 +73,13 @@ Le texte est séparé de l'identité du verset pour permettre plusieurs édition
 Les deux tables sont volontairement séparées : la progression décrit
 l'apprentissage, `review_schedule` décrit la file de révision. Une révision peut
 être reportée ou suspendue sans effacer l'état pédagogique.
+
+Bornes de la planification SM-2 : `interval_days` est plafonné à **365 jours** et
+`ease_factor` à **3,00**. Sans plafond, la multiplication de l'intervalle par un
+facteur qui croît à chaque révision parfaite éloignait une échéance de plusieurs
+décennies (un verset avait 73 183 jours). Un verset doit être revu au moins une
+fois par an. Ces bornes sont appliquées par `recordVerseResult`,
+`buildScheduleRows` et la migration `20261029110000_cap_review_schedule.sql`.
 
 ### Sessions de récitation
 
@@ -223,7 +231,8 @@ dans l'ordre des noms :
 1. `20261015200000_progress_sync.sql`
 2. `20261029090000_normalized_quran_schema.sql`
 3. `20261029100000_drop_legacy_progress.sql`
-4. `supabase/seed/quran-uthmani.sql`
+4. `20261029110000_cap_review_schedule.sql`
+5. `supabase/seed/quran-uthmani.sql`
 
 > **Ordre de déploiement.** La migration 3 supprime les tables historiques. Le
 > client qui ne lit ni n'écrit plus ces tables doit donc être déployé **avant**

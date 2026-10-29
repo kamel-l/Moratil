@@ -46,7 +46,7 @@ L'application est disponible sur `http://localhost:3000`.
 
 1. Activez l'authentification par e-mail dans **Authentication > Providers**.
 2. Renseignez l'URL locale et l'URL déployée dans **Authentication > URL Configuration**.
-3. Exécutez les migrations dans l'ordre : [`20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql), [`20261029090000_normalized_quran_schema.sql`](supabase/migrations/20261029090000_normalized_quran_schema.sql), puis [`20261029100000_drop_legacy_progress.sql`](supabase/migrations/20261029100000_drop_legacy_progress.sql). La dernière reprend les données historiques puis supprime `user_progress` et `verse_mastery` : appliquez-la après avoir déployé le client qui n'utilise plus ces tables.
+3. Exécutez les migrations dans l'ordre : [`20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql), [`20261029090000_normalized_quran_schema.sql`](supabase/migrations/20261029090000_normalized_quran_schema.sql), [`20261029100000_drop_legacy_progress.sql`](supabase/migrations/20261029100000_drop_legacy_progress.sql), puis [`20261029110000_cap_review_schedule.sql`](supabase/migrations/20261029110000_cap_review_schedule.sql). La troisième reprend les données historiques puis supprime `user_progress` et `verse_mastery` : appliquez-la après avoir déployé le client qui n'utilise plus ces tables.
 4. Redémarrez le serveur après toute modification des variables d'environnement.
 
 Le schéma normalisé, les relations, les politiques RLS et la procédure d'import du texte coranique sont documentés dans [`supabase/README.md`](supabase/README.md).

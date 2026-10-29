@@ -19,6 +19,7 @@ const migrations = [
   'supabase/migrations/20261015200000_progress_sync.sql',
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
   'supabase/migrations/20261029100000_drop_legacy_progress.sql',
+  'supabase/migrations/20261029110000_cap_review_schedule.sql',
 ];
 
 const seedDir = resolve(root, 'supabase/seed');

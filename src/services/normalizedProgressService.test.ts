@@ -201,6 +201,30 @@ describe('review schedule mapping', () => {
     });
   });
 
+  it('caps an interval written before the schedule bounds existed', () => {
+    const lastReviewedAt = '2026-01-01T00:00:00.000Z';
+    const [row] = buildScheduleRows(
+      {
+        '1_1': verse({
+          intervalDays: 73183,
+          easeFactor: 5.16,
+          lastReviewedAt,
+          nextReviewAt: '2226-01-01T00:00:00.000Z',
+        }),
+      },
+      index(),
+      NOW.getTime(),
+    );
+
+    // One year after the last review, not two centuries after.
+    expect(row).toMatchObject({
+      interval_days: 365,
+      ease_factor: 3,
+      due_at: '2027-01-01T00:00:00.000Z',
+      status: 'scheduled',
+    });
+  });
+
   it('marks a failed review as failure', () => {
     const [row] = buildScheduleRows(
       { '1_1': verse({ level: 'review_needed' }) },

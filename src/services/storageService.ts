@@ -32,6 +32,16 @@ const STORAGE_KEYS = [
 const MAX_ACTIVITY_DAYS = 30;
 const REMINDER_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * Bounds of the SM-2 schedule. The ease factor grows by 0.1 on every flawless
+ * review and the interval is multiplied by it, so without a ceiling a verse
+ * reviewed many times ends up scheduled decades away (one production row had
+ * 73 183 days). A verse should be seen at least once a year.
+ */
+const MIN_EASE_FACTOR = 1.3;
+const MAX_EASE_FACTOR = 3;
+const MAX_INTERVAL_DAYS = 365;
+
 export type ProgressSyncStatus = 'syncing' | 'synced' | 'error';
 
 export interface DailyRecitationActivity {
@@ -635,13 +645,13 @@ export function recordVerseResult(
   const previousEaseFactor =
     typeof current.easeFactor === 'number' &&
     Number.isFinite(current.easeFactor) &&
-    current.easeFactor >= 1.3
-      ? current.easeFactor
+    current.easeFactor >= MIN_EASE_FACTOR
+      ? Math.min(MAX_EASE_FACTOR, current.easeFactor)
       : 2.5;
   const inferredLegacyInterval = Math.round(
     (Date.parse(current.nextReviewAt) - Date.parse(current.lastReviewedAt)) / 86_400_000,
   );
-  const previousInterval =
+  const storedInterval =
     typeof current.intervalDays === 'number' &&
     Number.isFinite(current.intervalDays) &&
     current.intervalDays > 0
@@ -649,10 +659,14 @@ export function recordVerseResult(
       : Number.isFinite(inferredLegacyInterval)
         ? Math.max(1, inferredLegacyInterval)
         : 1;
+  const previousInterval = Math.min(MAX_INTERVAL_DAYS, storedInterval);
   const quality = isFlawless ? 5 : 2;
-  const easeFactor = Math.max(
-    1.3,
-    previousEaseFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02),
+  const easeFactor = Math.min(
+    MAX_EASE_FACTOR,
+    Math.max(
+      MIN_EASE_FACTOR,
+      previousEaseFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02),
+    ),
   );
   const repetitionCount = quality < 3 ? 0 : previousRepetitionCount + 1;
   const intervalDays =
@@ -662,7 +676,10 @@ export function recordVerseResult(
         ? 1
         : previousRepetitionCount === 1
           ? 6
-          : Math.max(1, Math.round(previousInterval * previousEaseFactor));
+          : Math.min(
+              MAX_INTERVAL_DAYS,
+              Math.max(1, Math.round(previousInterval * previousEaseFactor)),
+            );
 
   current.repetitionCount = repetitionCount;
   current.easeFactor = easeFactor;

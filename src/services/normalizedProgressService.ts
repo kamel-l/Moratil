@@ -18,6 +18,15 @@ const PAGE_SIZE = 1000;
 const UPSERT_CHUNK_SIZE = 500;
 const AYAH_INDEX_CACHE_KEY = 'murattil_ayah_index:v1';
 
+/**
+ * Same SM-2 bounds as `storageService.recordVerseResult`. They are repeated here
+ * because this bridge also receives snapshots written by older clients: a verse
+ * must never be scheduled more than a year away.
+ */
+const MAX_SCHEDULE_INTERVAL_DAYS = 365;
+const MIN_EASE_FACTOR = 1.3;
+const MAX_EASE_FACTOR = 3;
+
 const MASTERY_LEVELS: MasteryLevel[] = ['new', 'learning', 'review_needed', 'good', 'mastered'];
 
 export interface AyahIndex {
@@ -313,15 +322,26 @@ export function buildScheduleRows(
     if (ayahId === undefined) continue;
 
     const fallbackDue = toIsoString(verse.lastReviewedAt, new Date(now).toISOString());
-    const dueAt = toIsoString(verse.nextReviewAt, fallbackDue);
-    const intervalDays = Math.max(1, Math.round(finiteNumber(verse.intervalDays, 1)));
-    const easeFactor = Math.max(1.3, finiteNumber(verse.easeFactor, 2.5));
+    const lastReviewedAt = toIsoString(verse.lastReviewedAt, fallbackDue);
+    const storedDueAt = toIsoString(verse.nextReviewAt, fallbackDue);
+    const rawInterval = Math.round(finiteNumber(verse.intervalDays, 1));
+    const intervalDays = Math.min(MAX_SCHEDULE_INTERVAL_DAYS, Math.max(1, rawInterval));
+    const easeFactor = Math.min(
+      MAX_EASE_FACTOR,
+      Math.max(MIN_EASE_FACTOR, finiteNumber(verse.easeFactor, 2.5)),
+    );
+    // An interval above the cap (written before the cap existed) would keep the
+    // verse unreachable for decades, so its due date is recomputed too.
+    const dueAt =
+      rawInterval > MAX_SCHEDULE_INTERVAL_DAYS
+        ? new Date(Date.parse(lastReviewedAt) + intervalDays * 86_400_000).toISOString()
+        : storedDueAt;
 
     rows.push({
       ayah_id: ayahId,
       due_at: dueAt,
       last_result: lastResultFor(verse),
-      last_reviewed_at: toIsoString(verse.lastReviewedAt, fallbackDue),
+      last_reviewed_at: lastReviewedAt,
       interval_days: intervalDays,
       ease_factor: Math.round(easeFactor * 100) / 100,
       repetition_count: Math.max(0, Math.round(finiteNumber(verse.repetitionCount))),
@@ -362,7 +382,10 @@ export function rowsToMastery(
       mistakeCount: Math.max(0, Math.round(finiteNumber(progress.mistake_count))),
       repetitionCount: Math.max(0, Math.round(finiteNumber(schedule?.repetition_count))),
       easeFactor: Math.max(1.3, finiteNumber(schedule?.ease_factor, 2.5)),
-      intervalDays: Math.max(1, Math.round(finiteNumber(schedule?.interval_days, 1))),
+      intervalDays: Math.min(
+        MAX_SCHEDULE_INTERVAL_DAYS,
+        Math.max(1, Math.round(finiteNumber(schedule?.interval_days, 1))),
+      ),
       lastReviewedAt,
       nextReviewAt: toIsoString(schedule?.due_at, lastReviewedAt),
       recentMistakes: [],
@@ -385,8 +408,14 @@ export function rowsToMastery(
       consecutiveSuccessCount: 0,
       mistakeCount: 0,
       repetitionCount: Math.max(0, Math.round(finiteNumber(schedule.repetition_count))),
-      easeFactor: Math.max(1.3, finiteNumber(schedule.ease_factor, 2.5)),
-      intervalDays: Math.max(1, Math.round(finiteNumber(schedule.interval_days, 1))),
+      easeFactor: Math.min(
+        MAX_EASE_FACTOR,
+        Math.max(MIN_EASE_FACTOR, finiteNumber(schedule.ease_factor, 2.5)),
+      ),
+      intervalDays: Math.min(
+        MAX_SCHEDULE_INTERVAL_DAYS,
+        Math.max(1, Math.round(finiteNumber(schedule.interval_days, 1))),
+      ),
       lastReviewedAt,
       nextReviewAt: toIsoString(schedule.due_at, lastReviewedAt),
       recentMistakes: [],

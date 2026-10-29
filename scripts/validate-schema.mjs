@@ -17,6 +17,7 @@ const migrations = [
   'supabase/migrations/20261015200000_progress_sync.sql',
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
   'supabase/migrations/20261029100000_drop_legacy_progress.sql',
+  'supabase/migrations/20261029110000_cap_review_schedule.sql',
 ];
 
 const checks = [];
@@ -187,6 +188,49 @@ try {
       Number(scheduleRow.ease_factor) === 2.7 &&
       scheduleRow.repetition_count === 2 &&
       scheduleRow.last_result === 'success',
+  );
+
+  // Repair of the pre-cap SM-2 rows: a 200-year interval must come back to one
+  // year, the ease factor to 3.00, while a suspended schedule keeps its status.
+  await db.exec(`
+    update public.review_schedule
+       set interval_days = 73183, ease_factor = 5.16,
+           due_at = now() + interval '200 years'
+     where user_id = '${userA}';
+
+    insert into public.review_schedule
+      (user_id, ayah_id, due_at, last_result, last_reviewed_at, interval_days, ease_factor,
+       repetition_count, status)
+    select '${userB}', id, now() + interval '50 years', 'success', now() - interval '10 days',
+           18250, 4.2, 9, 'suspended'
+      from public.ayahs where surah_number = 1 and ayah_number = 2;
+  `);
+
+  await applyMigration(3);
+
+  const cappedRows = await db.query(`
+    select user_id, interval_days, ease_factor::text as ease_factor, status,
+           due_at = last_reviewed_at + interval '365 days' as due_from_last_review
+      from public.review_schedule
+     where user_id in ('${userA}', '${userB}')
+     order by user_id
+  `);
+  const [cappedActive, cappedSuspended] = cappedRows.rows;
+  check(
+    'absurd review intervals are capped to one year',
+    cappedRows.rows.length === 2 &&
+      cappedActive.interval_days === 365 &&
+      Number(cappedActive.ease_factor) === 3 &&
+      cappedActive.status === 'scheduled' &&
+      cappedActive.due_from_last_review === true,
+    `${cappedActive.interval_days} days / ease ${cappedActive.ease_factor}`,
+  );
+  check(
+    'the cap preserves a suspended schedule',
+    cappedSuspended.interval_days === 365 &&
+      Number(cappedSuspended.ease_factor) === 3 &&
+      cappedSuspended.status === 'suspended',
+    `status ${cappedSuspended.status}`,
   );
 
   // Reset the migrated rows so the RLS checks below start from a clean state.

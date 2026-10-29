@@ -129,6 +129,55 @@ describe('SM-2 spaced repetition', () => {
 
     vi.useRealTimers();
   });
+
+  it('caps the ease factor and the interval so a verse is reviewed at least yearly', () => {
+    vi.useFakeTimers();
+    const reviewDate = new Date('2026-01-01T00:00:00Z');
+    vi.setSystemTime(reviewDate);
+
+    let verse = recordVerseResult(2, 255, true);
+    for (let review = 0; review < 40; review += 1) {
+      vi.setSystemTime(new Date(reviewDate.getTime() + (review + 1) * 86_400_000));
+      verse = recordVerseResult(2, 255, true);
+    }
+
+    expect(verse.easeFactor).toBe(3);
+    expect(verse.intervalDays).toBe(365);
+    const daysUntilReview = (Date.parse(verse.nextReviewAt) - Date.now()) / 86_400_000;
+    expect(daysUntilReview).toBeCloseTo(365);
+
+    vi.useRealTimers();
+  });
+
+  it('repairs an interval that predates the cap', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    saveVerseMasteryMap({
+      '2_255': {
+        surahNumber: 2,
+        ayahNumber: 255,
+        level: 'mastered',
+        consecutiveSuccessCount: 12,
+        mistakeCount: 0,
+        repetitionCount: 12,
+        easeFactor: 5.16,
+        intervalDays: 73183,
+        lastReviewedAt: '2025-06-01T00:00:00.000Z',
+        nextReviewAt: new Date(
+          Date.parse('2025-06-01T00:00:00.000Z') + 73183 * 86_400_000,
+        ).toISOString(),
+        recentMistakes: [],
+      },
+    });
+
+    const repaired = recordVerseResult(2, 255, true);
+
+    expect(repaired.easeFactor).toBe(3);
+    expect(repaired.intervalDays).toBe(365);
+    expect((Date.parse(repaired.nextReviewAt) - Date.now()) / 86_400_000).toBeCloseTo(365);
+
+    vi.useRealTimers();
+  });
 });
 
 describe('revision reminder preferences', () => {
