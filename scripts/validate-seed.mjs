@@ -18,6 +18,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const migrations = [
   'supabase/migrations/20261015200000_progress_sync.sql',
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
+  'supabase/migrations/20261029100000_drop_legacy_progress.sql',
 ];
 
 const seedDir = resolve(root, 'supabase/seed');

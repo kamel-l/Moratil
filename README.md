@@ -46,14 +46,14 @@ L'application est disponible sur `http://localhost:3000`.
 
 1. Activez l'authentification par e-mail dans **Authentication > Providers**.
 2. Renseignez l'URL locale et l'URL déployée dans **Authentication > URL Configuration**.
-3. Exécutez les migrations dans l'ordre : [`20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql), puis [`20261029090000_normalized_quran_schema.sql`](supabase/migrations/20261029090000_normalized_quran_schema.sql).
+3. Exécutez les migrations dans l'ordre : [`20261015200000_progress_sync.sql`](supabase/migrations/20261015200000_progress_sync.sql), [`20261029090000_normalized_quran_schema.sql`](supabase/migrations/20261029090000_normalized_quran_schema.sql), puis [`20261029100000_drop_legacy_progress.sql`](supabase/migrations/20261029100000_drop_legacy_progress.sql). La dernière reprend les données historiques puis supprime `user_progress` et `verse_mastery` : appliquez-la après avoir déployé le client qui n'utilise plus ces tables.
 4. Redémarrez le serveur après toute modification des variables d'environnement.
 
 Le schéma normalisé, les relations, les politiques RLS et la procédure d'import du texte coranique sont documentés dans [`supabase/README.md`](supabase/README.md).
 
 Le progrès local est conservé en cas d'échec de synchronisation et retenté à la session suivante. Le premier compte connecté reprend l'ancien progrès local ; les comptes suivants disposent d'un stockage séparé.
 
-Depuis la phase 3, la synchronisation lit le schéma normalisé en priorité et ne consulte les tables historiques que pour les comptes qui n'ont pas encore de progrès normalisé ; l'écriture dans les deux modèles est conservée jusqu'à leur suppression. Voir la section [Phase 3](supabase/README.md#phase-3--bascule-des-lectures) pour le détail et l'étape restante.
+La synchronisation lit et écrit uniquement le schéma normalisé (`profiles`, `user_stats`, `memorization_progress`, `review_schedule`, `daily_activity`). À la connexion, le progrès local plus récent est fusionné avec le snapshot distant puis réécrit : maximum pour les compteurs, date de révision la plus récente pour chaque verset. Un échec de lecture ou d'écriture laisse le progrès local intact et est retenté à la session suivante. Voir [Phase 4](supabase/README.md#phase-4--suppression-des-tables-historiques) pour la bascule finale.
 
 ## Scripts
 

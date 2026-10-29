@@ -30,6 +30,7 @@ const API_BASE = 'https://api.supabase.com/v1';
 const MIGRATIONS = [
   'supabase/migrations/20261015200000_progress_sync.sql',
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
+  'supabase/migrations/20261029100000_drop_legacy_progress.sql',
 ];
 
 const VERIFY_SQL = `

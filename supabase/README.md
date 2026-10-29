@@ -1,16 +1,18 @@
 # Base de données Supabase
 
-Le dossier `supabase/` contient deux migrations **additives** :
+Le dossier `supabase/` contient trois migrations, appliquées dans l'ordre des
+noms :
 
-| Ordre | Migration                                                                                             | Rôle                                                                                        |
-| ----- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 1     | [`20261015200000_progress_sync.sql`](migrations/20261015200000_progress_sync.sql)                     | Tables de synchronisation historiques : `user_progress`, `verse_mastery`, `daily_activity`. |
-| 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs. |
+| Ordre | Migration                                                                                             | Rôle                                                                                            |
+| ----- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1     | [`20261015200000_progress_sync.sql`](migrations/20261015200000_progress_sync.sql)                     | Tables de synchronisation historiques : `user_progress`, `verse_mastery`, `daily_activity`.     |
+| 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs.     |
+| 3     | [`20261029100000_drop_legacy_progress.sql`](migrations/20261029100000_drop_legacy_progress.sql)       | Bascule finale : reprend les JSON historiques puis supprime `user_progress` et `verse_mastery`. |
 
-La migration 2 ne supprime rien. Le client écrit encore dans les deux modèles,
-mais **lit désormais le modèle normalisé** ; les tables historiques ne servent
-plus que de secours pour les comptes jamais revenus depuis la migration (voir
-[Phase 3](#phase-3--bascule-des-lectures)).
+La migration 3 est la seule qui supprime des tables. Elle recopie d'abord le
+contenu de `user_progress` et `verse_mastery` dans le modèle normalisé, puis
+supprime les deux tables. `daily_activity` est commune aux deux modèles et reste
+en place. Voir [Phase 4](#phase-4--suppression-des-tables-historiques).
 
 ## Modèle relationnel
 
@@ -220,7 +222,13 @@ dans l'ordre des noms :
 
 1. `20261015200000_progress_sync.sql`
 2. `20261029090000_normalized_quran_schema.sql`
-3. `supabase/seed/quran-uthmani.sql`
+3. `20261029100000_drop_legacy_progress.sql`
+4. `supabase/seed/quran-uthmani.sql`
+
+> **Ordre de déploiement.** La migration 3 supprime les tables historiques. Le
+> client qui ne lit ni n'écrit plus ces tables doit donc être déployé **avant**
+> de l'appliquer. Un client encore en phase 2 échouerait sur les tables
+> absentes.
 
 La migration 2 crée aussi les lignes `profiles` et `user_stats` des comptes
 déjà présents dans `auth.users`.
@@ -251,7 +259,10 @@ npm run test:schema
 
 Il vérifie les tables, les triggers, l'immutabilité du texte vérifié, l'isolation
 RLS entre deux utilisateurs, l'accès anonyme en lecture et la création
-automatique des profils.
+automatique des profils. Il applique aussi la migration de bascule sur des
+fixtures historiques : les statistiques et la maîtrise de versets doivent être
+reprises dans `user_stats`, `memorization_progress` et `review_schedule`, puis
+les deux tables historiques doivent avoir disparu.
 
 Un second test applique le vrai seed coranique sur une base vide :
 
@@ -284,11 +295,11 @@ select tablename, policyname, cmd, roles
 
 ## Phase 2 — double écriture et reprise des données
 
-Le client (`src/services/storageService.ts`) écrit **les deux modèles à chaque
-synchronisation**. La phase 2 conserve le modèle historique comme secours : une
-erreur sur le schéma normalisé est journalisée une seule fois par
-`warnNormalizedSync`, sans changer le statut de synchronisation affiché à
-l'utilisateur.
+Pendant la phase 2, le client (`src/services/storageService.ts`) écrivait **les
+deux modèles à chaque synchronisation** : le modèle normalisé devenait la cible
+principale, le modèle historique restait une copie de secours. La phase 4 a
+depuis retiré cette écriture historique ; la correspondance ci-dessous décrit
+toujours le pont appliqué par `src/services/normalizedProgressService.ts`.
 
 Correspondance appliquée par `src/services/normalizedProgressService.ts` :
 
@@ -307,12 +318,11 @@ traduit cette clé en `ayahs.id` grâce à un index chargé paginé (1 000 ligne
 requête) et mis en cache dans `localStorage` sous `murattil_ayah_index:v1` ;
 `resetAyahIndexCache()` invalide ce cache.
 
-La reprise fusionne le progrès local (éventuellement hors ligne), les tables
-historiques et le snapshot normalisé : maximum pour les compteurs, version la
-plus récente pour chaque verset (`lastReviewedAt`), date d'activité la plus
-récente. Un compte neuf n'a pas de date d'activité et n'écrase donc pas une date
-distante. Le résultat est réécrit dans les deux modèles, ce qui reprend les
-comptes créés avant la migration dès leur première connexion.
+La reprise fusionne le progrès local (éventuellement hors ligne) et le snapshot
+normalisé : maximum pour les compteurs, version la plus récente pour chaque
+verset (`lastReviewedAt`), date d'activité la plus récente. Un compte neuf n'a
+pas de date d'activité et n'écrase donc pas une date distante. Le résultat est
+réécrit dans le modèle normalisé.
 
 ## Phase 3 — bascule des lectures
 
@@ -320,31 +330,52 @@ Depuis la phase 3, le snapshot normalisé est **la source de vérité en lecture
 À chaque connexion :
 
 1. `profiles`, `user_stats`, `memorization_progress` et `review_schedule` sont
-   lus en premier ; `daily_activity` est commune aux deux modèles.
-2. Les tables historiques `user_progress` et `verse_mastery` ne servent plus que
-   de secours : `user_progress` est lu si `user_stats` ne contient encore aucun
-   progrès (`hasNormalizedProgress`), et `verse_mastery` si
-   `memorization_progress` est vide. La ligne `user_stats` créée à l'inscription
-   est nulle, elle ne suffit donc pas : seuls les compteurs, badges, listes ou
-   versets comptent. Ce découpage évite qu'une écriture normalisée partielle
-   fasse perdre les versets déjà présents dans l'ancien modèle.
-3. Le progrès local plus récent est conservé (fusion par date pour les versets,
-   maximum pour les compteurs), puis réécrit dans les deux modèles. Un appareil
-   qui a travaillé hors ligne ne perd rien.
-4. Les réglages restent repris depuis `profiles` si l'appareil n'a jamais
-   enregistré de préférence locale.
+   lus ; `daily_activity` est lue séparément.
+2. Le progrès local plus récent est conservé (fusion par date pour les versets,
+   maximum pour les compteurs), puis réécrit dans le modèle normalisé. Un
+   appareil qui a travaillé hors ligne ne perd rien.
+3. Les réglages sont repris depuis `profiles` si l'appareil n'a jamais enregistré
+   de préférence locale.
 
-Si la lecture normalisée échoue (réseau, index des versets indisponible), le
-client retombe sur les tables historiques et journalise un avertissement unique :
-la bascule ne dégrade pas l'expérience tant que ces tables existent.
+La phase 3 constituait la dernière étape où les tables historiques servaient
+encore de secours. La phase 4 supprime ce secours et les tables elles-mêmes.
 
 Couverture : `src/services/normalizedProgressService.test.ts` (mapping,
-pagination, cache, conversion des `numeric` PostgREST, détection d'un snapshot
-vide) et `src/services/progressSync.test.ts` (double écriture, reprise legacy,
-priorité du normalisé, priorité des réglages locaux).
+pagination, cache, conversion des `numeric` PostgREST) et
+`src/services/progressSync.test.ts` (écriture normalisée seule, fusion du progrès
+hors ligne, priorité des réglages locaux, remontée des erreurs de lecture et
+d'écriture).
 
-### Étape suivante
+## Phase 4 — suppression des tables historiques
 
-Après une période de validation en production, l'écriture historique sera
-arrêtée, puis les tables `user_progress` et `verse_mastery` supprimées
-(`daily_activity` est déjà commune aux deux modèles et sera conservée).
+La migration `20261029100000_drop_legacy_progress.sql` réalise la bascule
+finale. Elle ne touche pas `daily_activity`, commune aux deux modèles.
+
+1. **Statistiques.** `user_progress.stats` est fusionné dans `user_stats` :
+   maximum pour les compteurs (`points`, `streak_days`, versets, durée,
+   précision, erreurs corrigées), date d'activité la plus récente, union des
+   `completed_surahs` et `unlocked_badge_ids`. Le niveau est recalculé à partir
+   des points retenus.
+2. **Maîtrise des versets.** Chaque ligne de `verse_mastery` est convertie en
+   `(user_id, ayah_id)` : `level` → `status`, compteurs vers
+   `memorization_progress`, et `intervalDays`, `easeFactor`, `repetitionCount`,
+   `nextReviewAt` vers `review_schedule`. Une ligne déjà plus récente dans le
+   modèle normalisé n'est pas écrasée (`last_reviewed_at` le plus grand gagne).
+   Un verset introuvable dans `ayahs` est ignoré plutôt que dupliqué.
+3. **Suppression.** `drop table public.verse_mastery` puis
+   `drop table public.user_progress`.
+
+Après cette migration, le client ne référence plus ces tables : une lecture ou
+une écriture normalisée en échec est une vraie erreur de synchronisation, le
+progrès local reste intact et la synchronisation est retentée à la session
+suivante.
+
+Ordre de déploiement :
+
+1. déployer le client de la phase 4 (lecture et écriture normalisées seules) ;
+2. appliquer les migrations 1 → 3 sur le projet Supabase ;
+3. vérifier le mushaf avec `npm run db:apply -- --verify`.
+
+Le test `npm run test:schema` rejoue ce scénario : migrations 1 et 2, fixtures
+historiques, migration 3, puis contrôle de la fusion et de la disparition des
+tables.

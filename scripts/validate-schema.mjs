@@ -16,6 +16,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const migrations = [
   'supabase/migrations/20261015200000_progress_sync.sql',
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
+  'supabase/migrations/20261029100000_drop_legacy_progress.sql',
 ];
 
 const checks = [];
@@ -53,11 +54,66 @@ try {
     grant execute on function auth.uid() to anon, authenticated;
   `);
 
-  for (const migration of migrations) {
-    const sql = await readFile(resolve(root, migration), 'utf8');
+  const userA = '11111111-1111-1111-1111-111111111111';
+  const userB = '22222222-2222-2222-2222-222222222222';
+  await db.exec(`
+    insert into auth.users (id, email) values
+      ('${userA}', 'a@example.com'),
+      ('${userB}', 'b@example.com');
+  `);
+
+  const applyMigration = async (index) => {
+    const sql = await readFile(resolve(root, migrations[index]), 'utf8');
     await db.exec(sql);
-  }
+  };
+
+  await applyMigration(0);
+  await applyMigration(1);
   check('legacy and normalized migrations apply cleanly', true);
+
+  await db.exec(`
+    insert into public.surahs
+      (number, name_ar, name_en, revelation_place, ayah_count, juz_start, page_start)
+    values
+      (1, 'الفاتحة', 'Al-Faatiha', 'makkah', 7, 1, 1);
+
+    insert into public.quran_editions
+      (id, kind, name_ar, source_name, source_url, source_version, checksum_sha256, is_verified)
+    values
+      ('quran-uthmani', 'quran', 'الرسم العثماني', 'test', 'https://example.com', '1', repeat('a', 64), true);
+
+    insert into public.ayahs (surah_number, ayah_number)
+    values (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7);
+
+    insert into public.ayah_texts (ayah_id, edition_id, text)
+    select id, 'quran-uthmani', 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ'
+      from public.ayahs
+     where surah_number = 1 and ayah_number = 1;
+  `);
+
+  // Snapshots written by the legacy client, including a fractional ease factor
+  // and a review due in the past.
+  await db.exec(`
+    insert into public.user_progress (user_id, stats) values (
+      '${userA}',
+      '{"points": 777, "level": "حافظ مبتدئ", "streakDays": 5,
+        "lastActiveDate": "2026-01-09T20:00:00.000Z", "totalVersesRecited": 120,
+        "totalRecitedSeconds": 1800, "accuracyRate": 91.2, "mistakesFixedCount": 4,
+        "completedSurahs": [1], "unlockedBadgeIds": ["first_recitation"]}'::jsonb
+    );
+
+    insert into public.verse_mastery (user_id, surah_number, ayah_number, mastery) values (
+      '${userA}', 1, 1,
+      '{"surahNumber": 1, "ayahNumber": 1, "level": "mastered",
+        "consecutiveSuccessCount": 3, "mistakeCount": 1, "repetitionCount": 2,
+        "easeFactor": 2.7, "intervalDays": 6,
+        "lastReviewedAt": "2026-01-05T08:00:00.000Z",
+        "nextReviewAt": "2026-01-11T08:00:00.000Z", "recentMistakes": []}'::jsonb
+    );
+  `);
+
+  await applyMigration(2);
+  check('the cutover migration applies cleanly', true);
 
   const tables = await db.query(`
     select table_name
@@ -78,15 +134,63 @@ try {
     'review_schedule',
     'session_ayahs',
     'surahs',
-    'user_progress',
     'user_stats',
-    'verse_mastery',
   ];
   check(
     'all expected tables exist',
     expectedTables.every((name) => tableNames.includes(name)),
     `${tableNames.length} tables`,
   );
+  check(
+    'the legacy progress tables are gone',
+    !tableNames.includes('user_progress') && !tableNames.includes('verse_mastery'),
+  );
+
+  const migratedStats = await db.query(
+    `select points, streak_days, last_active_date::text as last_active_date,
+            accuracy_rate::text as accuracy_rate, completed_surahs, unlocked_badge_ids
+       from public.user_stats where user_id = '${userA}'`,
+  );
+  const statsRow = migratedStats.rows[0];
+  check(
+    'legacy stats were merged into user_stats',
+    statsRow.points === 777 &&
+      statsRow.streak_days === 5 &&
+      statsRow.last_active_date === '2026-01-09' &&
+      Number(statsRow.accuracy_rate) === 91.2 &&
+      statsRow.completed_surahs.includes(1) &&
+      statsRow.unlocked_badge_ids.includes('first_recitation'),
+    `${statsRow.points} points`,
+  );
+
+  const migratedProgress = await db.query(
+    `select status, consecutive_success_count, mistake_count
+       from public.memorization_progress where user_id = '${userA}'`,
+  );
+  check(
+    'legacy verse mastery was migrated into memorization_progress',
+    migratedProgress.rows.length === 1 &&
+      migratedProgress.rows[0].status === 'mastered' &&
+      migratedProgress.rows[0].consecutive_success_count === 3 &&
+      migratedProgress.rows[0].mistake_count === 1,
+  );
+
+  const migratedSchedule = await db.query(
+    `select interval_days, ease_factor::text as ease_factor, repetition_count, last_result
+       from public.review_schedule where user_id = '${userA}'`,
+  );
+  const scheduleRow = migratedSchedule.rows[0];
+  check(
+    'legacy review schedule was migrated into review_schedule',
+    migratedSchedule.rows.length === 1 &&
+      scheduleRow.interval_days === 6 &&
+      Number(scheduleRow.ease_factor) === 2.7 &&
+      scheduleRow.repetition_count === 2 &&
+      scheduleRow.last_result === 'success',
+  );
+
+  // Reset the migrated rows so the RLS checks below start from a clean state.
+  await db.exec(`delete from public.memorization_progress; delete from public.review_schedule;`);
 
   const protectedTables = [
     'profiles',
@@ -143,39 +247,12 @@ try {
     `${triggerNames.length} triggers`,
   );
 
-  const userA = '11111111-1111-1111-1111-111111111111';
-  const userB = '22222222-2222-2222-2222-222222222222';
-  await db.exec(`
-    insert into auth.users (id, email) values
-      ('${userA}', 'a@example.com'),
-      ('${userB}', 'b@example.com');
-  `);
   const profileCount = await db.query(`select count(*)::int as n from public.profiles`);
   check(
     'new accounts receive profile and stats rows',
     profileCount.rows[0].n === 2,
     `${profileCount.rows[0].n} profiles`,
   );
-
-  await db.exec(`
-    insert into public.surahs
-      (number, name_ar, name_en, revelation_place, ayah_count, juz_start, page_start)
-    values
-      (1, 'الفاتحة', 'Al-Faatiha', 'makkah', 7, 1, 1);
-
-    insert into public.quran_editions
-      (id, kind, name_ar, source_name, source_url, source_version, checksum_sha256, is_verified)
-    values
-      ('quran-uthmani', 'quran', 'الرسم العثماني', 'test', 'https://example.com', '1', repeat('a', 64), true);
-
-    insert into public.ayahs (surah_number, ayah_number)
-    values (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7);
-
-    insert into public.ayah_texts (ayah_id, edition_id, text)
-    select id, 'quran-uthmani', 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ'
-      from public.ayahs
-     where surah_number = 1 and ayah_number = 1;
-  `);
 
   const ayah = await db.query(`
     select id from public.ayahs where surah_number = 1 and ayah_number = 1

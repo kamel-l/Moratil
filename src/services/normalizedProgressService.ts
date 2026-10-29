@@ -3,15 +3,15 @@ import type { MasteryLevel, UserStats, VerseMastery } from '../types/quran';
 import type { RevisionReminderSettings } from './storageService';
 
 /**
- * Phase 2 client bridge for the normalized Supabase schema.
+ * Client bridge for the normalized Supabase schema.
  *
  * The app still keys progress by `surahNumber`/`ayahNumber`, while the
  * normalized schema keys it by `ayahs.id`. This module owns the translation and
- * writes `user_stats`, `profiles`, `memorization_progress` and `review_schedule`
- * next to the legacy tables (`user_progress`, `verse_mastery`).
+ * writes `user_stats`, `profiles`, `memorization_progress` and `review_schedule`.
+ * The legacy JSON tables were dropped in phase 4.
  *
- * Every write is additive and idempotent so the legacy client keeps working
- * while both models are active.
+ * Every write is idempotent, so a retried synchronization converges on the same
+ * rows.
  */
 
 const PAGE_SIZE = 1000;
@@ -80,26 +80,6 @@ export interface NormalizedProgress {
   stats: UserStats | null;
   profile: { dailyVerseGoal: number; reminder: RevisionReminderSettings } | null;
   mastery: Record<string, VerseMastery>;
-}
-
-/**
- * Tells whether the normalized snapshot carries real progress. The signup
- * trigger creates a zeroed `user_stats` row for every account, so the row alone
- * does not prove that the account was migrated: only counters, badges, record
- * lists or verse rows do.
- */
-export function hasNormalizedProgress(progress: NormalizedProgress): boolean {
-  const stats = progress.stats;
-  const statsCarryData =
-    stats !== null &&
-    (stats.points > 0 ||
-      stats.streakDays > 0 ||
-      stats.totalVersesRecited > 0 ||
-      stats.totalRecitedSeconds > 0 ||
-      stats.mistakesFixedCount > 0 ||
-      stats.completedSurahs.length > 0 ||
-      stats.unlockedBadgeIds.length > 0);
-  return statsCarryData || Object.keys(progress.mastery).length > 0;
 }
 
 export class AyahIndexError extends Error {
@@ -435,8 +415,9 @@ async function upsertRows(
 }
 
 /**
- * Mirrors a progress snapshot into the normalized tables. The legacy tables are
- * still written by `storageService`, so a failure here never blocks the app.
+ * Mirrors a progress snapshot into the normalized tables. This is the only
+ * persistence path since phase 4: a failure is a real synchronization error,
+ * surfaced to the caller so the local copy can be retried later.
  */
 export async function saveNormalizedProgress(
   client: SupabaseClient,
