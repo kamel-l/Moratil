@@ -5,6 +5,7 @@ import type {
   Badge,
   FriendUser,
   QuranChallenge,
+  Riwaya,
 } from '../types/quran';
 import { supabase } from './supabase';
 import { fetchNormalizedProgress, saveNormalizedProgress } from './normalizedProgressService';
@@ -17,6 +18,7 @@ const CHALLENGES_KEY = 'murattil_challenges';
 const DAILY_ACTIVITY_KEY = 'murattil_daily_activity';
 const DAILY_GOAL_KEY = 'murattil_daily_verse_goal';
 const REVISION_REMINDER_KEY = 'murattil_revision_reminder';
+const RIWAYA_KEY = 'murattil_riwaya';
 const STORAGE_OWNER_KEY = 'murattil_storage_owner';
 const STORAGE_KEYS = [
   STATS_KEY,
@@ -459,6 +461,18 @@ export function saveRevisionReminderSettings(settings: RevisionReminderSettings)
     throw new Error('صيغة وقت التنبيه غير صالحة.');
   }
   writeJson(storageKey(REVISION_REMINDER_KEY), settings);
+}
+
+// ────────────────────────────────────────────────────────────
+// Riwaya (recitation) preference — local device preference, not synced
+// ────────────────────────────────────────────────────────────
+
+export function getRiwaya(): Riwaya {
+  return readRaw(RIWAYA_KEY) === 'warsh' ? 'warsh' : 'hafs';
+}
+
+export function saveRiwaya(riwaya: Riwaya): void {
+  writeRaw(RIWAYA_KEY, riwaya);
 }
 
 function recordDailyActivity(versesCount: number): void {

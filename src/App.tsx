@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
@@ -45,10 +45,11 @@ import {
   RevisionPlan,
   QuranChallenge,
   AppTab,
+  Riwaya,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
-import { POPULAR_RECITERS } from './utils/audioReciters';
+import { POPULAR_RECITERS, getRecitersByRiwaya } from './utils/audioReciters';
 import { supabase } from './services/supabase';
 import {
   getUserStats,
@@ -60,6 +61,8 @@ import {
   setStorageUserId,
   stopProgressSync,
   syncProgressFromCloud,
+  getRiwaya,
+  saveRiwaya,
   type ProgressSyncStatus,
 } from './services/storageService';
 import { scheduleDueReviewReminder } from './services/revisionReminderService';
@@ -157,7 +160,9 @@ export default function App() {
   }
 
   if (!userId) {
-    return <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />;
+    return (
+      <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />
+    );
   }
 
   return (
@@ -193,7 +198,15 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
 
-  const [selectedReciter, setSelectedReciter] = useState<Reciter>(POPULAR_RECITERS[0]);
+  // ✅ الرواية الحالية (مُحمَّلة من التخزين)
+  const [riwaya, setRiwaya] = useState<Riwaya>(getRiwaya);
+
+  // ✅ اختيار القارئ الافتراضي: أول قارئ متاح في الرواية الحالية
+  const [selectedReciter, setSelectedReciter] = useState<Reciter>(() => {
+    const pool = getRecitersByRiwaya(getRiwaya());
+    return pool[0] ?? POPULAR_RECITERS[0];
+  });
+
   const [stats, setStats] = useState<UserStats>(getUserStats());
   const [verseMasteryMap, setVerseMasteryMap] =
     useState<Record<string, VerseMastery>>(getVerseMasteryMap());
@@ -208,10 +221,21 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
 
-  // Load surah when selectedSurahNumber changes
+  // ✅ حماية: إن تغيّرت الرواية لأي سبب، اضمن توافق القارئ الحالي
+  useEffect(() => {
+    const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
+    if (reciterRiwaya === riwaya) return;
+
+    const pool = getRecitersByRiwaya(riwaya);
+    if (pool.length > 0 && pool[0].id !== selectedReciter.id) {
+      setSelectedReciter(pool[0]);
+    }
+  }, [riwaya, selectedReciter.riwaya, selectedReciter.id]);
+
+  // تحميل السورة عند تغيير الرقم أو الرواية
   useEffect(() => {
     let isMounted = true;
-    getSurahWithAyahs(selectedSurahNumber)
+    getSurahWithAyahs(selectedSurahNumber, riwaya)
       .then((surahData) => {
         if (isMounted) {
           setCurrentSurah(surahData);
@@ -226,7 +250,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     return () => {
       isMounted = false;
     };
-  }, [selectedSurahNumber]);
+  }, [selectedSurahNumber, riwaya]);
 
   const refreshAllState = useCallback(() => {
     setStats(getUserStats());
@@ -296,7 +320,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     });
   };
 
-  // Jump directly to practicing a specific forgotten verse
+  // الانتقال لتسميع آية محددة
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setInitialAyahForReciter(ayahNum);
@@ -304,7 +328,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-  // Jump from daily challenge to voice recitation
+  // الانتقال من التحدي اليومي إلى التسميع
   const handleStartChallenge = (challenge: QuranChallenge) => {
     setSelectedSurahNumber(challenge.surahNumber);
     setInitialAyahForReciter(challenge.ayahStart);
@@ -312,7 +336,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-  // Play audio for a specific surah
+  // تشغيل صوت سورة
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setAudioAyahNumber(1);
@@ -324,18 +348,43 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab(tab);
   };
 
+  // ✅ تغيير الرواية: حفظ + تبديل القارئ تلقائيًا + إعادة تحميل السورة
+  const handleRiwayaChange = useCallback(
+    (next: Riwaya) => {
+      if (next === riwaya) return;
+      setRiwaya(next);
+      saveRiwaya(next);
+
+      // اختر أول قارئ متوافق مع الرواية الجديدة
+      const pool = getRecitersByRiwaya(next);
+      if (pool.length > 0) {
+        setSelectedReciter(pool[0]);
+      }
+
+      // إن كان مشغل الصوت مفتوحًا، أغلقه لأن الرابط تغيّر
+      setIsAudioPlayerOpen(false);
+    },
+    [riwaya],
+  );
+
   const reciteActive = currentTab === 'recite';
+
+  // ✅ تأكد أن القارئ يطابق الرواية قبل التمرير لبقية المكوّنات
+  const safeSelectedReciter = useMemo<Reciter>(() => {
+    const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
+    if (reciterRiwaya === riwaya) return selectedReciter;
+    const pool = getRecitersByRiwaya(riwaya);
+    return pool[0] ?? selectedReciter;
+  }, [selectedReciter, riwaya]);
 
   return (
     <div
       dir="rtl"
       className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
-        reciteActive
-          ? 'h-[100dvh] pb-28 flex flex-col overflow-hidden'
-          : 'min-h-screen pb-28'
+        reciteActive ? 'h-[100dvh] pb-28 flex flex-col overflow-hidden' : 'min-h-screen pb-28'
       }`}
     >
-      {/* ═══════════ شريط التنقل العلوي — يبقى ظاهرًا دائمًا ═══════════ */}
+      {/* ═══════════ شريط التنقل العلوي ═══════════ */}
       <div className="shrink-0">
         <Navbar
           userEmail={userEmail}
@@ -351,6 +400,8 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
           syncStatus={syncStatus}
           syncErrorMessage={syncErrorMessage}
           onRetrySync={handleRetrySync}
+          riwaya={riwaya}
+          onRiwayaChange={handleRiwayaChange}
         />
       </div>
 
@@ -361,7 +412,8 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
             <VoiceReciter
               surah={currentSurah}
               initialAyahNumber={initialAyahForReciter}
-              selectedReciter={selectedReciter}
+              selectedReciter={safeSelectedReciter}
+              riwaya={riwaya}
               onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
               onStatsUpdate={refreshAllState}
               onSelectSurahChange={(num, ayahNum = 1) => {
@@ -391,8 +443,9 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
             {currentTab === 'memorize' && (
               <MemorizationMode
                 allSurahs={ALL_SURAHS}
-                selectedReciter={selectedReciter}
+                selectedReciter={safeSelectedReciter}
                 onSelectReciter={setSelectedReciter}
+                riwaya={riwaya}
               />
             )}
 
@@ -415,6 +468,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
                 onPlaySurahAudio={handlePlaySurahAudio}
                 onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
                 completedSurahs={stats.completedSurahs}
+                riwaya={riwaya}
               />
             )}
 
@@ -437,11 +491,12 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         <AudioPlayerBar
           currentSurah={currentSurah}
           currentAyahNumber={audioAyahNumber}
-          selectedReciter={selectedReciter}
+          selectedReciter={safeSelectedReciter}
           onSelectReciter={setSelectedReciter}
           onClose={() => setIsAudioPlayerOpen(false)}
           onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
           isOpen={isAudioPlayerOpen}
+          riwaya={riwaya}
         />
       </Suspense>
 

@@ -1,3 +1,5 @@
+export type Riwaya = 'hafs' | 'warsh';
+
 export interface Ayah {
   numberInSurah: number;
   text: string; // Full Uthmani / Tashkeel text
@@ -29,6 +31,7 @@ export interface Reciter {
   bitrate: string;
   avatarUrl?: string;
   hasTeacherStyle?: boolean;
+  riwaya?: Riwaya; // ✅ جديد — الافتراضي حفص
 }
 
 export type MasteryLevel = 'new' | 'learning' | 'review_needed' | 'good' | 'mastered';

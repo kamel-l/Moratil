@@ -16,7 +16,7 @@ import {
   Trophy,
   Volume2,
 } from 'lucide-react';
-import type { AppTab, UserStats } from '../types/quran';
+import type { AppTab, Riwaya, UserStats } from '../types/quran';
 import type { ProgressSyncStatus } from '../services/storageService';
 import { cn } from '../utils/cn';
 
@@ -44,6 +44,8 @@ interface NavbarProps {
   syncStatus: ProgressSyncStatus;
   syncErrorMessage: string | null;
   onRetrySync: () => void;
+  riwaya: Riwaya;
+  onRiwayaChange: (riwaya: Riwaya) => void;
 }
 
 const SYNC_LABELS: Record<ProgressSyncStatus, string> = {
@@ -66,6 +68,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   syncStatus,
   syncErrorMessage,
   onRetrySync,
+  riwaya,
+  onRiwayaChange,
 }) => {
   const SyncIcon =
     syncStatus === 'syncing' ? Loader2 : syncStatus === 'error' ? CloudOff : Cloud;
@@ -155,6 +159,40 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>{stats.points.toLocaleString('ar-EG')}</span>
               <span className="hidden font-normal text-emerald-700 sm:inline">حسنة</span>
             </button>
+
+            <div
+              className="flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5"
+              title="اختيار الرواية: حفص عن عاصم أو ورش عن نافع"
+              role="group"
+              aria-label="اختيار الرواية"
+            >
+              <button
+                type="button"
+                onClick={() => onRiwayaChange('hafs')}
+                aria-pressed={riwaya === 'hafs'}
+                className={cn(
+                  'rounded-md px-2 py-1 text-xs font-bold transition-colors',
+                  riwaya === 'hafs'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-stone-500 hover:text-stone-800',
+                )}
+              >
+                حفص
+              </button>
+              <button
+                type="button"
+                onClick={() => onRiwayaChange('warsh')}
+                aria-pressed={riwaya === 'warsh'}
+                className={cn(
+                  'rounded-md px-2 py-1 text-xs font-bold transition-colors',
+                  riwaya === 'warsh'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-stone-500 hover:text-stone-800',
+                )}
+              >
+                ورش
+              </button>
+            </div>
 
             <button
               type="button"

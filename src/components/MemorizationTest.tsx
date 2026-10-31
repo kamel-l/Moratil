@@ -4,7 +4,7 @@ import {
   Eye, EyeOff, StopCircle, CalendarClock, Sparkles,
   Target, Clock, Award,
 } from 'lucide-react';
-import { Surah, Reciter } from '../types/quran';
+import { Surah, Reciter, Riwaya } from '../types/quran';
 import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
@@ -31,6 +31,7 @@ interface MemorizationTestProps {
   surah: Surah;
   selectedReciter: Reciter;
   onStatsUpdate: () => void;
+  riwaya?: Riwaya;  // ✅ أضف هذا
 }
 
 type TestPhase = 'setup' | 'testing' | 'results';

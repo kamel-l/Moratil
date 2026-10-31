@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Mic, MicOff, RotateCcw, Volume2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, HelpCircle, BookOpen, Headphones,
-  Eye, EyeOff, Trophy, Sparkles, CalendarClock,
+  Eye, EyeOff, Trophy, Sparkles, CalendarClock, AlertTriangle,
 } from 'lucide-react';
-import { Surah, Ayah, Reciter } from '../types/quran';
+import { Surah, Ayah, Reciter, Riwaya } from '../types/quran';
 import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
-import { getAyahAudioUrl } from '../utils/audioReciters';
+import { getAyahAudioUrl, getRecitersByRiwaya } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
 import { useAyahAudio } from '../hooks/useAyahAudio';
@@ -24,18 +24,27 @@ interface VoiceReciterProps {
   embedded?: boolean;
   initialTab?: 'recite' | 'test';
   onClose?: () => void;
+  riwaya?: Riwaya;
 }
 
 type RecitationMode = 'karaoke' | 'listen_repeat';
 
+const RIWAYA_LABELS: Record<Riwaya, string> = {
+  hafs: 'حفص عن عاصم',
+  warsh: 'ورش عن نافع',
+};
+
 function isBasmalahPrefix(words: { original: string }[]): boolean {
   if (words.length < 4) return false;
+  const n0 = normalizeArabicText(words[0].original);
+  const n1 = normalizeArabicText(words[1].original);
+  const n2 = normalizeArabicText(words[2].original);
+  const n3 = normalizeArabicText(words[3].original);
   return (
-    normalizeArabicText(words[0].original) === 'بسم' &&
-    normalizeArabicText(words[1].original) === 'الله' &&
-    (normalizeArabicText(words[2].original) === 'الرحمن' ||
-      normalizeArabicText(words[2].original) === 'الرحمان') &&
-    normalizeArabicText(words[3].original) === 'الرحيم'
+    n0 === 'بسم' &&
+    n1 === 'الله' &&
+    (n2 === 'الرحمن' || n2 === 'الرحمان') &&
+    n3 === 'الرحيم'
   );
 }
 
@@ -52,7 +61,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
 
   return (
     <div className="h-full w-full flex flex-col bg-stone-100/60" dir="rtl">
-      {/* شريط التبويبات */}
       <div className="shrink-0 bg-white border-b border-stone-200 shadow-sm">
         <div className="flex items-stretch h-12">
           {onClose ? (
@@ -74,9 +82,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
               type="button"
               onClick={() => setTab('recite')}
               className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-bold transition-colors relative ${
-                tab === 'recite'
-                  ? 'text-emerald-800'
-                  : 'text-stone-500 hover:text-stone-700'
+                tab === 'recite' ? 'text-emerald-800' : 'text-stone-500 hover:text-stone-700'
               }`}
             >
               <Mic className="w-4 h-4" />
@@ -92,9 +98,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
               type="button"
               onClick={() => setTab('test')}
               className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-bold transition-colors relative ${
-                tab === 'test'
-                  ? 'text-emerald-800'
-                  : 'text-stone-500 hover:text-stone-700'
+                tab === 'test' ? 'text-emerald-800' : 'text-stone-500 hover:text-stone-700'
               }`}
             >
               <Trophy className="w-4 h-4" />
@@ -105,15 +109,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
             </button>
           </div>
 
-          {onClose ? (
-            <div className="w-12 shrink-0" aria-hidden="true" />
-          ) : (
-            <div className="w-2 shrink-0" aria-hidden="true" />
-          )}
+          {onClose ? <div className="w-12 shrink-0" aria-hidden="true" /> : <div className="w-2 shrink-0" aria-hidden="true" />}
         </div>
       </div>
 
-      {/* المحتوى */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'recite' && <VoiceReciterInner {...props} embedded />}
         {tab === 'test' && (
@@ -121,6 +120,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
             surah={props.surah}
             selectedReciter={props.selectedReciter}
             onStatsUpdate={props.onStatsUpdate}
+            riwaya={props.riwaya}
           />
         )}
       </div>
@@ -129,7 +129,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
 };
 
 // ============================================================
-// المكوّن الداخلي: منطق التسميع (ستايل RevisionPlans)
+// المكوّن الداخلي: منطق التسميع
 // ============================================================
 const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   surah,
@@ -139,6 +139,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   onStatsUpdate,
   onSelectSurahChange,
   allSurahsList,
+  riwaya,
 }) => {
   const [currentAyahIndex, setCurrentAyahIndex] = useState(() =>
     Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)),
@@ -152,12 +153,21 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     accuratelyMatchedAyahs: number;
   } | null>(null);
 
-  // ============ Refs ============
   const isSurahRecitationModeRef = useRef(false);
   const ayahCompletionHandledRef = useRef(false);
   const surahRecitationSummaryRef = useRef({ completedAyahs: 0, accuratelyMatchedAyahs: 0 });
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
+
+  // ✅ الرواية الفعلية
+  const effectiveRiwaya: Riwaya = riwaya ?? selectedReciter.riwaya ?? 'hafs';
+  const reciterRiwaya: Riwaya = selectedReciter.riwaya ?? 'hafs';
+  const riwayaMismatch = effectiveRiwaya !== reciterRiwaya;
+
+  const fallbackReciter = useMemo(
+    () => getRecitersByRiwaya(effectiveRiwaya)[0] ?? null,
+    [effectiveRiwaya],
+  );
 
   const verseWords = useMemo(() => {
     const allWords = extractWords(currentAyah.text);
@@ -310,14 +320,32 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   };
 
   // ============================================================
-  // أدوات مساعدة
+  // ✅ تشغيل صوت الآية — الإصلاح الأساسي هنا
   // ============================================================
   const playAyahAudio = () => {
-    const url = getAyahAudioUrl(selectedReciter.id, surah.number, currentAyah.numberInSurah);
     if (isPlayingAudio) {
       stopAudio();
       return;
     }
+
+    // اختَر القارئ الصحيح: إن كان قارئ المستخدم لا يطابق الرواية
+    // نستخدم أول قارئ من الرواية الصحيحة
+    const targetReciter =
+      riwayaMismatch && fallbackReciter ? fallbackReciter : selectedReciter;
+
+    // ✅ نمرّر effectiveRiwaya صراحةً — هذا يمنع أي استبدال صامت داخل
+    //    getAyahAudioUrl، ويضمن أن مجلد القارئ الصحيح يُستخدم.
+    const url = getAyahAudioUrl(
+      targetReciter.id,
+      surah.number,
+      currentAyah.numberInSurah,
+      effectiveRiwaya,
+    );
+
+    console.log(
+      `[Audio] riwaya=${effectiveRiwaya}, reciter=${targetReciter.name}, folder=${targetReciter.folder}`,
+    );
+
     playAudio(url, () => {
       if (mode === 'listen_repeat') void toggleListening();
     });
@@ -356,21 +384,35 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   const shouldHideUnrecited = hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
 
   // ============================================================
-  // الواجهة — ستايل RevisionPlans
+  // الواجهة
   // ============================================================
   return (
     <div className="h-full flex flex-col bg-stone-100/60 overflow-hidden">
-      {/* ═══════════ منطقة قابلة للتمرير ═══════════ */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 space-y-3">
-          {/* ─────── Hero ─────── */}
+          {/* Hero */}
           <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
             <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 bg-emerald-800/80 border border-emerald-700/60 px-2.5 py-0.5 rounded-full text-[11px] text-amber-300 font-medium">
-                  <CalendarClock className="w-3 h-3" />
-                  <span>تسميع وتصحيح فوري</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-2 bg-emerald-800/80 border border-emerald-700/60 px-2.5 py-0.5 rounded-full text-[11px] text-amber-300 font-medium">
+                    <CalendarClock className="w-3 h-3" />
+                    <span>تسميع وتصحيح فوري</span>
+                  </div>
+
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                      effectiveRiwaya === 'warsh'
+                        ? 'bg-purple-800/80 border-purple-600/60 text-purple-100'
+                        : 'bg-emerald-800/80 border-emerald-700/60 text-emerald-100'
+                    }`}
+                    title="الرواية الحالية"
+                  >
+                    <BookOpen className="w-3 h-3" />
+                    <span>{RIWAYA_LABELS[effectiveRiwaya]}</span>
+                  </div>
                 </div>
+
                 <h1 className="text-xl sm:text-2xl font-bold font-serif">
                   سورة {surah.name}
                 </h1>
@@ -394,7 +436,24 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
           </div>
 
-          {/* ─────── شريط اختيار السورة والتفسير ─────── */}
+          {/* تنبيه عند عدم توافق القارئ مع الرواية */}
+          {riwayaMismatch && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">القارئ المختار لا يقرأ بهذه الرواية</p>
+                <p className="mt-0.5 text-amber-800/90">
+                  الرواية الحالية: <strong>{RIWAYA_LABELS[effectiveRiwaya]}</strong> · القارئ:{' '}
+                  <strong>{selectedReciter.name}</strong> ({RIWAYA_LABELS[reciterRiwaya]}).
+                  عند تشغيل الصوت سيُستخدم{' '}
+                  <strong>{fallbackReciter?.name ?? 'قارئ مطابق'}</strong> تلقائيًا.
+                  يُفضّل اختيار قارئ ورش من الإعدادات.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* شريط اختيار السورة والتفسير */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs p-3 flex items-center gap-2 flex-wrap">
             <select
               value={surah.number}
@@ -427,9 +486,8 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </button>
           </div>
 
-          {/* ─────── بطاقة الآية ─────── */}
+          {/* بطاقة الآية */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
-            {/* رأس البطاقة */}
             <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
@@ -466,7 +524,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
               </div>
             </div>
 
-            {/* الكلمات */}
             <div className="px-4 py-5 min-h-[140px]">
               <div className="flex flex-wrap gap-1.5 text-xl sm:text-2xl leading-[2.1] font-quran text-right">
                 {verseWords.map((w, idx) => {
@@ -506,7 +563,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
               )}
             </div>
 
-            {/* تنبيه الخطأ داخل البطاقة */}
             {activeMistakeAlert && !isAyahCompleted && (
               <div className="px-4 pb-3">
                 <div className="bg-rose-50 border border-rose-200 rounded-xl p-3" role="alert">
@@ -543,7 +599,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             )}
           </div>
 
-          {/* ─────── نتيجة إتمام السورة ─────── */}
           {surahRecitationResult && isAyahCompleted && currentAyahIndex === surah.ayahs.length - 1 && (
             <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-center shadow-xs">
               <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1" />
@@ -572,7 +627,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
           )}
 
-          {/* ─────── المحاكي ─────── */}
           {showSimulatedInput && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-xs p-3 space-y-2">
               <p className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
@@ -602,11 +656,10 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
         </div>
       </div>
 
-      {/* ═══════════ شريط التحكم السفلي الثابت ═══════════ */}
+      {/* شريط التحكم السفلي */}
       <div className="shrink-0 bg-white border-t border-stone-200 shadow-lg">
         <div className="max-w-5xl mx-auto px-2 sm:px-4 py-2">
           <div className="flex items-center justify-between gap-2">
-            {/* تنقل */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -640,7 +693,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
               </button>
             </div>
 
-            {/* زر الميكروفون */}
             <button
               type="button"
               onClick={toggleListening}
@@ -663,7 +715,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
               )}
             </button>
 
-            {/* استمع + محاكي */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -673,7 +724,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
                     ? 'bg-emerald-100 border-emerald-300 text-emerald-800 animate-pulse'
                     : 'bg-white border-stone-200 text-emerald-600 hover:bg-stone-50'
                 }`}
-                title="استمع للشيخ"
+                title={`استمع للشيخ (${RIWAYA_LABELS[effectiveRiwaya]})`}
               >
                 <Volume2 className="w-4 h-4" />
               </button>
