@@ -57,6 +57,7 @@ import {
   getVersesNeedingReinforcement,
   getRevisionPlans,
   getChallenges,
+  saveChallenges, // ✅ جديد: لحفظ التحديات المنشأة
   retryProgressSync,
   setStorageUserId,
   stopProgressSync,
@@ -68,7 +69,7 @@ import {
 import { scheduleDueReviewReminder } from './services/revisionReminderService';
 
 function getProgressSyncErrorMessage(error: unknown): string {
-  console.error('[Sync] Full error:', error); // ← أضف هذا السطر
+  console.error('[Sync] Full error:', error);
   const details =
     typeof error === 'object' && error !== null
       ? (error as { code?: unknown; message?: unknown; status?: unknown })
@@ -226,8 +227,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const audioPlayerWrapperRef = useRef<HTMLDivElement>(null);
 
   // ✅ ضبط متغيّر CSS --audio-player-offset بحسب حالة المشغل.
-  //    - مغلق: 0px → الشريط السفلي في VoiceReciter و MemorizationTest يلمس أسفل الشاشة.
-  //    - مفتوح: ارتفاع المشغل → يرفع الشريطين فوقه دون تداخل، ويبقى المحتوى قابلًا للتمرير.
   useEffect(() => {
     const root = document.documentElement;
 
@@ -236,8 +235,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
       return () => root.style.setProperty('--audio-player-offset', '0px');
     }
 
-    // المشغل يستخدم position: fixed داخل الغلاف، فيكون offsetHeight للغلاف
-    // غير معبّر. نلتقط أول عنصر fixed أو العنصر الذي يحمل data-audio-player-bar.
     const measure = () => {
       const wrapper = audioPlayerWrapperRef.current;
       let height = 88; // قيمة احتياطية
@@ -252,7 +249,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
       root.style.setProperty('--audio-player-offset', `${height}px`);
     };
 
-    // إطار واحد حتى يُرسم المشغل ثم نقيسه
     const raf = requestAnimationFrame(measure);
     window.addEventListener('resize', measure);
 
@@ -378,6 +374,15 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
+  // ✅ إنشاء تحدي جديد + تحديث الحالة المحلية + الحفظ في التخزين
+  const handleCreateChallenge = (challenge: QuranChallenge) => {
+    setChallenges((previous) => {
+      const next = [challenge, ...previous];
+      saveChallenges(next);
+      return next;
+    });
+  };
+
   // تشغيل صوت سورة
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
@@ -397,13 +402,11 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
       setRiwaya(next);
       saveRiwaya(next);
 
-      // اختر أول قارئ متوافق مع الرواية الجديدة
       const pool = getRecitersByRiwaya(next);
       if (pool.length > 0) {
         setSelectedReciter(pool[0]);
       }
 
-      // إن كان مشغل الصوت مفتوحًا، أغلقه لأن الرابط تغيّر
       setIsAudioPlayerOpen(false);
     },
     [riwaya],
@@ -426,9 +429,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'
       }`}
       style={{
-        // في وضع التسميع: VoiceReciter يحجز مساحة المشغل داخليًا عبر
-        // var(--audio-player-offset) → لا نضيف padding على الجذر هنا.
-        // في باقي التبويبات: نحجز ارتفاع المشغل على الجذر حتى لا يغطّي المحتوى.
         paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
       }}
     >
@@ -524,6 +524,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               <CompetitionLeaderboard
                 challenges={challenges}
                 onStartChallenge={handleStartChallenge}
+                onCreateChallenge={handleCreateChallenge} // ✅ الآن مُمرَّر
               />
             )}
 

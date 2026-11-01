@@ -12,10 +12,10 @@ import {
   RotateCcw,
   Volume2,
 } from 'lucide-react';
-import { Ayah, Reciter, Surah } from '../types/quran';
+import { Ayah, Reciter, Riwaya, Surah } from '../types/quran';
 import { getSurahWithAyahs } from '../data/quranData';
 import { SurahMeta } from '../data/quranSurahsList';
-import { getAyahAudioUrl, POPULAR_RECITERS } from '../utils/audioReciters';
+import { getAyahAudioUrl, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
 import { removeOpeningBasmalah } from '../utils/arabicUtils';
 import { Button, PageHero } from './ui';
 
@@ -29,6 +29,7 @@ interface MemorizationModeProps {
   allSurahs: SurahMeta[];
   selectedReciter: Reciter;
   onSelectReciter: (reciter: Reciter) => void;
+  riwaya: Riwaya; // ✅ الرواية الحالية لتحميل النص الصحيح
 }
 
 interface PlaybackSession {
@@ -39,7 +40,6 @@ interface PlaybackSession {
   scope: 'unit' | 'passage';
 }
 
-/** رقم الصفحة (1..604) مع قيمة احتياطية آمنة */
 function pageOf(ayah: Ayah): number {
   const p =
     (ayah as { page?: number; pageNumber?: number }).page ??
@@ -47,12 +47,10 @@ function pageOf(ayah: Ayah): number {
   return typeof p === 'number' && p > 0 ? p : 1;
 }
 
-/** تحويل رقم إلى أرقام عربية-هندية دون فواصل (مناسب لأرقام الصفحات والآيات) */
 function arabicDigits(n: number | string): string {
   return String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
 }
 
-/** تجميع الآيات حسب الصفحة */
 function groupByPage(ayahs: Ayah[]): Map<number, Ayah[]> {
   const map = new Map<number, Ayah[]>();
   for (const ayah of ayahs) {
@@ -72,7 +70,7 @@ function splitIntoUnits(ayahs: Ayah[], unitSize: number): Ayah[][] {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// صفحة مصحف كاملة (نمط مطبوع أصيل)
+// صفحة مصحف كاملة
 // ═══════════════════════════════════════════════════════════════
 interface MushafPageProps {
   ayahs: Ayah[];
@@ -101,18 +99,15 @@ const MushafPage: React.FC<MushafPageProps> = ({
 
   return (
     <div className="relative mx-auto max-w-3xl">
-      {/* الترويسة الخارجية للسياق */}
       <div className="mb-2 flex items-center justify-center gap-2 text-[11px] font-medium text-stone-500">
         <span>صفحة {arabicDigits(pageNumber)}</span>
         <span className="text-stone-300">·</span>
         <span>سورة {surahName}</span>
       </div>
 
-      {/* الإطار الذهبي المزدوج */}
       <div className="rounded-sm bg-[#8b6f3a] p-[3px] shadow-lg">
         <div className="rounded-sm bg-[#f5e6c8] p-[3px]">
           <div className="rounded-sm border border-[#a08750] bg-[#fdfaf0] px-4 py-5 sm:px-7 sm:py-6">
-            {/* عنوان السورة (يظهر فقط إذا بدأت السورة في هذه الصفحة) */}
             {startsSurah && (
               <div className="mb-3 flex items-center justify-center">
                 <div className="inline-flex items-center gap-2 rounded-sm bg-[#8b6f3a] px-4 py-1 text-[#fdfaf0] shadow-sm">
@@ -125,14 +120,12 @@ const MushafPage: React.FC<MushafPageProps> = ({
               </div>
             )}
 
-            {/* البسملة */}
             {showBasmalah && (
               <div className="mb-3 text-center font-quran text-lg text-[#5a4a25] sm:text-xl">
                 بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
               </div>
             )}
 
-            {/* النص المتصل */}
             <div
               dir="rtl"
               className="font-quran text-stone-900"
@@ -179,7 +172,6 @@ const MushafPage: React.FC<MushafPageProps> = ({
               })}
             </div>
 
-            {/* رقم الصفحة */}
             <div className="mt-5 flex items-center justify-center gap-1.5 font-serif text-sm text-[#8b6f3a]">
               <span className="text-base">﴿</span>
               <span className="font-bold">{arabicDigits(pageNumber)}</span>
@@ -193,7 +185,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
 };
 
 // ═══════════════════════════════════════════════════════════════
-// مكوّن عرض المقطع كصفحة مصحف متصلة
+// مقطع مصحف متصل
 // ═══════════════════════════════════════════════════════════════
 interface MushafPassageProps {
   ayahs: Ayah[];
@@ -228,30 +220,10 @@ const MushafPassage: React.FC<MushafPassageProps> = ({
         compact ? 'px-3 py-3' : 'px-4 py-5 sm:px-6 sm:py-6'
       }`}
     >
-      <span
-        className="pointer-events-none absolute top-1 right-1.5 select-none text-xs text-amber-700/40"
-        aria-hidden="true"
-      >
-        ۞
-      </span>
-      <span
-        className="pointer-events-none absolute top-1 left-1.5 select-none text-xs text-amber-700/40"
-        aria-hidden="true"
-      >
-        ۞
-      </span>
-      <span
-        className="pointer-events-none absolute bottom-1 right-1.5 select-none text-xs text-amber-700/40"
-        aria-hidden="true"
-      >
-        ۞
-      </span>
-      <span
-        className="pointer-events-none absolute bottom-1 left-1.5 select-none text-xs text-amber-700/40"
-        aria-hidden="true"
-      >
-        ۞
-      </span>
+      <span className="pointer-events-none absolute top-1 right-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
+      <span className="pointer-events-none absolute top-1 left-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
+      <span className="pointer-events-none absolute bottom-1 right-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
+      <span className="pointer-events-none absolute bottom-1 left-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
 
       <div
         dir="rtl"
@@ -302,6 +274,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   allSurahs,
   selectedReciter,
   onSelectReciter,
+  riwaya,
 }) => {
   const [surahNumber, setSurahNumber] = useState(1);
   const [surah, setSurah] = useState<Surah | null>(null);
@@ -321,13 +294,28 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // ─────── تحميل السورة ───────
+  // ✅ قرّاء متوافقون مع الرواية الحالية
+  const reciterPool = useMemo<Reciter[]>(() => {
+    const pool = getRecitersByRiwaya(riwaya);
+    return pool.length > 0 ? pool : POPULAR_RECITERS;
+  }, [riwaya]);
+
+  // ─────── تحميل السورة (مع الرواية) ───────
   useEffect(() => {
     let isCurrent = true;
     setIsLoading(true);
     setLoadError(null);
 
-    getSurahWithAyahs(surahNumber)
+    // إيقاف أي تشغيل سابق فورًا عند تغيير السورة أو الرواية
+    setPlaybackSession(null);
+    setPlaybackError(null);
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+
+    getSurahWithAyahs(surahNumber, riwaya) // ✅ تمرير الرواية
       .then((loadedSurah) => {
         if (!isCurrent) return;
         const prepared: Surah =
@@ -365,7 +353,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [surahNumber]);
+  }, [surahNumber, riwaya]);
 
   // ─────── تشغيل الصوت ───────
   useEffect(() => {
@@ -536,7 +524,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
         description="اختر مقطعك، استمع إلى وحداته القصيرة ورددها، ثم أخفِ الآيات تدريجيًا واختبر حفظك في تسميع كامل."
       />
 
-      {/* ─────── لوحة التحكم ─────── */}
       <section className="grid gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-xs sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-2 text-sm font-semibold text-stone-700">
           السورة
@@ -632,7 +619,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
           <select
             value={selectedReciter.id}
             onChange={(event) => {
-              const reciter = POPULAR_RECITERS.find((item) => item.id === event.target.value);
+              const reciter = reciterPool.find((item) => item.id === event.target.value);
               if (reciter) {
                 stopPlayback();
                 onSelectReciter(reciter);
@@ -640,7 +627,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             }}
             className="min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm"
           >
-            {POPULAR_RECITERS.map((reciter) => (
+            {reciterPool.map((reciter) => (
               <option key={reciter.id} value={reciter.id}>
                 {reciter.name}
               </option>
@@ -743,7 +730,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
               {!isPageMode && (
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* مبدّل وضع العرض */}
                   <div
                     className="flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5"
                     role="group"
@@ -801,7 +787,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               )}
             </div>
 
-            {/* ─────── وضع الصفحات الكاملة ─────── */}
             {isPageMode ? (
               <div className="space-y-6">
                 {pageGroups.map(([pageNumber, pageAyahs]) => {
@@ -863,7 +848,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 })}
               </div>
             ) : isFullRecitation && displayMode === 'mushaf' ? (
-              /* ─────── وضع التسميع الكامل + مصحف ─────── */
               <article className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h3 className="text-sm font-bold text-emerald-900">تسميع المقطع كاملًا</h3>
@@ -882,7 +866,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 />
               </article>
             ) : (
-              /* ─────── وضع الوحدات بالبطاقات/المصحف ─────── */
               units.map((unit, unitIndex) => {
                 const isUnitPlaying =
                   activeScope === 'unit' && activeUnitStart === unit[0].numberInSurah;
@@ -986,7 +969,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             )}
           </section>
 
-          {/* قسم التسميع الكامل */}
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
