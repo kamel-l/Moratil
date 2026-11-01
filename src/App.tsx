@@ -57,7 +57,6 @@ import {
   getVersesNeedingReinforcement,
   getRevisionPlans,
   getChallenges,
-  saveChallenges,
   retryProgressSync,
   setStorageUserId,
   stopProgressSync,
@@ -69,6 +68,7 @@ import {
 import { scheduleDueReviewReminder } from './services/revisionReminderService';
 
 function getProgressSyncErrorMessage(error: unknown): string {
+  console.error('[Sync] Full error:', error); // ← أضف هذا السطر
   const details =
     typeof error === 'object' && error !== null
       ? (error as { code?: unknown; message?: unknown; status?: unknown })
@@ -378,17 +378,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-<<<<<<< HEAD
-  const handleCreateChallenge = (challenge: QuranChallenge) => {
-    const updatedChallenges = [...getChallenges(), challenge];
-    saveChallenges(updatedChallenges);
-    setChallenges(updatedChallenges);
-  };
-
-  // Play audio for a specific surah
-=======
   // تشغيل صوت سورة
->>>>>>> 2a37a57c20da719ac8de1c1027bb469fcb1d504a
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setAudioAyahNumber(1);
@@ -498,15 +488,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               />
             )}
 
-<<<<<<< HEAD
-          {currentTab === 'competition' && (
-            <CompetitionLeaderboard
-              challenges={challenges}
-              onStartChallenge={handleStartChallenge}
-              onCreateChallenge={handleCreateChallenge}
-            />
-          )}
-=======
             {currentTab === 'memorize' && (
               <MemorizationMode
                 allSurahs={ALL_SURAHS}
@@ -515,7 +496,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
                 riwaya={riwaya}
               />
             )}
->>>>>>> 2a37a57c20da719ac8de1c1027bb469fcb1d504a
 
             {currentTab === 'revision' && (
               <RevisionPlans

@@ -12,6 +12,14 @@ import type { RevisionReminderSettings } from './storageService';
  *
  * Every write is idempotent, so a retried synchronization converges on the same
  * rows.
+ *
+ * ── ملاحظة أمان مهمة ──
+ * كل جداول المستخدم (`memorization_progress`, `review_schedule`, `user_stats`,
+ * `profiles`) محمية بسياسات RLS تعتمد على `auth.uid() = user_id` (أو `= id`
+ * في `profiles`). لذلك يجب أن يحتوي **كل صف** نرسله على العمود الذي تشير
+ * إليه السياسة، وإلا رفضت قاعدة البيانات العملية برسالة
+ * `new row violates row-level security policy`. هذا الملف يضيف `user_id`
+ * صراحةً إلى صفوف `memorization_progress` و `review_schedule` قبل الإرسال.
  */
 
 const PAGE_SIZE = 1000;
@@ -447,6 +455,12 @@ async function upsertRows(
  * Mirrors a progress snapshot into the normalized tables. This is the only
  * persistence path since phase 4: a failure is a real synchronization error,
  * surfaced to the caller so the local copy can be retried later.
+ *
+ * ── RLS ──
+ * `memorization_progress` و `review_schedule` محميان بسياسات تعتمد على
+ * `auth.uid() = user_id`. لذلك يُضاف `user_id` صراحةً إلى كل صف قبل الإرسال؛
+ * بدون ذلك ترفض قاعدة البيانات العملية برسالة
+ * `new row violates row-level security policy`.
  */
 export async function saveNormalizedProgress(
   client: SupabaseClient,
@@ -481,10 +495,25 @@ export async function saveNormalizedProgress(
   );
 
   if (progressRows.length > 0) {
-    await upsertRows(client, 'memorization_progress', progressRows, 'user_id,ayah_id');
+    // ✅ user_id مطلوب لسياسة RLS: auth.uid() = user_id
+    const progressWithUser = progressRows.map((row) => ({ ...row, user_id: userId }));
+    await upsertRows(
+      client,
+      'memorization_progress',
+      progressWithUser,
+      'user_id,ayah_id',
+    );
   }
+
   if (scheduleRows.length > 0) {
-    await upsertRows(client, 'review_schedule', scheduleRows, 'user_id,ayah_id');
+    // ✅ user_id مطلوب لسياسة RLS
+    const scheduleWithUser = scheduleRows.map((row) => ({ ...row, user_id: userId }));
+    await upsertRows(
+      client,
+      'review_schedule',
+      scheduleWithUser,
+      'user_id,ayah_id',
+    );
   }
 }
 
