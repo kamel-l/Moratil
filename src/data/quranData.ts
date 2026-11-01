@@ -1,5 +1,13 @@
-import { Surah, Ayah } from '../types/quran';
+import { Surah, Ayah, Riwaya } from '../types/quran';
 import { ALL_SURAHS } from './quranSurahsList';
+import { WARSH_QURAN } from './warshQuran';
+
+interface ApiAyah {
+  numberInSurah: number;
+  text: string;
+  juz: number;
+  page: number;
+}
 
 // Core pre-loaded surahs with Uthmani Arabic script and authentic Tafsir Al-Muyassar (التفسير الميسر)
 export const PRELOADED_SURAHS: Record<number, Surah> = {
@@ -794,7 +802,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-export async function getAllQuranAyahs(): Promise<QuranTextAyah[]> {
+function applyWarshText(surah: Surah): Surah {
+  const warshTexts = WARSH_QURAN[surah.number];
+  if (!warshTexts || warshTexts.length !== surah.ayahs.length) return surah;
+  return {
+    ...surah,
+    ayahs: surah.ayahs.map((ayah, index) => ({ ...ayah, text: warshTexts[index] })),
+  };
+}
+
+function getWarshQuranTextAyahs(): QuranTextAyah[] {
+  const ayahs: QuranTextAyah[] = [];
+  for (const meta of ALL_SURAHS) {
+    const texts = WARSH_QURAN[meta.number];
+    if (!texts) continue;
+    for (let index = 0; index < texts.length; index++) {
+      ayahs.push({
+        surahNumber: meta.number,
+        surahName: meta.name,
+        numberInSurah: index + 1,
+        text: texts[index],
+      });
+    }
+  }
+  return ayahs;
+}
+
+export async function getAllQuranAyahs(riwaya: Riwaya = 'hafs'): Promise<QuranTextAyah[]> {
+  if (riwaya === 'warsh') return getWarshQuranTextAyahs();
+
   if (fullQuranTextCache) return fullQuranTextCache;
   if (fullQuranTextRequest) return fullQuranTextRequest;
 
@@ -862,7 +898,7 @@ export async function getAllQuranAyahs(): Promise<QuranTextAyah[]> {
 /**
  * Loads a Surah either from bundled high-precision data or fetches dynamically from Quran API
  */
-export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
+export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'hafs'): Promise<Surah> {
   const meta = ALL_SURAHS.find((s) => s.number === surahNumber);
   const expectedAyahCount = meta?.numberOfAyahs;
 
@@ -871,7 +907,7 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
     preloadedSurah &&
     hasCompleteAyahSequence(preloadedSurah.ayahs, expectedAyahCount ?? preloadedSurah.numberOfAyahs)
   ) {
-    return preloadedSurah;
+    return riwaya === 'warsh' ? applyWarshText(preloadedSurah) : preloadedSurah;
   }
 
   const cachedSurah = dynamicSurahCache[surahNumber];
@@ -879,7 +915,7 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
     cachedSurah &&
     hasCompleteAyahSequence(cachedSurah.ayahs, expectedAyahCount ?? cachedSurah.numberOfAyahs)
   ) {
-    return cachedSurah;
+    return riwaya === 'warsh' ? applyWarshText(cachedSurah) : cachedSurah;
   }
 
   try {
@@ -903,7 +939,7 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
           throw new Error(`Incomplete ayah data returned for surah ${surahNumber}.`);
         }
 
-        const ayahs: Ayah[] = textEdition.ayahs.map((item: any, idx: number) => {
+        const ayahs: Ayah[] = (textEdition.ayahs as ApiAyah[]).map((item, idx: number) => {
           const tafsirItem = tafsirEdition.ayahs[idx];
           return {
             numberInSurah: item.numberInSurah,
@@ -927,7 +963,7 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
         };
 
         dynamicSurahCache[surahNumber] = surah;
-        return surah;
+        return riwaya === 'warsh' ? applyWarshText(surah) : surah;
       }
     }
   } catch (err) {
