@@ -60,7 +60,14 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-stone-100/60" dir="rtl">
+    <div
+      className="h-full w-full flex flex-col bg-stone-100/60"
+      dir="rtl"
+      // ✅ المساحة المحجوزة لمشغل الصوت العام.
+      //    - مغلق → 0px    → الشريط السفلي ملاصق لأسفل الصفحة.
+      //    - مفتوح → ارتفاعه → الشريط السفلي مرفوع فوقه دون تداخل.
+      style={{ paddingBottom: 'var(--audio-player-offset, 0px)' }}
+    >
       <div className="shrink-0 bg-white border-b border-stone-200 shadow-sm">
         <div className="flex items-stretch h-12">
           {onClose ? (
@@ -109,7 +116,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
             </button>
           </div>
 
-          {onClose ? <div className="w-12 shrink-0" aria-hidden="true" /> : <div className="w-2 shrink-0" aria-hidden="true" />}
+          {onClose ? (
+            <div className="w-12 shrink-0" aria-hidden="true" />
+          ) : (
+            <div className="w-2 shrink-0" aria-hidden="true" />
+          )}
         </div>
       </div>
 
@@ -159,7 +170,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
 
   const currentAyah = surah.ayahs[currentAyahIndex] || surah.ayahs[0];
 
-  // ✅ الرواية الفعلية
   const effectiveRiwaya: Riwaya = riwaya ?? selectedReciter.riwaya ?? 'hafs';
   const reciterRiwaya: Riwaya = selectedReciter.riwaya ?? 'hafs';
   const riwayaMismatch = effectiveRiwaya !== reciterRiwaya;
@@ -212,9 +222,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
 
   const { isPlayingAudio, playAudio, stopAudio } = useAyahAudio();
 
-  // ============================================================
-  // معالج إتمام الآية
-  // ============================================================
   function handleAyahCompletion(isFlawless: boolean) {
     if (ayahCompletionHandledRef.current) return;
     ayahCompletionHandledRef.current = true;
@@ -277,9 +284,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     isSurahRecitationModeRef.current = isSurahRecitationMode;
   }, [isSurahRecitationMode]);
 
-  // ============================================================
-  // بدء / إيقاف الاستماع
-  // ============================================================
   const startListening = async () => {
     if (isListening) return;
 
@@ -319,22 +323,15 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     else await startListening();
   };
 
-  // ============================================================
-  // ✅ تشغيل صوت الآية — الإصلاح الأساسي هنا
-  // ============================================================
   const playAyahAudio = () => {
     if (isPlayingAudio) {
       stopAudio();
       return;
     }
 
-    // اختَر القارئ الصحيح: إن كان قارئ المستخدم لا يطابق الرواية
-    // نستخدم أول قارئ من الرواية الصحيحة
     const targetReciter =
       riwayaMismatch && fallbackReciter ? fallbackReciter : selectedReciter;
 
-    // ✅ نمرّر effectiveRiwaya صراحةً — هذا يمنع أي استبدال صامت داخل
-    //    getAyahAudioUrl، ويضمن أن مجلد القارئ الصحيح يُستخدم.
     const url = getAyahAudioUrl(
       targetReciter.id,
       surah.number,
@@ -383,9 +380,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   const allWordsProcessed = currentWordIdx >= verseWords.length;
   const shouldHideUnrecited = hideUnrecitedWords && isSurahRecitationMode && !allWordsProcessed;
 
-  // ============================================================
-  // الواجهة
-  // ============================================================
   return (
     <div className="h-full flex flex-col bg-stone-100/60 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
@@ -436,7 +430,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
           </div>
 
-          {/* تنبيه عند عدم توافق القارئ مع الرواية */}
           {riwayaMismatch && (
             <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -453,7 +446,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
           )}
 
-          {/* شريط اختيار السورة والتفسير */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs p-3 flex items-center gap-2 flex-wrap">
             <select
               value={surah.number}
@@ -486,7 +478,6 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </button>
           </div>
 
-          {/* بطاقة الآية */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
             <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">

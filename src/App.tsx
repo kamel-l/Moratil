@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
@@ -221,6 +221,47 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
 
+  // ✅ مرجع لالتقاط ارتفاع مشغل الصوت العام (fixed)
+  const audioPlayerWrapperRef = useRef<HTMLDivElement>(null);
+
+  // ✅ ضبط متغيّر CSS --audio-player-offset بحسب حالة المشغل.
+  //    - مغلق: 0px → الشريط السفلي في VoiceReciter و MemorizationTest يلمس أسفل الشاشة.
+  //    - مفتوح: ارتفاع المشغل → يرفع الشريطين فوقه دون تداخل، ويبقى المحتوى قابلًا للتمرير.
+  useEffect(() => {
+    const root = document.documentElement;
+
+    if (!isAudioPlayerOpen) {
+      root.style.setProperty('--audio-player-offset', '0px');
+      return () => root.style.setProperty('--audio-player-offset', '0px');
+    }
+
+    // المشغل يستخدم position: fixed داخل الغلاف، فيكون offsetHeight للغلاف
+    // غير معبّر. نلتقط أول عنصر fixed أو العنصر الذي يحمل data-audio-player-bar.
+    const measure = () => {
+      const wrapper = audioPlayerWrapperRef.current;
+      let height = 88; // قيمة احتياطية
+      if (wrapper) {
+        const fixedChild =
+          wrapper.querySelector<HTMLElement>('[data-audio-player-bar]') ??
+          wrapper.querySelector<HTMLElement>('.fixed');
+        if (fixedChild) {
+          height = fixedChild.offsetHeight || height;
+        }
+      }
+      root.style.setProperty('--audio-player-offset', `${height}px`);
+    };
+
+    // إطار واحد حتى يُرسم المشغل ثم نقيسه
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+      root.style.setProperty('--audio-player-offset', '0px');
+    };
+  }, [isAudioPlayerOpen]);
+
   // ✅ حماية: إن تغيّرت الرواية لأي سبب، اضمن توافق القارئ الحالي
   useEffect(() => {
     const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
@@ -381,8 +422,14 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     <div
       dir="rtl"
       className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
-        reciteActive ? 'h-[100dvh] pb-28 flex flex-col overflow-hidden' : 'min-h-screen pb-28'
+        reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'
       }`}
+      style={{
+        // في وضع التسميع: VoiceReciter يحجز مساحة المشغل داخليًا عبر
+        // var(--audio-player-offset) → لا نضيف padding على الجذر هنا.
+        // في باقي التبويبات: نحجز ارتفاع المشغل على الجذر حتى لا يغطّي المحتوى.
+        paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
+      }}
     >
       {/* ═══════════ شريط التنقل العلوي ═══════════ */}
       <div className="shrink-0">
@@ -488,16 +535,18 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
 
       {/* ═══════════ مشغل الصوت (fixed) ═══════════ */}
       <Suspense fallback={null}>
-        <AudioPlayerBar
-          currentSurah={currentSurah}
-          currentAyahNumber={audioAyahNumber}
-          selectedReciter={safeSelectedReciter}
-          onSelectReciter={setSelectedReciter}
-          onClose={() => setIsAudioPlayerOpen(false)}
-          onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
-          isOpen={isAudioPlayerOpen}
-          riwaya={riwaya}
-        />
+        <div ref={audioPlayerWrapperRef}>
+          <AudioPlayerBar
+            currentSurah={currentSurah}
+            currentAyahNumber={audioAyahNumber}
+            selectedReciter={safeSelectedReciter}
+            onSelectReciter={setSelectedReciter}
+            onClose={() => setIsAudioPlayerOpen(false)}
+            onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
+            isOpen={isAudioPlayerOpen}
+            riwaya={riwaya}
+          />
+        </div>
       </Suspense>
 
       {/* ═══════════ نافذة التفسير ═══════════ */}
