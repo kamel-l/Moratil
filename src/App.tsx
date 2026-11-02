@@ -3,21 +3,38 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
-import { VoiceReciter } from './components/VoiceReciter';
-import { RevisionPlans } from './components/RevisionPlans';
-import { SurahExplorer } from './components/SurahExplorer';
-import { CompetitionLeaderboard } from './components/CompetitionLeaderboard';
-import { StatsDashboard } from './components/StatsDashboard';
 import { HomeDashboard } from './components/HomeDashboard';
-import { MemorizationMode } from './components/MemorizationMode';
-import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
+
+const VoiceReciter = lazy(() =>
+  import('./components/VoiceReciter').then((module) => ({ default: module.VoiceReciter })),
+);
+const RevisionPlans = lazy(() =>
+  import('./components/RevisionPlans').then((module) => ({ default: module.RevisionPlans })),
+);
+const SurahExplorer = lazy(() =>
+  import('./components/SurahExplorer').then((module) => ({ default: module.SurahExplorer })),
+);
+const CompetitionLeaderboard = lazy(() =>
+  import('./components/CompetitionLeaderboard').then((module) => ({
+    default: module.CompetitionLeaderboard,
+  })),
+);
+const StatsDashboard = lazy(() =>
+  import('./components/StatsDashboard').then((module) => ({ default: module.StatsDashboard })),
+);
+const MemorizationMode = lazy(() =>
+  import('./components/MemorizationMode').then((module) => ({ default: module.MemorizationMode })),
+);
+const AudioPlayerBar = lazy(() =>
+  import('./components/AudioPlayerBar').then((module) => ({ default: module.AudioPlayerBar })),
+);
 
 import {
   Surah,
@@ -27,10 +44,12 @@ import {
   VerseMastery,
   RevisionPlan,
   QuranChallenge,
+  AppTab,
+  Riwaya,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
-import { POPULAR_RECITERS } from './utils/audioReciters';
+import { POPULAR_RECITERS, getRecitersByRiwaya } from './utils/audioReciters';
 import { supabase } from './services/supabase';
 import {
   getUserStats,
@@ -38,15 +57,19 @@ import {
   getVersesNeedingReinforcement,
   getRevisionPlans,
   getChallenges,
+  saveChallenges, // ✅ جديد: لحفظ التحديات المنشأة
   retryProgressSync,
   setStorageUserId,
   stopProgressSync,
   syncProgressFromCloud,
+  getRiwaya,
+  saveRiwaya,
   type ProgressSyncStatus,
 } from './services/storageService';
 import { scheduleDueReviewReminder } from './services/revisionReminderService';
 
 function getProgressSyncErrorMessage(error: unknown): string {
+  console.error('[Sync] Full error:', error);
   const details =
     typeof error === 'object' && error !== null
       ? (error as { code?: unknown; message?: unknown; status?: unknown })
@@ -139,7 +162,9 @@ export default function App() {
   }
 
   if (!userId) {
-    return <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />;
+    return (
+      <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />
+    );
   }
 
   return (
@@ -152,6 +177,15 @@ export default function App() {
   );
 }
 
+function TabLoadingFallback() {
+  return (
+    <div className="flex min-h-64 items-center justify-center gap-3 text-emerald-900" role="status">
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+      جارٍ تحميل الصفحة...
+    </div>
+  );
+}
+
 interface AuthenticatedAppProps {
   userId: string;
   userEmail: string;
@@ -161,12 +195,20 @@ interface AuthenticatedAppProps {
 function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProps) {
   const [syncStatus, setSyncStatus] = useState<ProgressSyncStatus>('syncing');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
-  const [currentTab, setCurrentTab] = useState<string>('home');
+  const [currentTab, setCurrentTab] = useState<AppTab>('home');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
 
-  const [selectedReciter, setSelectedReciter] = useState<Reciter>(POPULAR_RECITERS[0]);
+  // ✅ الرواية الحالية (مُحمَّلة من التخزين)
+  const [riwaya, setRiwaya] = useState<Riwaya>(getRiwaya);
+
+  // ✅ اختيار القارئ الافتراضي: أول قارئ متاح في الرواية الحالية
+  const [selectedReciter, setSelectedReciter] = useState<Reciter>(() => {
+    const pool = getRecitersByRiwaya(getRiwaya());
+    return pool[0] ?? POPULAR_RECITERS[0];
+  });
+
   const [stats, setStats] = useState<UserStats>(getUserStats());
   const [verseMasteryMap, setVerseMasteryMap] =
     useState<Record<string, VerseMastery>>(getVerseMasteryMap());
@@ -181,10 +223,57 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
 
-  // Load surah when selectedSurahNumber changes
+  // ✅ مرجع لالتقاط ارتفاع مشغل الصوت العام (fixed)
+  const audioPlayerWrapperRef = useRef<HTMLDivElement>(null);
+
+  // ✅ ضبط متغيّر CSS --audio-player-offset بحسب حالة المشغل.
+  useEffect(() => {
+    const root = document.documentElement;
+
+    if (!isAudioPlayerOpen) {
+      root.style.setProperty('--audio-player-offset', '0px');
+      return () => root.style.setProperty('--audio-player-offset', '0px');
+    }
+
+    const measure = () => {
+      const wrapper = audioPlayerWrapperRef.current;
+      let height = 88; // قيمة احتياطية
+      if (wrapper) {
+        const fixedChild =
+          wrapper.querySelector<HTMLElement>('[data-audio-player-bar]') ??
+          wrapper.querySelector<HTMLElement>('.fixed');
+        if (fixedChild) {
+          height = fixedChild.offsetHeight || height;
+        }
+      }
+      root.style.setProperty('--audio-player-offset', `${height}px`);
+    };
+
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+      root.style.setProperty('--audio-player-offset', '0px');
+    };
+  }, [isAudioPlayerOpen]);
+
+  // ✅ حماية: إن تغيّرت الرواية لأي سبب، اضمن توافق القارئ الحالي
+  useEffect(() => {
+    const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
+    if (reciterRiwaya === riwaya) return;
+
+    const pool = getRecitersByRiwaya(riwaya);
+    if (pool.length > 0 && pool[0].id !== selectedReciter.id) {
+      setSelectedReciter(pool[0]);
+    }
+  }, [riwaya, selectedReciter.riwaya, selectedReciter.id]);
+
+  // تحميل السورة عند تغيير الرقم أو الرواية
   useEffect(() => {
     let isMounted = true;
-    getSurahWithAyahs(selectedSurahNumber)
+    getSurahWithAyahs(selectedSurahNumber, riwaya)
       .then((surahData) => {
         if (isMounted) {
           setCurrentSurah(surahData);
@@ -199,7 +288,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     return () => {
       isMounted = false;
     };
-  }, [selectedSurahNumber]);
+  }, [selectedSurahNumber, riwaya]);
 
   const refreshAllState = useCallback(() => {
     setStats(getUserStats());
@@ -269,7 +358,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     });
   };
 
-  // Jump directly to practicing a specific forgotten verse
+  // الانتقال لتسميع آية محددة
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setInitialAyahForReciter(ayahNum);
@@ -277,7 +366,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-  // Jump from daily challenge to voice recitation
+  // الانتقال من التحدي اليومي إلى التسميع
   const handleStartChallenge = (challenge: QuranChallenge) => {
     setSelectedSurahNumber(challenge.surahNumber);
     setInitialAyahForReciter(challenge.ayahStart);
@@ -285,125 +374,184 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-  // Play audio for a specific surah
+  // ✅ إنشاء تحدي جديد + تحديث الحالة المحلية + الحفظ في التخزين
+  const handleCreateChallenge = (challenge: QuranChallenge) => {
+    setChallenges((previous) => {
+      const next = [challenge, ...previous];
+      saveChallenges(next);
+      return next;
+    });
+  };
+
+  // تشغيل صوت سورة
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setAudioAyahNumber(1);
     setIsAudioPlayerOpen(true);
   };
 
-  const handleSelectTab = (tab: string) => {
+  const handleSelectTab = (tab: AppTab) => {
     if (tab === 'memorize') setIsAudioPlayerOpen(false);
     setCurrentTab(tab);
   };
 
+  // ✅ تغيير الرواية: حفظ + تبديل القارئ تلقائيًا + إعادة تحميل السورة
+  const handleRiwayaChange = useCallback(
+    (next: Riwaya) => {
+      if (next === riwaya) return;
+      setRiwaya(next);
+      saveRiwaya(next);
+
+      const pool = getRecitersByRiwaya(next);
+      if (pool.length > 0) {
+        setSelectedReciter(pool[0]);
+      }
+
+      setIsAudioPlayerOpen(false);
+    },
+    [riwaya],
+  );
+
+  const reciteActive = currentTab === 'recite';
+
+  // ✅ تأكد أن القارئ يطابق الرواية قبل التمرير لبقية المكوّنات
+  const safeSelectedReciter = useMemo<Reciter>(() => {
+    const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
+    if (reciterRiwaya === riwaya) return selectedReciter;
+    const pool = getRecitersByRiwaya(riwaya);
+    return pool[0] ?? selectedReciter;
+  }, [selectedReciter, riwaya]);
+
   return (
-    <div className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20">
-      {/* Top Navbar */}
-      <Navbar
-        userEmail={userEmail}
-        onSignOut={onSignOut}
-        currentTab={currentTab}
-        onSelectTab={handleSelectTab}
-        stats={stats}
-        forgottenVersesCount={forgottenVerses.length}
-        onOpenForgottenVerses={() => setCurrentTab('revision')}
-        onOpenRewards={() => setIsRewardsModalOpen(true)}
-        onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
-        isAudioPlaying={isAudioPlayerOpen}
-      />
+    <div
+      dir="rtl"
+      className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
+        reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'
+      }`}
+      style={{
+        paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
+      }}
+    >
+      {/* ═══════════ شريط التنقل العلوي ═══════════ */}
+      <div className="shrink-0">
+        <Navbar
+          userEmail={userEmail}
+          onSignOut={onSignOut}
+          currentTab={currentTab}
+          onSelectTab={handleSelectTab}
+          stats={stats}
+          forgottenVersesCount={forgottenVerses.length}
+          onOpenForgottenVerses={() => setCurrentTab('revision')}
+          onOpenRewards={() => setIsRewardsModalOpen(true)}
+          onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
+          isAudioPlaying={isAudioPlayerOpen}
+          syncStatus={syncStatus}
+          syncErrorMessage={syncErrorMessage}
+          onRetrySync={handleRetrySync}
+          riwaya={riwaya}
+          onRiwayaChange={handleRiwayaChange}
+        />
+      </div>
 
-      
+      {/* ═══════════ المحتوى ═══════════ */}
+      <Suspense fallback={<TabLoadingFallback />}>
+        {reciteActive ? (
+          <div className="flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto">
+            <VoiceReciter
+              surah={currentSurah}
+              initialAyahNumber={initialAyahForReciter}
+              selectedReciter={safeSelectedReciter}
+              riwaya={riwaya}
+              onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+              onStatsUpdate={refreshAllState}
+              onSelectSurahChange={(num, ayahNum = 1) => {
+                setSelectedSurahNumber(num);
+                setInitialAyahForReciter(ayahNum);
+              }}
+              allSurahsList={ALL_SURAHS}
+              embedded
+              onClose={() => setCurrentTab('home')}
+            />
+          </div>
+        ) : (
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full">
+            {currentTab === 'home' && (
+              <HomeDashboard
+                stats={stats}
+                verseMasteryMap={verseMasteryMap}
+                forgottenVersesCount={forgottenVerses.length}
+                onStartSession={() => setCurrentTab('recite')}
+                onOpenMemorization={() => setCurrentTab('memorize')}
+                onResumeVerse={handleStartPracticingVerse}
+                onOpenReview={() => setCurrentTab('revision')}
+                onOpenStats={() => setCurrentTab('stats')}
+              />
+            )}
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {currentTab === 'home' && (
-          <HomeDashboard
-            stats={stats}
-            verseMasteryMap={verseMasteryMap}
-            forgottenVersesCount={forgottenVerses.length}
-            onStartSession={() => setCurrentTab('recite')}
-            onOpenMemorization={() => setCurrentTab('memorize')}
-            onResumeVerse={handleStartPracticingVerse}
-            onOpenReview={() => setCurrentTab('revision')}
-            onOpenStats={() => setCurrentTab('stats')}
-          />
+            {currentTab === 'memorize' && (
+              <MemorizationMode
+                allSurahs={ALL_SURAHS}
+                selectedReciter={safeSelectedReciter}
+                onSelectReciter={setSelectedReciter}
+                riwaya={riwaya}
+              />
+            )}
+
+            {currentTab === 'revision' && (
+              <RevisionPlans
+                plans={plans}
+                forgottenVerses={forgottenVerses}
+                onStartPracticingVerse={handleStartPracticingVerse}
+                onRefreshPlans={refreshAllState}
+              />
+            )}
+
+            {currentTab === 'explorer' && (
+              <SurahExplorer
+                onSelectSurahForRecitation={(num) => {
+                  setSelectedSurahNumber(num);
+                  setInitialAyahForReciter(1);
+                  setCurrentTab('recite');
+                }}
+                onPlaySurahAudio={handlePlaySurahAudio}
+                onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+                completedSurahs={stats.completedSurahs}
+                riwaya={riwaya}
+              />
+            )}
+
+            {currentTab === 'competition' && (
+              <CompetitionLeaderboard
+                challenges={challenges}
+                onStartChallenge={handleStartChallenge}
+                onCreateChallenge={handleCreateChallenge} // ✅ الآن مُمرَّر
+              />
+            )}
+
+            {currentTab === 'stats' && (
+              <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
+            )}
+          </main>
         )}
+      </Suspense>
 
-        {currentTab === 'memorize' && (
-          <MemorizationMode
-            allSurahs={ALL_SURAHS}
-            selectedReciter={selectedReciter}
+      {/* ═══════════ مشغل الصوت (fixed) ═══════════ */}
+      <Suspense fallback={null}>
+        <div ref={audioPlayerWrapperRef}>
+          <AudioPlayerBar
+            currentSurah={currentSurah}
+            currentAyahNumber={audioAyahNumber}
+            selectedReciter={safeSelectedReciter}
             onSelectReciter={setSelectedReciter}
+            onClose={() => setIsAudioPlayerOpen(false)}
+            onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
+            isOpen={isAudioPlayerOpen}
+            riwaya={riwaya}
           />
-        )}
+        </div>
+      </Suspense>
 
-        {/* Tab 1: Voice Recitation & Real-time Error Correction */}
-        {currentTab === 'recite' && (
-          <VoiceReciter
-            surah={currentSurah}
-            initialAyahNumber={initialAyahForReciter}
-            selectedReciter={selectedReciter}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            onStatsUpdate={refreshAllState}
-            onSelectSurahChange={(num, ayahNum = 1) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(ayahNum);
-            }}
-            allSurahsList={ALL_SURAHS}
-          />
-        )}
-
-        {/* Tab 2: Periodic Revision Plans & Forgotten Verses (SRS) */}
-        {currentTab === 'revision' && (
-          <RevisionPlans
-            plans={plans}
-            forgottenVerses={forgottenVerses}
-            onStartPracticingVerse={handleStartPracticingVerse}
-            onRefreshPlans={refreshAllState}
-          />
-        )}
-
-        {/* Tab 3: Quran Explorer & Tafsir Al-Muyassar */}
-        {currentTab === 'explorer' && (
-          <SurahExplorer
-            onSelectSurahForRecitation={(num) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(1);
-              setCurrentTab('recite');
-            }}
-            onPlaySurahAudio={handlePlaySurahAudio}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            completedSurahs={stats.completedSurahs}
-          />
-        )}
-
-        {/* Tab 4: Friends Competition & Leaderboard */}
-        {currentTab === 'competition' && (
-          <CompetitionLeaderboard
-            challenges={challenges}
-            onStartChallenge={handleStartChallenge}
-          />
-        )}
-
-        {/* Tab 5: Daily Performance Statistics */}
-        {currentTab === 'stats' && (
-          <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
-        )}
-      </main>
-
-      {/* Sticky Bottom Audio Player Bar */}
-      <AudioPlayerBar
-        currentSurah={currentSurah}
-        currentAyahNumber={audioAyahNumber}
-        selectedReciter={selectedReciter}
-        onSelectReciter={setSelectedReciter}
-        onClose={() => setIsAudioPlayerOpen(false)}
-        onAyahChange={(newAyah) => setAudioAyahNumber(newAyah)}
-        isOpen={isAudioPlayerOpen}
-      />
-
-      {/* Tafsir Al-Muyassar Modal */}
+      {/* ═══════════ نافذة التفسير ═══════════ */}
       {activeTafsirAyah && (
         <TafsirModal
           ayah={activeTafsirAyah}
@@ -416,7 +564,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         />
       )}
 
-      {/* Rewards & Badges Modal */}
+      {/* ═══════════ نافذة المكافآت ═══════════ */}
       {isRewardsModalOpen && (
         <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
       )}

@@ -1,12 +1,14 @@
-import {
+import type {
   UserStats,
   VerseMastery,
   RevisionPlan,
   Badge,
   FriendUser,
   QuranChallenge,
+  Riwaya,
 } from '../types/quran';
 import { supabase } from './supabase';
+import { fetchNormalizedProgress, saveNormalizedProgress } from './normalizedProgressService';
 
 const STATS_KEY = 'murattil_user_stats';
 const MASTERY_KEY = 'murattil_verse_mastery';
@@ -16,6 +18,7 @@ const CHALLENGES_KEY = 'murattil_challenges';
 const DAILY_ACTIVITY_KEY = 'murattil_daily_activity';
 const DAILY_GOAL_KEY = 'murattil_daily_verse_goal';
 const REVISION_REMINDER_KEY = 'murattil_revision_reminder';
+const RIWAYA_KEY = 'murattil_riwaya';
 const STORAGE_OWNER_KEY = 'murattil_storage_owner';
 const STORAGE_KEYS = [
   STATS_KEY,
@@ -28,23 +31,30 @@ const STORAGE_KEYS = [
   REVISION_REMINDER_KEY,
 ];
 
+const MAX_ACTIVITY_DAYS = 30;
+const REMINDER_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Bounds of the SM-2 schedule. The ease factor grows by 0.1 on every flawless
+ * review and the interval is multiplied by it, so without a ceiling a verse
+ * reviewed many times ends up scheduled decades away (one production row had
+ * 73 183 days). A verse should be seen at least once a year.
+ */
+const MIN_EASE_FACTOR = 1.3;
+const MAX_EASE_FACTOR = 3;
+const MAX_INTERVAL_DAYS = 365;
+
 export type ProgressSyncStatus = 'syncing' | 'synced' | 'error';
+
+export interface DailyRecitationActivity {
+  date: string;
+  verses: number;
+  sessions: number;
+}
 
 export interface RevisionReminderSettings {
   enabled: boolean;
   time: string;
-}
-
-function isRevisionReminderSettings(value: unknown): value is RevisionReminderSettings {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'enabled' in value &&
-    typeof value.enabled === 'boolean' &&
-    'time' in value &&
-    typeof value.time === 'string' &&
-    /^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)
-  );
 }
 
 const DEFAULT_REVISION_REMINDER: RevisionReminderSettings = {
@@ -58,9 +68,92 @@ let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let syncQueue: Promise<void> = Promise.resolve();
 let isHydratingFromCloud = false;
 let syncGeneration = 0;
+let masteryCache: { storageKey: string; value: Record<string, VerseMastery> } | null = null;
+
+// ────────────────────────────────────────────────────────────
+// localStorage helpers
+// ────────────────────────────────────────────────────────────
+
+function getStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readRaw(key: string): string | null {
+  try {
+    return getStorage()?.getItem(key) ?? null;
+  } catch (error) {
+    console.warn(`Unable to read ${key} from localStorage`, error);
+    return null;
+  }
+}
+
+function writeRaw(key: string, value: string): boolean {
+  try {
+    getStorage()?.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn(`Unable to save ${key} to localStorage`, error);
+    return false;
+  }
+}
+
+function readJson(key: string): unknown {
+  const raw = readRaw(key);
+  if (raw === null) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    console.warn(`Unable to parse ${key} from localStorage`, error);
+    return undefined;
+  }
+}
+
+function writeJson(key: string, value: unknown): boolean {
+  return writeRaw(key, JSON.stringify(value));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asFiniteNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asNonNegativeInteger(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+function asNumberArray(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+    : [];
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function readJsonArray<T>(key: string, isValid: (item: unknown) => item is T): T[] {
+  const parsed = readJson(key);
+  return Array.isArray(parsed) ? parsed.filter(isValid) : [];
+}
 
 function storageKey(key: string): string {
   return storageUserId ? `${key}:${storageUserId}` : key;
+}
+
+function resolveLevel(points: number): string {
+  if (points >= 5000) return 'حافظ متقن ومجاز';
+  if (points >= 3000) return 'فارس الحُفاظ';
+  if (points >= 1500) return 'طالب إتقان متقدم';
+  return points > 0 ? 'حافظ مبتدئ' : 'مبتدئ';
 }
 
 export function setStorageUserId(userId: string | null): void {
@@ -71,17 +164,22 @@ export function setStorageUserId(userId: string | null): void {
     syncStatusListener = null;
   }
   storageUserId = userId;
-  if (!userId || localStorage.getItem(STORAGE_OWNER_KEY)) return;
+  masteryCache = null;
+  if (!userId || readRaw(STORAGE_OWNER_KEY)) return;
 
   // Adopt pre-sync local progress once, for the first authenticated account on this device.
   for (const key of STORAGE_KEYS) {
-    const existing = localStorage.getItem(key);
-    if (existing !== null && localStorage.getItem(storageKey(key)) === null) {
-      localStorage.setItem(storageKey(key), existing);
+    const existing = readRaw(key);
+    if (existing !== null && readRaw(storageKey(key)) === null) {
+      writeRaw(storageKey(key), existing);
     }
   }
-  localStorage.setItem(STORAGE_OWNER_KEY, userId);
+  writeRaw(STORAGE_OWNER_KEY, userId);
 }
+
+// ────────────────────────────────────────────────────────────
+// Cloud synchronization
+// ────────────────────────────────────────────────────────────
 
 function notifySyncStatus(status: ProgressSyncStatus, error?: unknown): void {
   syncStatusListener?.(status, error);
@@ -109,28 +207,6 @@ function scheduleProgressSync(): void {
   }, 500);
 }
 
-function readLocalDailyActivity(): DailyRecitationActivity[] {
-  try {
-    const raw = localStorage.getItem(storageKey(DAILY_ACTIVITY_KEY));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is DailyRecitationActivity =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof item.date === 'string' &&
-        typeof item.verses === 'number' &&
-        Number.isFinite(item.verses) &&
-        typeof item.sessions === 'number' &&
-        Number.isFinite(item.sessions),
-    );
-  } catch (error) {
-    console.warn('Unable to read daily recitation activity from localStorage', error);
-    return [];
-  }
-}
-
 function mergeStats(local: UserStats, remote: UserStats | null): UserStats {
   if (!remote) return local;
   const points = Math.max(local.points, remote.points);
@@ -147,10 +223,7 @@ function mergeStats(local: UserStats, remote: UserStats | null): UserStats {
     completedSurahs: [...new Set([...local.completedSurahs, ...remote.completedSurahs])],
     unlockedBadgeIds: [...new Set([...local.unlockedBadgeIds, ...remote.unlockedBadgeIds])],
   };
-  if (points >= 5000) merged.level = 'حافظ متقن ومجاز';
-  else if (points >= 3000) merged.level = 'فارس الحُفاظ';
-  else if (points >= 1500) merged.level = 'طالب إتقان متقدم';
-  else merged.level = 'حافظ مبتدئ';
+  merged.level = resolveLevel(points);
   return merged;
 }
 
@@ -171,23 +244,23 @@ function mergeMastery(
 async function uploadProgressSnapshot(generation = syncGeneration): Promise<void> {
   if (!storageUserId || !supabase) return;
   const userId = storageUserId;
+  const client = supabase;
   notifySyncStatus('syncing');
 
   const stats = getUserStats();
   const mastery = getVerseMasteryMap();
   const activity = readLocalDailyActivity();
-  const [statsResult, masteryResult, activityResult] = await Promise.all([
-    supabase.from('user_progress').upsert({ user_id: userId, stats }, { onConflict: 'user_id' }),
-    supabase.from('verse_mastery').upsert(
-      Object.values(mastery).map((verse) => ({
-        user_id: userId,
-        surah_number: verse.surahNumber,
-        ayah_number: verse.ayahNumber,
-        mastery: verse,
-      })),
-      { onConflict: 'user_id,surah_number,ayah_number' },
+  const [normalizedError, activityResult] = await Promise.all([
+    saveNormalizedProgress(client, userId, {
+      stats,
+      mastery,
+      dailyVerseGoal: getDailyVerseGoal(),
+      reminder: getRevisionReminderSettings(),
+    }).then(
+      () => null,
+      (error: unknown) => error,
     ),
-    supabase.from('daily_activity').upsert(
+    client.from('daily_activity').upsert(
       activity.map((day) => ({
         user_id: userId,
         activity_date: day.date,
@@ -197,8 +270,9 @@ async function uploadProgressSnapshot(generation = syncGeneration): Promise<void
       { onConflict: 'user_id,activity_date' },
     ),
   ]);
+
   if (storageUserId !== userId || syncGeneration !== generation) return;
-  const error = statsResult.error || masteryResult.error || activityResult.error;
+  const error = normalizedError || activityResult.error;
   if (error) {
     notifySyncStatus('error', error);
     throw error;
@@ -222,31 +296,31 @@ export async function syncProgressFromCloud(
   syncTimer = undefined;
   notifySyncStatus('syncing');
 
-  const [statsResult, masteryResult, activityResult] = await Promise.all([
-    supabase.from('user_progress').select('stats').eq('user_id', userId).maybeSingle(),
-    supabase.from('verse_mastery').select('mastery').eq('user_id', userId),
-    supabase
-      .from('daily_activity')
-      .select('activity_date,verses,sessions')
-      .eq('user_id', userId),
-  ]);
-  if (storageUserId !== userId || syncGeneration !== generation) return;
-  const error = statsResult.error || masteryResult.error || activityResult.error;
-  if (error) {
-    notifySyncStatus('error', error);
+  const localStats = getUserStats();
+  let normalized: Awaited<ReturnType<typeof fetchNormalizedProgress>>;
+  try {
+    normalized = await fetchNormalizedProgress(supabase, userId, localStats.level);
+  } catch (error) {
+    if (storageUserId === userId && syncGeneration === generation) {
+      notifySyncStatus('error', error);
+    }
     throw error;
   }
+  const activityResult = await supabase
+    .from('daily_activity')
+    .select('activity_date,verses,sessions')
+    .eq('user_id', userId);
+  if (storageUserId !== userId || syncGeneration !== generation) return;
+  if (activityResult.error) {
+    notifySyncStatus('error', activityResult.error);
+    throw activityResult.error;
+  }
 
-  const localStats = getUserStats();
-  const remoteStats = (statsResult.data?.stats as UserStats | undefined) ?? null;
-  const mergedStats = mergeStats(localStats, remoteStats);
-  const remoteMastery = Object.fromEntries(
-    (masteryResult.data ?? []).map((row) => {
-      const mastery = row.mastery as VerseMastery;
-      return [`${mastery.surahNumber}_${mastery.ayahNumber}`, mastery];
-    }),
-  ) as Record<string, VerseMastery>;
-  const mergedMastery = mergeMastery(getVerseMasteryMap(), remoteMastery);
+  // The normalized snapshot is the only source of truth. The local device keeps
+  // the newest value so offline work is not lost, then everything is written
+  // back to the normalized tables by `uploadProgressSnapshot`.
+  const mergedStats = mergeStats(localStats, normalized.stats);
+  const mergedMastery = mergeMastery(getVerseMasteryMap(), normalized.mastery);
   const activityByDate = new Map(readLocalDailyActivity().map((day) => [day.date, day]));
   for (const row of activityResult.data ?? []) {
     const date = row.activity_date as string;
@@ -263,6 +337,18 @@ export async function syncProgressFromCloud(
     saveUserStats(mergedStats);
     saveVerseMasteryMap(mergedMastery);
     saveDailyActivity([...activityByDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
+
+    // Settings live in `profiles` now. Adopt the remote value only when this
+    // device never stored an explicit preference, so a fresh install inherits
+    // the account settings without overwriting local choices.
+    if (normalized.profile) {
+      if (readRaw(storageKey(DAILY_GOAL_KEY)) === null) {
+        saveDailyVerseGoal(normalized.profile.dailyVerseGoal);
+      }
+      if (readRaw(storageKey(REVISION_REMINDER_KEY)) === null) {
+        saveRevisionReminderSettings(normalized.profile.reminder);
+      }
+    }
   } finally {
     isHydratingFromCloud = false;
   }
@@ -283,19 +369,29 @@ export async function retryProgressSync(): Promise<void> {
   }
 }
 
-function saveDailyActivity(activity: DailyRecitationActivity[]): void {
-  try {
-    localStorage.setItem(storageKey(DAILY_ACTIVITY_KEY), JSON.stringify(activity.slice(-30)));
-    scheduleProgressSync();
-  } catch (error) {
-    console.warn('Unable to save daily recitation activity to localStorage', error);
-  }
+// ────────────────────────────────────────────────────────────
+// Daily activity & goals
+// ────────────────────────────────────────────────────────────
+
+function isDailyActivity(value: unknown): value is DailyRecitationActivity {
+  return (
+    isRecord(value) &&
+    typeof value.date === 'string' &&
+    typeof value.verses === 'number' &&
+    Number.isFinite(value.verses) &&
+    typeof value.sessions === 'number' &&
+    Number.isFinite(value.sessions)
+  );
 }
 
-export interface DailyRecitationActivity {
-  date: string;
-  verses: number;
-  sessions: number;
+function readLocalDailyActivity(): DailyRecitationActivity[] {
+  return readJsonArray(storageKey(DAILY_ACTIVITY_KEY), isDailyActivity);
+}
+
+function saveDailyActivity(activity: DailyRecitationActivity[]): void {
+  if (writeJson(storageKey(DAILY_ACTIVITY_KEY), activity.slice(-MAX_ACTIVITY_DAYS))) {
+    scheduleProgressSync();
+  }
 }
 
 function getLocalDateKey(date: Date): string {
@@ -306,123 +402,424 @@ function getLocalDateKey(date: Date): string {
 }
 
 export function getDailyRecitationActivity(dayCount = 7): DailyRecitationActivity[] {
-  let savedActivity: DailyRecitationActivity[] = [];
-  try {
-    const raw = localStorage.getItem(storageKey(DAILY_ACTIVITY_KEY));
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        savedActivity = parsed
-          .filter(
-            (item): item is DailyRecitationActivity =>
-              typeof item === 'object' &&
-              item !== null &&
-              typeof item.date === 'string' &&
-              typeof item.verses === 'number' &&
-              Number.isFinite(item.verses),
-          )
-          .map((item) => ({
-            date: item.date,
-            verses: item.verses,
-            sessions:
-              typeof item.sessions === 'number' && Number.isFinite(item.sessions)
-                ? item.sessions
-                : 0,
-          }));
-      }
-    }
-  } catch (error) {
-    console.warn('Unable to read daily recitation activity from localStorage', error);
-  }
-
-  const activityByDate = new Map(savedActivity.map((item) => [item.date, item.verses]));
+  const savedByDate = new Map(
+    readLocalDailyActivity().map((entry) => [entry.date, entry] as const),
+  );
+  const count = Math.max(1, dayCount);
   const today = new Date();
-  return Array.from({ length: Math.max(1, dayCount) }, (_, index) => {
+
+  return Array.from({ length: count }, (_, index) => {
     const date = new Date(today);
-    date.setDate(today.getDate() - (Math.max(1, dayCount) - index - 1));
+    date.setDate(today.getDate() - (count - index - 1));
     const dateKey = getLocalDateKey(date);
-    const savedDay = savedActivity.find((item) => item.date === dateKey);
+    const savedDay = savedByDate.get(dateKey);
     return {
       date: dateKey,
-      verses: activityByDate.get(dateKey) || 0,
-      sessions: savedDay?.sessions || 0,
+      verses: savedDay?.verses ?? 0,
+      sessions: savedDay?.sessions ?? 0,
     };
   });
 }
 
-export function getDailyVerseGoal(): number {
-  try {
-    const raw = localStorage.getItem(storageKey(DAILY_GOAL_KEY));
-    const parsed = raw ? Number(raw) : NaN;
-    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 100) return parsed;
-  } catch (error) {
-    console.warn('Unable to read daily verse goal from localStorage', error);
+function updateTodayActivity(update: (today: DailyRecitationActivity) => void): void {
+  const date = getLocalDateKey(new Date());
+  const activity = getDailyRecitationActivity(MAX_ACTIVITY_DAYS);
+  let today = activity.find((entry) => entry.date === date);
+  if (!today) {
+    today = { date, verses: 0, sessions: 0 };
+    activity.push(today);
   }
-  return 10;
+  update(today);
+  saveDailyActivity(activity);
+}
+
+export function getDailyVerseGoal(): number {
+  const parsed = Number(readRaw(storageKey(DAILY_GOAL_KEY)));
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 10;
+}
+
+export function saveDailyVerseGoal(goal: number): void {
+  const validGoal = Math.max(1, Math.min(100, Math.round(goal)));
+  writeRaw(storageKey(DAILY_GOAL_KEY), String(validGoal));
 }
 
 export function getRevisionReminderSettings(): RevisionReminderSettings {
-  try {
-    const raw = localStorage.getItem(storageKey(REVISION_REMINDER_KEY));
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (isRevisionReminderSettings(parsed)) return parsed;
-    }
-  } catch (error) {
-    console.warn('Unable to read revision reminder settings from localStorage', error);
+  const parsed = readJson(storageKey(REVISION_REMINDER_KEY));
+  if (
+    isRecord(parsed) &&
+    typeof parsed.enabled === 'boolean' &&
+    typeof parsed.time === 'string' &&
+    REMINDER_TIME_PATTERN.test(parsed.time)
+  ) {
+    return { enabled: parsed.enabled, time: parsed.time };
   }
   return { ...DEFAULT_REVISION_REMINDER };
 }
 
 export function saveRevisionReminderSettings(settings: RevisionReminderSettings): void {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(settings.time)) {
+  if (!REMINDER_TIME_PATTERN.test(settings.time)) {
     throw new Error('صيغة وقت التنبيه غير صالحة.');
   }
-  try {
-    localStorage.setItem(storageKey(REVISION_REMINDER_KEY), JSON.stringify(settings));
-  } catch (error) {
-    console.error('Unable to save revision reminder settings to localStorage', error);
-    throw error;
-  }
+  writeJson(storageKey(REVISION_REMINDER_KEY), settings);
 }
 
-export function saveDailyVerseGoal(goal: number): void {
-  const validGoal = Math.max(1, Math.min(100, Math.round(goal)));
-  try {
-    localStorage.setItem(storageKey(DAILY_GOAL_KEY), String(validGoal));
-  } catch (error) {
-    console.warn('Unable to save daily verse goal to localStorage', error);
-  }
+// ────────────────────────────────────────────────────────────
+// Riwaya (recitation) preference — local device preference, not synced
+// ────────────────────────────────────────────────────────────
+
+export function getRiwaya(): Riwaya {
+  return readRaw(RIWAYA_KEY) === 'warsh' ? 'warsh' : 'hafs';
+}
+
+export function saveRiwaya(riwaya: Riwaya): void {
+  writeRaw(RIWAYA_KEY, riwaya);
 }
 
 function recordDailyActivity(versesCount: number): void {
   if (versesCount <= 0) return;
-  const date = getLocalDateKey(new Date());
-  const activity = getDailyRecitationActivity(30);
-  const today = activity.find((item) => item.date === date);
-  if (today) today.verses += versesCount;
-  else activity.push({ date, verses: versesCount, sessions: 0 });
-
-  try {
-    saveDailyActivity(activity);
-  } catch (error) {
-    console.warn('Unable to save daily recitation activity to localStorage', error);
-  }
+  updateTodayActivity((today) => {
+    today.verses += versesCount;
+  });
 }
 
 export function recordRecitationSession(): void {
-  const date = getLocalDateKey(new Date());
-  const activity = getDailyRecitationActivity(30);
-  const today = activity.find((item) => item.date === date);
-  if (today) today.sessions += 1;
-  else activity.push({ date, verses: 0, sessions: 1 });
+  updateTodayActivity((today) => {
+    today.sessions += 1;
+  });
+}
 
-  try {
-    saveDailyActivity(activity);
-  } catch (error) {
-    console.warn('Unable to save daily recitation session to localStorage', error);
+// ────────────────────────────────────────────────────────────
+// Stats
+// ────────────────────────────────────────────────────────────
+
+function createDefaultStats(): UserStats {
+  return {
+    points: 0,
+    level: 'مبتدئ',
+    streakDays: 0,
+    // A brand-new account has not recited yet. Keeping the field empty lets the
+    // merge prefer a real remote date instead of "now".
+    lastActiveDate: '',
+    totalVersesRecited: 0,
+    totalRecitedSeconds: 0,
+    accuracyRate: 0,
+    mistakesFixedCount: 0,
+    completedSurahs: [],
+    unlockedBadgeIds: [],
+  };
+}
+
+function normalizeStats(value: unknown): UserStats {
+  if (!isRecord(value)) return createDefaultStats();
+  const points = Math.max(0, asFiniteNumber(value.points));
+  return {
+    points,
+    level: typeof value.level === 'string' && value.level ? value.level : resolveLevel(points),
+    streakDays: asNonNegativeInteger(value.streakDays),
+    lastActiveDate: typeof value.lastActiveDate === 'string' ? value.lastActiveDate : '',
+    totalVersesRecited: asNonNegativeInteger(value.totalVersesRecited),
+    totalRecitedSeconds: Math.max(0, asFiniteNumber(value.totalRecitedSeconds)),
+    accuracyRate: Math.max(0, asFiniteNumber(value.accuracyRate)),
+    mistakesFixedCount: asNonNegativeInteger(value.mistakesFixedCount),
+    completedSurahs: asNumberArray(value.completedSurahs),
+    unlockedBadgeIds: asStringArray(value.unlockedBadgeIds),
+  };
+}
+
+export function getUserStats(): UserStats {
+  const stored = readJson(storageKey(STATS_KEY));
+  if (stored !== undefined) return normalizeStats(stored);
+
+  const defaults = createDefaultStats();
+  saveUserStats(defaults);
+  return defaults;
+}
+
+export function saveUserStats(stats: UserStats): void {
+  if (writeJson(storageKey(STATS_KEY), stats)) {
+    scheduleProgressSync();
   }
 }
+
+export function addPointsAndVerses(
+  addedPoints: number,
+  versesCount: number,
+  seconds: number,
+  accuracy?: number,
+): UserStats {
+  const stats = getUserStats();
+  stats.points += addedPoints;
+  stats.totalVersesRecited += versesCount;
+  stats.totalRecitedSeconds += seconds;
+  recordDailyActivity(versesCount);
+
+  if (accuracy !== undefined && Number.isFinite(accuracy)) {
+    stats.accuracyRate = Math.round(((stats.accuracyRate * 4 + accuracy) / 5) * 10) / 10;
+  }
+
+  stats.level = resolveLevel(stats.points);
+  saveUserStats(stats);
+  return stats;
+}
+
+// ────────────────────────────────────────────────────────────
+// Verse mastery & spaced repetition
+// ────────────────────────────────────────────────────────────
+
+function isVerseMastery(value: unknown): value is VerseMastery {
+  return (
+    isRecord(value) &&
+    typeof value.surahNumber === 'number' &&
+    typeof value.ayahNumber === 'number' &&
+    typeof value.level === 'string' &&
+    typeof value.lastReviewedAt === 'string' &&
+    typeof value.nextReviewAt === 'string'
+  );
+}
+
+function normalizeMasteryMap(value: unknown): Record<string, VerseMastery> {
+  if (!isRecord(value)) return {};
+  const map: Record<string, VerseMastery> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!isVerseMastery(entry)) continue;
+    map[key] = {
+      ...entry,
+      consecutiveSuccessCount: asNonNegativeInteger(entry.consecutiveSuccessCount),
+      mistakeCount: asNonNegativeInteger(entry.mistakeCount),
+      recentMistakes: Array.isArray(entry.recentMistakes)
+        ? entry.recentMistakes.filter(
+            (mistake) =>
+              isRecord(mistake) &&
+              typeof mistake.expectedWord === 'string' &&
+              typeof mistake.recitedWord === 'string' &&
+              typeof mistake.timestamp === 'string',
+          )
+        : [],
+    };
+  }
+  return map;
+}
+
+export function getVerseMasteryMap(): Record<string, VerseMastery> {
+  const key = storageKey(MASTERY_KEY);
+  if (masteryCache?.storageKey === key) return masteryCache.value;
+
+  const stored = readJson(key);
+  if (stored === undefined) {
+    const empty: Record<string, VerseMastery> = {};
+    saveVerseMasteryMap(empty);
+    return empty;
+  }
+
+  const map = normalizeMasteryMap(stored);
+  masteryCache = { storageKey: key, value: map };
+  return map;
+}
+
+export function saveVerseMasteryMap(map: Record<string, VerseMastery>): void {
+  masteryCache = { storageKey: storageKey(MASTERY_KEY), value: map };
+  if (writeJson(storageKey(MASTERY_KEY), map)) {
+    scheduleProgressSync();
+  }
+}
+
+/**
+ * Records a verse recitation in the spaced-repetition system (SM-2).
+ */
+export function recordVerseResult(
+  surahNumber: number,
+  ayahNumber: number,
+  isFlawless: boolean,
+  mistakes: { expectedWord: string; recitedWord: string }[] = [],
+): VerseMastery {
+  const map = getVerseMasteryMap();
+  const key = `${surahNumber}_${ayahNumber}`;
+  const now = new Date();
+
+  const existing = map[key];
+  const current: VerseMastery = existing
+    ? { ...existing, recentMistakes: [...existing.recentMistakes] }
+    : {
+        surahNumber,
+        ayahNumber,
+        level: 'new',
+        consecutiveSuccessCount: 0,
+        mistakeCount: 0,
+        lastReviewedAt: now.toISOString(),
+        nextReviewAt: now.toISOString(),
+        recentMistakes: [],
+      };
+
+  const previousRepetitionCount =
+    typeof current.repetitionCount === 'number' &&
+    Number.isInteger(current.repetitionCount) &&
+    current.repetitionCount >= 0
+      ? current.repetitionCount
+      : current.consecutiveSuccessCount;
+  const previousEaseFactor =
+    typeof current.easeFactor === 'number' &&
+    Number.isFinite(current.easeFactor) &&
+    current.easeFactor >= MIN_EASE_FACTOR
+      ? Math.min(MAX_EASE_FACTOR, current.easeFactor)
+      : 2.5;
+  const inferredLegacyInterval = Math.round(
+    (Date.parse(current.nextReviewAt) - Date.parse(current.lastReviewedAt)) / 86_400_000,
+  );
+  const storedInterval =
+    typeof current.intervalDays === 'number' &&
+    Number.isFinite(current.intervalDays) &&
+    current.intervalDays > 0
+      ? current.intervalDays
+      : Number.isFinite(inferredLegacyInterval)
+        ? Math.max(1, inferredLegacyInterval)
+        : 1;
+  const previousInterval = Math.min(MAX_INTERVAL_DAYS, storedInterval);
+  const quality = isFlawless ? 5 : 2;
+  const easeFactor = Math.min(
+    MAX_EASE_FACTOR,
+    Math.max(
+      MIN_EASE_FACTOR,
+      previousEaseFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02),
+    ),
+  );
+  const repetitionCount = quality < 3 ? 0 : previousRepetitionCount + 1;
+  const intervalDays =
+    quality < 3
+      ? 1
+      : previousRepetitionCount === 0
+        ? 1
+        : previousRepetitionCount === 1
+          ? 6
+          : Math.min(
+              MAX_INTERVAL_DAYS,
+              Math.max(1, Math.round(previousInterval * previousEaseFactor)),
+            );
+
+  current.repetitionCount = repetitionCount;
+  current.easeFactor = easeFactor;
+  current.intervalDays = intervalDays;
+  current.lastReviewedAt = now.toISOString();
+  current.nextReviewAt = new Date(now.getTime() + intervalDays * 86_400_000).toISOString();
+
+  if (isFlawless) {
+    current.consecutiveSuccessCount += 1;
+    current.level = current.consecutiveSuccessCount >= 3 ? 'mastered' : 'good';
+  } else {
+    current.mistakeCount += 1;
+    current.consecutiveSuccessCount = 0;
+    current.level = 'review_needed';
+
+    if (mistakes.length > 0) {
+      current.recentMistakes = [
+        ...mistakes.map((mistake) => ({ ...mistake, timestamp: now.toISOString() })),
+        ...current.recentMistakes,
+      ].slice(0, 5);
+    }
+  }
+
+  map[key] = current;
+  saveVerseMasteryMap(map);
+  return current;
+}
+
+/**
+ * Returns all verses that need review or reinforcement due to past mistakes.
+ */
+export function getVersesNeedingReinforcement(): VerseMastery[] {
+  const now = new Date();
+  return Object.values(getVerseMasteryMap()).filter(
+    (item) =>
+      item.level === 'review_needed' || item.mistakeCount > 0 || new Date(item.nextReviewAt) <= now,
+  );
+}
+
+export function getVersesDueForReview(now = new Date()): VerseMastery[] {
+  const nowTime = now.getTime();
+  return Object.values(getVerseMasteryMap()).filter((item) => {
+    const nextReviewTime = Date.parse(item.nextReviewAt);
+    return Number.isFinite(nextReviewTime) && nextReviewTime <= nowTime;
+  });
+}
+
+// ────────────────────────────────────────────────────────────
+// Revision plans, friends & challenges
+// ────────────────────────────────────────────────────────────
+
+function isRevisionPlan(value: unknown): value is RevisionPlan {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.category === 'string' &&
+    Array.isArray(value.targetSurahs)
+  );
+}
+
+function isFriend(value: unknown): value is FriendUser {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string';
+}
+
+function isChallenge(value: unknown): value is QuranChallenge {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.surahNumber === 'number'
+  );
+}
+
+export function getRevisionPlans(): RevisionPlan[] {
+  const stored = readJson(storageKey(PLANS_KEY));
+  if (stored === undefined) {
+    saveRevisionPlans([]);
+    return [];
+  }
+  return readJsonArray(storageKey(PLANS_KEY), isRevisionPlan);
+}
+
+export function saveRevisionPlans(plans: RevisionPlan[]): void {
+  writeJson(storageKey(PLANS_KEY), plans);
+}
+
+export function resetRevisionData(): void {
+  saveRevisionPlans([]);
+  saveVerseMasteryMap({});
+}
+
+export function getFriends(): FriendUser[] {
+  const stored = readJson(storageKey(FRIENDS_KEY));
+  if (stored === undefined) {
+    saveFriends([]);
+    return [];
+  }
+  return readJsonArray(storageKey(FRIENDS_KEY), isFriend);
+}
+
+export function saveFriends(friends: FriendUser[]): void {
+  writeJson(storageKey(FRIENDS_KEY), friends);
+}
+
+export function getChallenges(): QuranChallenge[] {
+  const stored = readJson(storageKey(CHALLENGES_KEY));
+  if (stored === undefined) {
+    saveChallenges([]);
+    return [];
+  }
+  return readJsonArray(storageKey(CHALLENGES_KEY), isChallenge);
+}
+
+export function saveChallenges(challenges: QuranChallenge[]): void {
+  writeJson(storageKey(CHALLENGES_KEY), challenges);
+}
+
+export function resetCompetitionData(): void {
+  saveFriends([]);
+  saveChallenges([]);
+}
+
+// ────────────────────────────────────────────────────────────
+// Badges catalogue
+// ────────────────────────────────────────────────────────────
 
 export const INITIAL_BADGES: Badge[] = [
   {
@@ -474,272 +871,3 @@ export const INITIAL_BADGES: Badge[] = [
     conditionDescription: 'إتقان سور جزء عم',
   },
 ];
-
-export function getUserStats(): UserStats {
-  try {
-    const raw = localStorage.getItem(storageKey(STATS_KEY));
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch (error) {
-    console.warn('Unable to read user stats from localStorage', error);
-  }
-
-  const defaultStats: UserStats = {
-    points: 0,
-    level: 'مبتدئ',
-    streakDays: 0,
-    lastActiveDate: new Date().toISOString(),
-    totalVersesRecited: 0,
-    totalRecitedSeconds: 0,
-    accuracyRate: 0,
-    mistakesFixedCount: 0,
-    completedSurahs: [],
-    unlockedBadgeIds: [],
-  };
-
-  saveUserStats(defaultStats);
-  return defaultStats;
-}
-
-export function saveUserStats(stats: UserStats) {
-  try {
-    localStorage.setItem(storageKey(STATS_KEY), JSON.stringify(stats));
-    scheduleProgressSync();
-  } catch (error) {
-    console.warn('Unable to save user stats to localStorage', error);
-  }
-}
-
-export function addPointsAndVerses(
-  addedPoints: number,
-  versesCount: number,
-  seconds: number,
-  accuracy?: number,
-) {
-  const stats = getUserStats();
-  stats.points += addedPoints;
-  stats.totalVersesRecited += versesCount;
-  stats.totalRecitedSeconds += seconds;
-  recordDailyActivity(versesCount);
-
-  if (accuracy !== undefined && Number.isFinite(accuracy)) {
-    stats.accuracyRate = Math.round(((stats.accuracyRate * 4 + accuracy) / 5) * 10) / 10;
-  }
-
-  // Level progression
-  if (stats.points >= 5000) stats.level = 'حافظ متقن ومجاز';
-  else if (stats.points >= 3000) stats.level = 'فارس الحُفاظ';
-  else if (stats.points >= 1500) stats.level = 'طالب إتقان متقدم';
-  else stats.level = 'حافظ مبتدئ';
-
-  saveUserStats(stats);
-  return stats;
-}
-
-export function getVerseMasteryMap(): Record<string, VerseMastery> {
-  try {
-    const raw = localStorage.getItem(storageKey(MASTERY_KEY));
-    if (raw) return JSON.parse(raw);
-  } catch (error) {
-    console.warn('Unable to read verse mastery from localStorage', error);
-  }
-
-  const initial: Record<string, VerseMastery> = {};
-  saveVerseMasteryMap(initial);
-  return initial;
-}
-
-export function saveVerseMasteryMap(map: Record<string, VerseMastery>) {
-  try {
-    localStorage.setItem(storageKey(MASTERY_KEY), JSON.stringify(map));
-    scheduleProgressSync();
-  } catch (error) {
-    console.warn('Unable to save verse mastery to localStorage', error);
-  }
-}
-
-/**
- * Record recitation result of a verse in Spaced Repetition System
- */
-export function recordVerseResult(
-  surahNumber: number,
-  ayahNumber: number,
-  isFlawless: boolean,
-  mistakes: { expectedWord: string; recitedWord: string }[] = [],
-): VerseMastery {
-  const map = getVerseMasteryMap();
-  const key = `${surahNumber}_${ayahNumber}`;
-  const now = new Date();
-
-  const current: VerseMastery = map[key] || {
-    surahNumber,
-    ayahNumber,
-    level: 'new',
-    consecutiveSuccessCount: 0,
-    mistakeCount: 0,
-    lastReviewedAt: now.toISOString(),
-    nextReviewAt: now.toISOString(),
-    recentMistakes: [],
-  };
-
-  const previousRepetitionCount =
-    typeof current.repetitionCount === 'number' &&
-    Number.isInteger(current.repetitionCount) &&
-    current.repetitionCount >= 0
-      ? current.repetitionCount
-      : current.consecutiveSuccessCount;
-  const previousEaseFactor =
-    typeof current.easeFactor === 'number' &&
-    Number.isFinite(current.easeFactor) &&
-    current.easeFactor >= 1.3
-      ? current.easeFactor
-      : 2.5;
-  const inferredLegacyInterval =
-    Math.round((Date.parse(current.nextReviewAt) - Date.parse(current.lastReviewedAt)) / 86400000);
-  const previousInterval =
-    typeof current.intervalDays === 'number' &&
-    Number.isFinite(current.intervalDays) &&
-    current.intervalDays > 0
-      ? current.intervalDays
-      : Number.isFinite(inferredLegacyInterval)
-        ? Math.max(1, inferredLegacyInterval)
-        : 1;
-  const quality = isFlawless ? 5 : 2;
-  const easeFactor = Math.max(
-    1.3,
-    previousEaseFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02),
-  );
-  const repetitionCount = quality < 3 ? 0 : previousRepetitionCount + 1;
-  const intervalDays =
-    quality < 3
-      ? 1
-      : previousRepetitionCount === 0
-        ? 1
-        : previousRepetitionCount === 1
-          ? 6
-          : Math.max(1, Math.round(previousInterval * previousEaseFactor));
-
-  current.repetitionCount = repetitionCount;
-  current.easeFactor = easeFactor;
-  current.intervalDays = intervalDays;
-  current.lastReviewedAt = now.toISOString();
-  current.nextReviewAt = new Date(now.getTime() + intervalDays * 86400000).toISOString();
-
-  if (isFlawless) {
-    current.consecutiveSuccessCount += 1;
-
-    if (current.consecutiveSuccessCount >= 3) {
-      current.level = 'mastered';
-    } else {
-      current.level = 'good';
-    }
-  } else {
-    current.mistakeCount += 1;
-    current.consecutiveSuccessCount = 0;
-    current.level = 'review_needed';
-
-    if (mistakes.length > 0) {
-      current.recentMistakes = [
-        ...mistakes.map((m) => ({ ...m, timestamp: now.toISOString() })),
-        ...current.recentMistakes,
-      ].slice(0, 5);
-    }
-  }
-
-  map[key] = current;
-  saveVerseMasteryMap(map);
-  return current;
-}
-
-/**
- * Returns all verses that need review or reinforcement due to past mistakes
- */
-export function getVersesNeedingReinforcement(): VerseMastery[] {
-  const map = getVerseMasteryMap();
-  const now = new Date();
-
-  return Object.values(map).filter((item) => {
-    return (
-      item.level === 'review_needed' || item.mistakeCount > 0 || new Date(item.nextReviewAt) <= now
-    );
-  });
-}
-
-export function getVersesDueForReview(now = new Date()): VerseMastery[] {
-  const nowTime = now.getTime();
-  return Object.values(getVerseMasteryMap()).filter((item) => {
-    const nextReviewTime = Date.parse(item.nextReviewAt);
-    return Number.isFinite(nextReviewTime) && nextReviewTime <= nowTime;
-  });
-}
-
-export function getRevisionPlans(): RevisionPlan[] {
-  try {
-    const raw = localStorage.getItem(storageKey(PLANS_KEY));
-    if (raw) return JSON.parse(raw);
-  } catch (error) {
-    console.warn('Unable to read revision plans from localStorage', error);
-  }
-
-  saveRevisionPlans([]);
-  return [];
-}
-
-export function saveRevisionPlans(plans: RevisionPlan[]) {
-  try {
-    localStorage.setItem(storageKey(PLANS_KEY), JSON.stringify(plans));
-  } catch (error) {
-    console.warn('Unable to save revision plans to localStorage', error);
-  }
-}
-
-export function resetRevisionData(): void {
-  saveRevisionPlans([]);
-  saveVerseMasteryMap({});
-}
-
-export function getFriends(): FriendUser[] {
-  try {
-    const raw = localStorage.getItem(storageKey(FRIENDS_KEY));
-    if (raw) return JSON.parse(raw);
-  } catch (error) {
-    console.warn('Unable to read friends from localStorage', error);
-  }
-
-  saveFriends([]);
-  return [];
-}
-
-export function saveFriends(friends: FriendUser[]) {
-  try {
-    localStorage.setItem(storageKey(FRIENDS_KEY), JSON.stringify(friends));
-  } catch (error) {
-    console.warn('Unable to save friends to localStorage', error);
-  }
-}
-
-export function getChallenges(): QuranChallenge[] {
-  try {
-    const raw = localStorage.getItem(storageKey(CHALLENGES_KEY));
-    if (raw) return JSON.parse(raw);
-  } catch (error) {
-    console.warn('Unable to read challenges from localStorage', error);
-  }
-
-  saveChallenges([]);
-  return [];
-}
-
-export function saveChallenges(challenges: QuranChallenge[]) {
-  try {
-    localStorage.setItem(storageKey(CHALLENGES_KEY), JSON.stringify(challenges));
-  } catch (error) {
-    console.warn('Unable to save challenges to localStorage', error);
-  }
-}
-
-export function resetCompetitionData(): void {
-  saveFriends([]);
-  saveChallenges([]);
-}

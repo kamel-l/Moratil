@@ -5,3 +5,6 @@ android/app/src/main/assets
 lintreport.json
 metadata.json
 AIPRM-export-*.md
+
+# Generated artefacts: never reformat the Quran text seed or its fixed source.
+supabase/seed/
