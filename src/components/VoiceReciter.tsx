@@ -4,7 +4,7 @@ import {
   ChevronRight, ChevronLeft, HelpCircle, BookOpen, Headphones,
   Eye, EyeOff, Trophy, Sparkles, CalendarClock, AlertTriangle,
 } from 'lucide-react';
-import { Surah, Ayah, Reciter, Riwaya } from '../types/quran';
+import { Surah, Ayah, Reciter, Riwaya, QuranChallenge } from '../types/quran';
 import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
 import { getAyahAudioUrl, getRecitersByRiwaya } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
@@ -25,6 +25,8 @@ interface VoiceReciterProps {
   initialTab?: 'recite' | 'test';
   onClose?: () => void;
   riwaya?: Riwaya;
+  activeChallenge?: QuranChallenge | null;
+  onChallengeResult?: (score: number, perfectAyahs: number) => void;
 }
 
 type RecitationMode = 'karaoke' | 'listen_repeat';
@@ -52,8 +54,15 @@ function isBasmalahPrefix(words: { original: string }[]): boolean {
 // الغلاف الخارجي: تبويبات تسميع / اختبار
 // ============================================================
 export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
-  const { initialTab = 'recite', onClose } = props;
-  const [tab, setTab] = useState<'recite' | 'test'>(initialTab);
+  const { initialTab = 'recite', onClose, activeChallenge } = props;
+
+  const [tab, setTab] = useState<'recite' | 'test'>(
+    activeChallenge ? 'test' : initialTab,
+  );
+
+  useEffect(() => {
+    if (activeChallenge) setTab('test');
+  }, [activeChallenge?.id]);
 
   const handleClose = () => {
     if (typeof onClose === 'function') onClose();
@@ -63,9 +72,6 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
     <div
       className="h-full w-full flex flex-col bg-stone-100/60"
       dir="rtl"
-      // ✅ المساحة المحجوزة لمشغل الصوت العام.
-      //    - مغلق → 0px    → الشريط السفلي ملاصق لأسفل الصفحة.
-      //    - مفتوح → ارتفاعه → الشريط السفلي مرفوع فوقه دون تداخل.
       style={{ paddingBottom: 'var(--audio-player-offset, 0px)' }}
     >
       <div className="shrink-0 bg-white border-b border-stone-200 shadow-sm">
@@ -110,6 +116,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
             >
               <Trophy className="w-4 h-4" />
               <span>اختبار</span>
+              {activeChallenge && (
+                <span className="absolute top-1 right-4 w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
               {tab === 'test' && (
                 <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-emerald-700 rounded-full" />
               )}
@@ -132,6 +141,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
             selectedReciter={props.selectedReciter}
             onStatsUpdate={props.onStatsUpdate}
             riwaya={props.riwaya}
+            activeChallenge={props.activeChallenge}
+            onChallengeResult={props.onChallengeResult}
           />
         )}
       </div>
@@ -140,7 +151,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = (props) => {
 };
 
 // ============================================================
-// المكوّن الداخلي: منطق التسميع
+// المكوّن الداخلي
 // ============================================================
 const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   surah,

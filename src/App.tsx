@@ -57,7 +57,8 @@ import {
   getVersesNeedingReinforcement,
   getRevisionPlans,
   getChallenges,
-  saveChallenges, // ✅ جديد: لحفظ التحديات المنشأة
+  upsertChallenge,             // ✅ جديد
+  recordChallengeResult,       // ✅ جديد
   retryProgressSync,
   setStorageUserId,
   stopProgressSync,
@@ -200,10 +201,8 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
 
-  // ✅ الرواية الحالية (مُحمَّلة من التخزين)
   const [riwaya, setRiwaya] = useState<Riwaya>(getRiwaya);
 
-  // ✅ اختيار القارئ الافتراضي: أول قارئ متاح في الرواية الحالية
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(() => {
     const pool = getRecitersByRiwaya(getRiwaya());
     return pool[0] ?? POPULAR_RECITERS[0];
@@ -217,16 +216,15 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   );
   const [plans, setPlans] = useState<RevisionPlan[]>(getRevisionPlans());
   const [challenges, setChallenges] = useState<QuranChallenge[]>(getChallenges());
+  const [activeChallenge, setActiveChallenge] = useState<QuranChallenge | null>(null); // ✅ جديد
 
   const [activeTafsirAyah, setActiveTafsirAyah] = useState<Ayah | null>(null);
   const [isRewardsModalOpen, setIsRewardsModalOpen] = useState(false);
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
 
-  // ✅ مرجع لالتقاط ارتفاع مشغل الصوت العام (fixed)
   const audioPlayerWrapperRef = useRef<HTMLDivElement>(null);
 
-  // ✅ ضبط متغيّر CSS --audio-player-offset بحسب حالة المشغل.
   useEffect(() => {
     const root = document.documentElement;
 
@@ -237,7 +235,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
 
     const measure = () => {
       const wrapper = audioPlayerWrapperRef.current;
-      let height = 88; // قيمة احتياطية
+      let height = 88;
       if (wrapper) {
         const fixedChild =
           wrapper.querySelector<HTMLElement>('[data-audio-player-bar]') ??
@@ -259,7 +257,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     };
   }, [isAudioPlayerOpen]);
 
-  // ✅ حماية: إن تغيّرت الرواية لأي سبب، اضمن توافق القارئ الحالي
   useEffect(() => {
     const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
     if (reciterRiwaya === riwaya) return;
@@ -270,7 +267,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     }
   }, [riwaya, selectedReciter.riwaya, selectedReciter.id]);
 
-  // تحميل السورة عند تغيير الرقم أو الرواية
   useEffect(() => {
     let isMounted = true;
     getSurahWithAyahs(selectedSurahNumber, riwaya)
@@ -358,7 +354,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     });
   };
 
-  // الانتقال لتسميع آية محددة
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setInitialAyahForReciter(ayahNum);
@@ -366,24 +361,29 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab('recite');
   };
 
-  // الانتقال من التحدي اليومي إلى التسميع
+  // ✅ بدء تحدٍّ: يفتح VoiceReciter على تبويب "اختبار" مع النطاق الصحيح
   const handleStartChallenge = (challenge: QuranChallenge) => {
+    setActiveChallenge(challenge);
     setSelectedSurahNumber(challenge.surahNumber);
     setInitialAyahForReciter(challenge.ayahStart);
     setAudioAyahNumber(challenge.ayahStart);
+    setIsAudioPlayerOpen(false);
     setCurrentTab('recite');
   };
 
-  // ✅ إنشاء تحدي جديد + تحديث الحالة المحلية + الحفظ في التخزين
-  const handleCreateChallenge = (challenge: QuranChallenge) => {
-    setChallenges((previous) => {
-      const next = [challenge, ...previous];
-      saveChallenges(next);
-      return next;
-    });
+  // ✅ استقبال نتيجة التحدي وحفظها
+  const handleChallengeResult = (score: number, perfectAyahs: number) => {
+    if (!activeChallenge) return;
+    recordChallengeResult(activeChallenge.id, { score, perfectAyahs });
+    setChallenges(getChallenges());
   };
 
-  // تشغيل صوت سورة
+  // ✅ إنشاء تحدي جديد
+  const handleCreateChallenge = (challenge: QuranChallenge) => {
+    upsertChallenge(challenge);
+    setChallenges(getChallenges());
+  };
+
   const handlePlaySurahAudio = (surahNum: number) => {
     setSelectedSurahNumber(surahNum);
     setAudioAyahNumber(1);
@@ -395,7 +395,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     setCurrentTab(tab);
   };
 
-  // ✅ تغيير الرواية: حفظ + تبديل القارئ تلقائيًا + إعادة تحميل السورة
   const handleRiwayaChange = useCallback(
     (next: Riwaya) => {
       if (next === riwaya) return;
@@ -414,7 +413,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
 
   const reciteActive = currentTab === 'recite';
 
-  // ✅ تأكد أن القارئ يطابق الرواية قبل التمرير لبقية المكوّنات
   const safeSelectedReciter = useMemo<Reciter>(() => {
     const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
     if (reciterRiwaya === riwaya) return selectedReciter;
@@ -432,7 +430,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
       }}
     >
-      {/* ═══════════ شريط التنقل العلوي ═══════════ */}
       <div className="shrink-0">
         <Navbar
           userEmail={userEmail}
@@ -453,7 +450,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         />
       </div>
 
-      {/* ═══════════ المحتوى ═══════════ */}
       <Suspense fallback={<TabLoadingFallback />}>
         {reciteActive ? (
           <div className="flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto">
@@ -467,10 +463,17 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               onSelectSurahChange={(num, ayahNum = 1) => {
                 setSelectedSurahNumber(num);
                 setInitialAyahForReciter(ayahNum);
+                setActiveChallenge(null);                 // ✅ تغيير السورة يدويًا يلغي التحدي
               }}
               allSurahsList={ALL_SURAHS}
               embedded
-              onClose={() => setCurrentTab('home')}
+              onClose={() => {
+                setCurrentTab('home');
+                setActiveChallenge(null);                 // ✅ إغلاق التحدي
+                setChallenges(getChallenges());           // ✅ تحديث احتياطي
+              }}
+              activeChallenge={activeChallenge}           // ✅ جديد
+              onChallengeResult={handleChallengeResult}   // ✅ جديد
             />
           </div>
         ) : (
@@ -524,7 +527,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               <CompetitionLeaderboard
                 challenges={challenges}
                 onStartChallenge={handleStartChallenge}
-                onCreateChallenge={handleCreateChallenge} // ✅ الآن مُمرَّر
+                onCreateChallenge={handleCreateChallenge}
               />
             )}
 
@@ -535,7 +538,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         )}
       </Suspense>
 
-      {/* ═══════════ مشغل الصوت (fixed) ═══════════ */}
       <Suspense fallback={null}>
         <div ref={audioPlayerWrapperRef}>
           <AudioPlayerBar
@@ -551,7 +553,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         </div>
       </Suspense>
 
-      {/* ═══════════ نافذة التفسير ═══════════ */}
       {activeTafsirAyah && (
         <TafsirModal
           ayah={activeTafsirAyah}
@@ -564,7 +565,6 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
         />
       )}
 
-      {/* ═══════════ نافذة المكافآت ═══════════ */}
       {isRewardsModalOpen && (
         <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
       )}

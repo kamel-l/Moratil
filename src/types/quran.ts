@@ -113,6 +113,13 @@ export interface QuranChallenge {
   difficulty: 'سهل' | 'متوسط' | 'تحدي قوي';
   expiresInHours: number;
   completed: boolean;
+
+  // ── حقول النتيجة ──
+  createdAt?: number;           // Date.now() عند الإنشاء
+  completedAt?: number | null;  // عند أول نجاح ≥ 60%
+  bestScore?: number | null;    // 0..100 — أفضل نسبة دقة
+  bestAyahsPerfect?: number;    // أفضل عدد آيات كاملة
+  attempts?: number;            // عدد المحاولات
 }
 
 export interface WordMatchStatus {
@@ -130,4 +137,3 @@ export type AppTab =
   | 'explorer'
   | 'competition'
   | 'stats';
-
