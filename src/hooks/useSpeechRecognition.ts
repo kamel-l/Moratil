@@ -65,16 +65,18 @@ export interface SpeechEvaluation {
 
 export interface UseSpeechRecognitionOptions {
   /** Processes one final transcript alternative and returns completion info when finished. */
-  onTranscript: (text: string, confidence?: number) => SpeechEvaluation | undefined;
+  onTranscript?: (text: string, confidence?: number) => SpeechEvaluation | undefined;
   /** Invoked once the current ayah is complete. */
-  onComplete: (isFlawless: boolean) => void;
+  onComplete?: (isFlawless: boolean) => void;
   /** Reads the live matched-word index so alternatives can be compared synchronously. */
-  getCurrentWordIndex: () => number;
+  getCurrentWordIndex?: () => number;
   /** Whether recognition should keep listening / auto-restart. */
-  shouldListen: () => boolean;
+  shouldListen?: () => boolean;
   /** Called when the microphone cannot be used, so the UI can offer a fallback. */
   onUnavailable?: () => void;
   lang?: string;
+  /** Free-form speech transcript callback (e.g. for MemorizationTest) */
+  onRawTranscript?: (text: string, isFinal: boolean) => void;
 }
 
 export interface UseSpeechRecognitionApi {
@@ -98,9 +100,10 @@ export function useSpeechRecognition({
   shouldListen,
   onUnavailable,
   lang = RECOGNITION_LANG,
+  onRawTranscript,
 }: UseSpeechRecognitionOptions): UseSpeechRecognitionApi {
   const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(() => !!getSpeechRecognitionConstructor());
+  const [isSupported, setIsSupported] = useState(() => isNativePlatform || !!getSpeechRecognitionConstructor());
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const enabledRef = useRef(false);
@@ -113,6 +116,7 @@ export function useSpeechRecognition({
   const getCurrentWordIndexRef = useRef(getCurrentWordIndex);
   const shouldListenRef = useRef(shouldListen);
   const onUnavailableRef = useRef(onUnavailable);
+  const onRawTranscriptRef = useRef(onRawTranscript);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -120,6 +124,7 @@ export function useSpeechRecognition({
     getCurrentWordIndexRef.current = getCurrentWordIndex;
     shouldListenRef.current = shouldListen;
     onUnavailableRef.current = onUnavailable;
+    onRawTranscriptRef.current = onRawTranscript;
   });
 
   const markUnavailable = useCallback(() => {
@@ -142,16 +147,23 @@ export function useSpeechRecognition({
       if (!nativeActiveRef.current) return;
 
       if (nowMs() >= cooldownUntilRef.current) {
-        for (const raw of (matches ?? []).slice(0, 3)) {
-          const text = raw?.trim();
-          if (!text) continue;
-          const beforeIdx = getCurrentWordIndexRef.current();
-          const nextState = onTranscriptRef.current(text);
-          if (nextState?.completed) {
-            onCompleteRef.current(nextState.isFlawless);
-            break;
+        if (onRawTranscriptRef.current) {
+          const text = (matches ?? [])[0]?.trim();
+          if (text) {
+            onRawTranscriptRef.current(text, true);
           }
-          if (getCurrentWordIndexRef.current() > beforeIdx) break;
+        } else if (onTranscriptRef.current) {
+          for (const raw of (matches ?? []).slice(0, 3)) {
+            const text = raw?.trim();
+            if (!text) continue;
+            const beforeIdx = getCurrentWordIndexRef.current?.() ?? 0;
+            const nextState = onTranscriptRef.current(text);
+            if (nextState?.completed) {
+              onCompleteRef.current?.(nextState.isFlawless);
+              break;
+            }
+            if ((getCurrentWordIndexRef.current?.() ?? 0) > beforeIdx) break;
+          }
         }
       }
 
@@ -168,7 +180,10 @@ export function useSpeechRecognition({
         message.includes('no match') ||
         message.includes('speech timeout') ||
         message.includes('no speech') ||
-        message.includes('timed out');
+        message.includes('timed out') ||
+        message.includes('busy') ||
+        message.includes('client side error') ||
+        message.includes('understand');
 
       if (isSilence && nativeActiveRef.current) {
         setTimeout(() => {
@@ -240,6 +255,25 @@ export function useSpeechRecognition({
     recognition.onresult = (event) => {
       if (!enabledRef.current) return;
       if (nowMs() < cooldownUntilRef.current) return;
+
+      if (onRawTranscriptRef.current) {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0]?.transcript || '';
+          if (event.results[i].isFinal) {
+            final += ' ' + t;
+          } else {
+            interim += ' ' + t;
+          }
+        }
+        if (final.trim()) {
+          onRawTranscriptRef.current(final.trim(), true);
+        } else if (interim.trim()) {
+          onRawTranscriptRef.current(interim.trim(), false);
+        }
+        return;
+      }
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -316,6 +350,18 @@ export function useSpeechRecognition({
       void handle?.remove().catch(() => {});
     };
   }, [listenWithNativeRecognition]);
+
+  // Release native microphone immediately on unmount (e.g. switching tabs)
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      enabledRef.current = false;
+      if (isNativePlatform) {
+        nativeActiveRef.current = false;
+        void SpeechRecognition.stop().catch(() => {});
+      }
+    };
+  }, []);
 
   // ─────────────── Start / stop ───────────────
   const start = useCallback(async () => {

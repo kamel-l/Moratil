@@ -4,7 +4,9 @@ import {
   Settings, Play, Flag, Eye, Loader2, AlertTriangle, Keyboard,
   BookOpen, Target, Square, Radio,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { Surah, Reciter, Riwaya, Ayah, QuranChallenge } from '../types/quran';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { extractWords } from '../utils/arabicUtils';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 
@@ -50,8 +52,8 @@ const RIWAYA_LABELS: Record<Riwaya, string> = {
 };
 
 // ⏱️ إعدادات التوقيت
-const CONTINUOUS_SILENCE_MS = 3500; // صمت قبل الانتقال التلقائي (وضع متواصل)
-const NORMAL_SILENCE_MS = 4000;     // صمت قبل الإيقاف (وضع عادي)
+const CONTINUOUS_SILENCE_MS = 5000; // صمت قبل الانتقال التلقائي (وضع متواصل)
+const NORMAL_SILENCE_MS = 8000;     // صمت قبل الإيقاف (وضع عادي)
 
 function normalizeArabic(text: string): string {
   return text
@@ -88,16 +90,12 @@ function alignLCS(expected: string[], recognized: string[]) {
   return { matchedE, matchedR };
 }
 
-function getSpeechRecognition(): any {
-  if (typeof window === 'undefined') return null;
-  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
-}
+const isNativePlatform = Capacitor.isNativePlatform();
 
 export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   surah, selectedReciter, onStatsUpdate, riwaya, activeChallenge, onChallengeResult,
 }) => {
   const effectiveRiwaya: Riwaya = riwaya ?? selectedReciter.riwaya ?? 'hafs';
-  const speechSupported = useMemo(() => !!getSpeechRecognition(), []);
 
   // ── إعدادات الاختبار ──
   const [startAyah, setStartAyah] = useState(() =>
@@ -128,7 +126,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const [textInput, setTextInput] = useState('');
 
   // ── مراجع ──
-  const recognitionRef = useRef<any>(null);
   const shouldContinueRef = useRef(false);
   const segmentTranscriptRef = useRef('');    // التراكم النصي للآية الحالية
   const interimTextRef = useRef('');          // النص المؤقت (لم يُثبَّت بعد)
@@ -136,13 +133,61 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const isFinishingRef = useRef(false);       // حماية من الحفظ المزدوج عند الإنهاء
   const silenceTimerRef = useRef<number | null>(null);
   const secondsTimerRef = useRef<number | null>(null);
+  const continuousModeRef = useRef(continuousMode);
+  continuousModeRef.current = continuousMode;
+  const questionsRef = useRef(questions);
+  questionsRef.current = questions;
+
+  const {
+    isListening,
+    isSupported: speechSupported,
+    start: startSpeechService,
+    stop: stopSpeechService,
+  } = useSpeechRecognition({
+    onRawTranscript: (text: string, isFinal: boolean) => {
+      if (!isFinal) {
+        interimTextRef.current = text;
+        setLiveTranscript((segmentTranscriptRef.current + ' ' + text).trim());
+        return;
+      }
+
+      segmentTranscriptRef.current = (segmentTranscriptRef.current + ' ' + text).trim();
+      interimTextRef.current = '';
+      setLiveTranscript(segmentTranscriptRef.current);
+      resetSilenceTimer();
+
+      if (continuousModeRef.current) {
+        const q = questionsRef.current[activeAyahRef.current];
+        if (q) {
+          const words = segmentTranscriptRef.current
+            .trim().split(/\s+/).map(normalizeArabic).filter(Boolean);
+          if (words.length >= q.normalized.length) {
+            const { matchedE } = alignLCS(q.normalized, words);
+            if (matchedE.size >= q.normalized.length) {
+              advanceContinuousAyah();
+            }
+          }
+        }
+      }
+    },
+    shouldListen: () => shouldContinueRef.current,
+    onUnavailable: () => {
+      setError(
+        isNativePlatform
+          ? 'تعذر الوصول إلى الميكروفون. يرجى التأكد من منحه الإذن في إعدادات الهاتف.'
+          : 'المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك.'
+      );
+      setShowTextInput(true);
+      setRecordingState('idle');
+    },
+  });
 
   const cleanupRecording = useCallback(() => {
     shouldContinueRef.current = false;
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
-    try { recognitionRef.current?.abort?.(); } catch {}
-  }, []);
+    void stopSpeechService();
+  }, [stopSpeechService]);
 
   // إعادة الضبط عند تغيير السورة أو التحدي
   useEffect(() => {
@@ -206,7 +251,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
       shouldContinueRef.current = false;
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
-      try { recognitionRef.current?.stop(); } catch {}
+      void stopSpeechService();
       setRecordingState('idle');
       setRecordingSeconds(0);
     } else {
@@ -232,11 +277,11 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    const ms = continuousMode ? CONTINUOUS_SILENCE_MS : NORMAL_SILENCE_MS;
+    const ms = continuousModeRef.current ? CONTINUOUS_SILENCE_MS : NORMAL_SILENCE_MS;
     silenceTimerRef.current = window.setTimeout(() => {
       if (!shouldContinueRef.current) return;
 
-      if (continuousMode) {
+      if (continuousModeRef.current) {
         const text = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
         if (text) {
           advanceContinuousAyah();
@@ -245,140 +290,73 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
           resetSilenceTimer();
         }
       } else {
-        stopRecording();
+        void stopRecording();
       }
     }, ms);
   };
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(async () => {
     shouldContinueRef.current = false;
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
     setRecordingState('processing');
-    try { recognitionRef.current?.stop(); } catch {}
-  };
+
+    try {
+      await stopSpeechService();
+    } catch {}
+
+    if (isFinishingRef.current) {
+      isFinishingRef.current = false;
+      return;
+    }
+
+    if (continuousModeRef.current) {
+      finalizeCurrentOnStop();
+    } else {
+      const transcript = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+      setLiveTranscript('');
+      if (transcript) {
+        const attempt = buildAttemptFromCurrentSegment(activeAyahRef.current);
+        if (attempt) {
+          setAttempts(prev => ({ ...prev, [activeAyahRef.current]: attempt }));
+        }
+      } else {
+        setError('لم يُسمع شيء. حاول مرة أخرى أو اكتب تسميعك.');
+      }
+      segmentTranscriptRef.current = '';
+      interimTextRef.current = '';
+    }
+  }, [stopSpeechService]);
 
   /** للتأكد من إيقاف التسجيل عند التنقل اليدوي (غير المتواصل) */
   useEffect(() => {
-    if (shouldContinueRef.current) return; // نستمع متواصلًا — لا نوقف
-    if (recordingState !== 'idle') stopRecording();
+    if (shouldContinueRef.current) return;
+    if (recordingState !== 'idle') void stopRecording();
     setShowTextInput(false);
     setTextInput('');
     setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex]);
-
-  // ══════════════════════════════════════════════════════════
-  // بدء التسجيل
-  // ══════════════════════════════════════════════════════════
 
   const startRecording = async () => {
     setError(null);
-    const SR = getSpeechRecognition();
-    if (!SR) {
-      setError('المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك.');
-      setShowTextInput(true);
-      return;
-    }
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
+    setLiveTranscript('');
+    activeAyahRef.current = currentIndex;
+    shouldContinueRef.current = true;
+    setRecordingState('listening');
+    setRecordingSeconds(0);
+    if (secondsTimerRef.current) clearInterval(secondsTimerRef.current);
+    secondsTimerRef.current = window.setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+    resetSilenceTimer();
+
     try {
-      const recognition = new SR();
-      recognition.lang = 'ar-SA';
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-
-      segmentTranscriptRef.current = '';
-      interimTextRef.current = '';
-      setLiveTranscript('');
-      activeAyahRef.current = currentIndex;
-
-      recognition.onresult = (event: any) => {
-        let interim = '';
-        let gotFinal = false;
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const t = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            segmentTranscriptRef.current += ' ' + t;
-            gotFinal = true;
-          } else {
-            interim += ' ' + t;
-          }
-        }
-        interimTextRef.current = interim;
-        setLiveTranscript((segmentTranscriptRef.current + ' ' + interim).trim());
-        resetSilenceTimer();
-
-        // 🚀 في الوضع المتواصل: إذا طابق 100% → انتقال فوري
-        if (continuousMode && gotFinal) {
-          const q = questions[activeAyahRef.current];
-          if (q) {
-            const words = segmentTranscriptRef.current
-              .trim().split(/\s+/).map(normalizeArabic).filter(Boolean);
-            if (words.length >= q.normalized.length) {
-              const { matchedE } = alignLCS(q.normalized, words);
-              if (matchedE.size >= q.normalized.length) {
-                advanceContinuousAyah();
-              }
-            }
-          }
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') return;
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setError('تم رفض إذن الميكروفون. اسمح به من إعدادات المتصفح.');
-          shouldContinueRef.current = false;
-        } else if (event.error === 'audio-capture') {
-          setError('لا يوجد ميكروفون متاح.');
-          shouldContinueRef.current = false;
-        } else if (event.error === 'network') {
-          setError('خطأ في الشبكة أثناء التعرف على الصوت.');
-          shouldContinueRef.current = false;
-        }
-      };
-
-      recognition.onend = () => {
-        if (shouldContinueRef.current) {
-          // المتصفح أنهى الجلسة من تلقاء نفسه — أعد التشغيل للحفاظ على الاستمرارية
-          try { recognition.start(); } catch {}
-          return;
-        }
-        if (isFinishingRef.current) {
-          isFinishingRef.current = false;
-          return; // تمت المعالجة بالفعل في advanceContinuousAyah
-        }
-        if (continuousMode) {
-          finalizeCurrentOnStop();
-        } else {
-          // الوضع العادي: احفظ ثم توقف
-          const transcript = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
-          setRecordingState('idle');
-          setRecordingSeconds(0);
-          setLiveTranscript('');
-          if (transcript) {
-            const attempt = buildAttemptFromCurrentSegment(activeAyahRef.current);
-            if (attempt) {
-              setAttempts(prev => ({ ...prev, [activeAyahRef.current]: attempt }));
-            }
-          } else {
-            setError('لم يُسمع شيء. حاول مرة أخرى أو اكتب تسميعك.');
-          }
-          segmentTranscriptRef.current = '';
-          interimTextRef.current = '';
-        }
-      };
-
-      recognitionRef.current = recognition;
-      shouldContinueRef.current = true;
-      recognition.start();
-
-      setRecordingState('listening');
-      setRecordingSeconds(0);
-      secondsTimerRef.current = window.setInterval(() => setRecordingSeconds(s => s + 1), 1000);
-      resetSilenceTimer();
+      await startSpeechService();
     } catch {
-      setError('تعذر بدء التعرف على الصوت. حاول مرة أخرى.');
+      setError('تعذر بدء التعرف على الصوت. يرجى المحاولة مرة أخرى.');
+      setRecordingState('idle');
     }
   };
 
@@ -480,7 +458,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
       shouldContinueRef.current = false;
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
-      try { recognitionRef.current?.stop(); } catch {}
+      void stopSpeechService();
       setRecordingState('idle');
       setRecordingSeconds(0);
     }
@@ -691,7 +669,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
               {!speechSupported && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>متصفحك لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك يدويًا.</span>
+                  <span>{isNativePlatform ? 'خدمة التعرف على الصوت غير متوفرة على هذا الجهاز. يمكنك كتابة تسميعك يدويًا.' : 'متصفحك لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك يدويًا.'}</span>
                 </div>
               )}
             </div>
