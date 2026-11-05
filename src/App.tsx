@@ -47,7 +47,7 @@ import {
   AppTab,
   Riwaya,
 } from './types/quran';
-import { ALL_SURAHS } from './data/quranSurahsList';
+import { getSurahsForRiwaya } from './data/riwayat';
 import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
 import { POPULAR_RECITERS, getRecitersByRiwaya } from './utils/audioReciters';
 import { supabase } from './services/supabase';
@@ -209,10 +209,11 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   });
 
   const [stats, setStats] = useState<UserStats>(getUserStats());
-  const [verseMasteryMap, setVerseMasteryMap] =
-    useState<Record<string, VerseMastery>>(getVerseMasteryMap());
-  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(
-    getVersesNeedingReinforcement(),
+  const [verseMasteryMap, setVerseMasteryMap] = useState<Record<string, VerseMastery>>(() =>
+    getVerseMasteryMap(getRiwaya()),
+  );
+  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(() =>
+    getVersesNeedingReinforcement(getRiwaya()),
   );
   const [plans, setPlans] = useState<RevisionPlan[]>(getRevisionPlans());
   const [challenges, setChallenges] = useState<QuranChallenge[]>(getChallenges());
@@ -277,7 +278,9 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
       })
       .catch((error) => {
         console.warn('Unable to load surah:', error);
-        if (isMounted) {
+        // The Hafs preloaded surahs use a different verse count, so they can
+        // never stand in for a Warsh surah: keep the last loaded text instead.
+        if (isMounted && riwaya === 'hafs') {
           setCurrentSurah(PRELOADED_SURAHS[selectedSurahNumber] || PRELOADED_SURAHS[1]);
         }
       });
@@ -287,9 +290,12 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   }, [selectedSurahNumber, riwaya]);
 
   const refreshAllState = useCallback(() => {
+    // `saveRiwaya` writes synchronously before the state update, so reading the
+    // stored riwayah here keeps this callback stable across riwayah switches.
+    const activeRiwaya = getRiwaya();
     setStats(getUserStats());
-    setVerseMasteryMap(getVerseMasteryMap());
-    setForgottenVerses(getVersesNeedingReinforcement());
+    setVerseMasteryMap(getVerseMasteryMap(activeRiwaya));
+    setForgottenVerses(getVersesNeedingReinforcement(activeRiwaya));
     setPlans(getRevisionPlans());
     setChallenges(getChallenges());
   }, []);
@@ -413,6 +419,17 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
 
   const reciteActive = currentTab === 'recite';
 
+  // Progress is stored per riwayah: switching must never surface the other
+  // riwayah's verses in the dashboard or revision list.
+  useEffect(() => {
+    setVerseMasteryMap(getVerseMasteryMap(riwaya));
+    setForgottenVerses(getVersesNeedingReinforcement(riwaya));
+  }, [riwaya]);
+
+  // Warsh has its own numbering (6,214 verses), so every list rendered by the
+  // app must come from the active riwayah, never from the Hafs table.
+  const surahsForRiwaya = useMemo(() => getSurahsForRiwaya(riwaya), [riwaya]);
+
   const safeSelectedReciter = useMemo<Reciter>(() => {
     const reciterRiwaya = selectedReciter.riwaya ?? 'hafs';
     if (reciterRiwaya === riwaya) return selectedReciter;
@@ -424,8 +441,8 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
     <div
       dir="rtl"
       className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
-        reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'
-      }`}
+        riwaya === 'warsh' ? 'riwaya-warsh' : ''
+      } ${reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'}`}
       style={{
         paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
       }}
@@ -465,7 +482,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
                 setInitialAyahForReciter(ayahNum);
                 setActiveChallenge(null);                 // ✅ تغيير السورة يدويًا يلغي التحدي
               }}
-              allSurahsList={ALL_SURAHS}
+              allSurahsList={surahsForRiwaya}
               embedded
               onClose={() => {
                 setCurrentTab('home');
@@ -493,7 +510,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
 
             {currentTab === 'memorize' && (
               <MemorizationMode
-                allSurahs={ALL_SURAHS}
+                allSurahs={surahsForRiwaya}
                 selectedReciter={safeSelectedReciter}
                 onSelectReciter={setSelectedReciter}
                 riwaya={riwaya}
@@ -526,6 +543,8 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
             {currentTab === 'competition' && (
               <CompetitionLeaderboard
                 challenges={challenges}
+                surahs={surahsForRiwaya}
+                riwaya={riwaya}
                 onStartChallenge={handleStartChallenge}
                 onCreateChallenge={handleCreateChallenge}
               />

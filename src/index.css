@@ -13,9 +13,31 @@
   }
 }
 
+/*
+ * Warsh text uses KFGQPC Arabic Extended-B codepoints (U+0870–U+0882). Without
+ * this exact font the verses render with missing glyphs or wrong letters, so
+ * the font is bundled with the text and must never be swapped for Amiri.
+ */
+@font-face {
+  font-family: 'KFGQPC Warsh Uthmanic Script';
+  src: url('/quran/UthmanicWarsh-v-3.0.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 .font-quran {
   font-family: 'Amiri', 'Scheherazade New', serif;
   line-height: 2.2;
+}
+
+.font-warsh {
+  font-family: 'KFGQPC Warsh Uthmanic Script', 'Amiri', serif;
+  line-height: 2.2;
+}
+
+.riwaya-warsh .font-quran {
+  font-family: 'KFGQPC Warsh Uthmanic Script', 'Amiri', serif;
 }
 
 .font-scheherazade {

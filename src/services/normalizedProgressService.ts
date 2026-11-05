@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { MasteryLevel, UserStats, VerseMastery } from '../types/quran';
+import type { MasteryLevel, Riwaya, UserStats, VerseMastery } from '../types/quran';
 import type { RevisionReminderSettings } from './storageService';
 
 /**
@@ -24,7 +24,7 @@ import type { RevisionReminderSettings } from './storageService';
 
 const PAGE_SIZE = 1000;
 const UPSERT_CHUNK_SIZE = 500;
-const AYAH_INDEX_CACHE_KEY = 'murattil_ayah_index:v1';
+const AYAH_INDEX_CACHE_KEY = 'murattil_ayah_index:v2';
 
 /**
  * Same SM-2 bounds as `storageService.recordVerseResult`. They are repeated here
@@ -47,6 +47,8 @@ interface AyahRow {
   id: number;
   surah_number: number;
   ayah_number: number;
+  /** Missing means Hafs, so cached rows written before Warsh stay valid. */
+  riwayah_code?: string | null;
 }
 
 interface ProfileRow {
@@ -117,7 +119,7 @@ export function createAyahIndex(rows: AyahRow[]): AyahIndex {
   for (const row of rows) {
     if (!Number.isInteger(row.id) || !Number.isInteger(row.surah_number)) continue;
     if (!Number.isInteger(row.ayah_number)) continue;
-    const key = `${row.surah_number}:${row.ayah_number}`;
+    const key = ayahIndexKey(row.surah_number, row.ayah_number, row.riwayah_code);
     idsByKey.set(key, row.id);
     keysById.set(row.id, key);
   }
@@ -129,6 +131,35 @@ export function createAyahIndex(rows: AyahRow[]): AyahIndex {
   };
 }
 
+/** `warsh` verses are indexed with a prefix so their ids never collide with Hafs. */
+function ayahIndexKey(
+  surahNumber: number,
+  ayahNumber: number,
+  riwayahCode?: string | null,
+): string {
+  const prefix = riwayahCode === 'warsh' ? 'warsh:' : '';
+  return `${prefix}${surahNumber}:${ayahNumber}`;
+}
+
+function masteryKeyFromIndexKey(indexKey: string): string {
+  return indexKey.replace(/:/g, '_');
+}
+
+function parseIndexKey(indexKey: string): {
+  surahNumber: number;
+  ayahNumber: number;
+  riwaya: Riwaya;
+} {
+  const parts = indexKey.split(':');
+  const riwaya: Riwaya = parts[0] === 'warsh' ? 'warsh' : 'hafs';
+  const numbers = riwaya === 'warsh' ? parts.slice(1) : parts;
+  return {
+    surahNumber: Number(numbers[0]),
+    ayahNumber: Number(numbers[1]),
+    riwaya,
+  };
+}
+
 function readCachedAyahIndex(): AyahIndex | null {
   try {
     if (typeof localStorage === 'undefined') return null;
@@ -137,11 +168,14 @@ function readCachedAyahIndex(): AyahIndex | null {
     const rows: AyahRow[] = [];
     for (const entry of raw.split(';')) {
       if (!entry) continue;
-      const [surah, ayah, id] = entry.split(':').map(Number);
+      const parts = entry.split(':');
+      const riwayah = parts.length === 4 ? parts.shift() : null;
+      if (riwayah !== null && riwayah !== 'warsh') return null;
+      const [surah, ayah, id] = parts.map(Number);
       if (!Number.isInteger(surah) || !Number.isInteger(ayah) || !Number.isInteger(id)) {
         return null;
       }
-      rows.push({ surah_number: surah, ayah_number: ayah, id });
+      rows.push({ surah_number: surah, ayah_number: ayah, id, riwayah_code: riwayah });
     }
     return rows.length > 0 ? createAyahIndex(rows) : null;
   } catch {
@@ -154,7 +188,12 @@ function writeCachedAyahIndex(rows: AyahRow[]): void {
     if (typeof localStorage === 'undefined') return;
     localStorage.setItem(
       AYAH_INDEX_CACHE_KEY,
-      rows.map((row) => `${row.surah_number}:${row.ayah_number}:${row.id}`).join(';'),
+      rows
+        .map((row) => {
+          const prefix = row.riwayah_code === 'warsh' ? 'warsh:' : '';
+          return `${prefix}${row.surah_number}:${row.ayah_number}:${row.id}`;
+        })
+        .join(';'),
     );
   } catch (error) {
     console.warn('Unable to cache the ayah index', error);
@@ -193,7 +232,7 @@ async function loadAyahIndex(client: SupabaseClient): Promise<AyahIndex> {
   const rows = await collectPages<AyahRow>((from, to) =>
     client
       .from('ayahs')
-      .select('id,surah_number,ayah_number')
+      .select('id,surah_number,ayah_number,riwayah_code')
       .order('id', { ascending: true })
       .range(from, to),
   );
@@ -295,6 +334,11 @@ function lastResultFor(mastery: VerseMastery): 'success' | 'failure' | null {
   return mastery.level === 'review_needed' ? 'failure' : 'success';
 }
 
+/** Index key for a stored verse, honouring the riwayah it was recorded in. */
+function indexKeyForVerse(verse: VerseMastery): string {
+  return ayahIndexKey(verse.surahNumber, verse.ayahNumber, verse.riwaya);
+}
+
 /** Builds the `memorization_progress` rows, skipping verses missing from the index. */
 export function buildProgressRows(
   mastery: Record<string, VerseMastery>,
@@ -302,7 +346,7 @@ export function buildProgressRows(
 ): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const verse of Object.values(mastery)) {
-    const ayahId = index.idOf(`${verse.surahNumber}:${verse.ayahNumber}`);
+    const ayahId = index.idOf(indexKeyForVerse(verse));
     if (ayahId === undefined) continue;
     rows.push({
       ayah_id: ayahId,
@@ -326,7 +370,7 @@ export function buildScheduleRows(
 ): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const verse of Object.values(mastery)) {
-    const ayahId = index.idOf(`${verse.surahNumber}:${verse.ayahNumber}`);
+    const ayahId = index.idOf(indexKeyForVerse(verse));
     if (ayahId === undefined) continue;
 
     const fallbackDue = toIsoString(verse.lastReviewedAt, new Date(now).toISOString());
@@ -371,7 +415,7 @@ export function rowsToMastery(
   for (const progress of progressRows) {
     const key = index.keyOf(progress.ayah_id);
     if (!key) continue;
-    const [surahNumber, ayahNumber] = key.split(':').map(Number);
+    const { surahNumber, ayahNumber, riwaya } = parseIndexKey(key);
     const schedule = schedulesById.get(progress.ayah_id);
     const now = new Date().toISOString();
     const lastReviewedAt = toIsoString(
@@ -379,9 +423,10 @@ export function rowsToMastery(
       now,
     );
 
-    mastery[key.replace(':', '_')] = {
+    mastery[masteryKeyFromIndexKey(key)] = {
       surahNumber,
       ayahNumber,
+      riwaya,
       level: MASTERY_LEVELS.includes(progress.status) ? progress.status : 'new',
       consecutiveSuccessCount: Math.max(
         0,
@@ -404,14 +449,15 @@ export function rowsToMastery(
   for (const schedule of scheduleRows) {
     const key = index.keyOf(schedule.ayah_id);
     if (!key) continue;
-    const mapKey = key.replace(':', '_');
+    const mapKey = masteryKeyFromIndexKey(key);
     if (mastery[mapKey]) continue;
 
-    const [surahNumber, ayahNumber] = key.split(':').map(Number);
+    const { surahNumber, ayahNumber, riwaya } = parseIndexKey(key);
     const lastReviewedAt = toIsoString(schedule.last_reviewed_at, new Date().toISOString());
     mastery[mapKey] = {
       surahNumber,
       ayahNumber,
+      riwaya,
       level: schedule.last_result === 'failure' ? 'review_needed' : 'learning',
       consecutiveSuccessCount: 0,
       mistakeCount: 0,

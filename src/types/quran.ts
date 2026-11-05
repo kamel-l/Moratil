@@ -9,6 +9,12 @@ export interface Ayah {
   tafsir?: string; // التفسير الميسر
   words?: string[]; // Array of words for word-by-word tracking
   audioUrl?: string; // Optional direct audio
+  /**
+   * Verse number to use for the audio collection. Warsh verses are played with
+   * the Hafs recording that covers them, because the published Warsh folders
+   * (everyayah.com) are numbered with the Hafs 6,236 identity.
+   */
+  audioAyahNumber?: number;
   keyWordsMeaning?: { word: string; meaning: string }[];
 }
 
@@ -20,6 +26,8 @@ export interface Surah {
   numberOfAyahs: number;
   juzStart: number;
   pageStart: number;
+  /** Standalone basmalah printed above the ayahs (Warsh); absent for Hafs. */
+  basmalah?: string;
   ayahs: Ayah[];
 }
 
@@ -39,6 +47,8 @@ export type MasteryLevel = 'new' | 'learning' | 'review_needed' | 'good' | 'mast
 export interface VerseMastery {
   surahNumber: number;
   ayahNumber: number;
+  /** Riwayah whose numbering this verse belongs to. Missing means Hafs. */
+  riwaya?: Riwaya;
   level: MasteryLevel;
   consecutiveSuccessCount: number;
   mistakeCount: number;
@@ -109,6 +119,8 @@ export interface QuranChallenge {
   surahNumber: number;
   ayahStart: number;
   ayahEnd: number;
+  /** Riwayah whose numbering the verse range uses. Missing means Hafs. */
+  riwaya?: Riwaya;
   rewardPoints: number;
   difficulty: 'سهل' | 'متوسط' | 'تحدي قوي';
   expiresInHours: number;

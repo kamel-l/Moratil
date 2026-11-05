@@ -15,7 +15,7 @@ import {
 import { Ayah, Reciter, Riwaya, Surah } from '../types/quran';
 import { getSurahWithAyahs } from '../data/quranData';
 import { SurahMeta } from '../data/quranSurahsList';
-import { getAyahAudioUrl, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
+import { getAyahAudioUrl, getAudioAyahNumber, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
 import { removeOpeningBasmalah } from '../utils/arabicUtils';
 import { Button, PageHero } from './ui';
 
@@ -26,7 +26,7 @@ type UnitSize = number | 'page';
 type DisplayMode = 'cards' | 'mushaf';
 
 interface MemorizationModeProps {
-  allSurahs: SurahMeta[];
+  allSurahs: readonly SurahMeta[];
   selectedReciter: Reciter;
   onSelectReciter: (reciter: Reciter) => void;
   riwaya: Riwaya; // ✅ الرواية الحالية لتحميل النص الصحيح
@@ -77,22 +77,27 @@ interface MushafPageProps {
   pageNumber: number;
   surahNumber: number;
   surahName: string;
+  /** Standalone basmalah printed above the page, when the page starts a surah. */
+  basmalah: string | null;
   isFullRecitation: boolean;
   revealedAyahs: Set<number>;
   onToggleAyah: (ayahNumber: number) => void;
 }
+
+const HAFS_BASMALAH = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
 const MushafPage: React.FC<MushafPageProps> = ({
   ayahs,
   pageNumber,
   surahNumber,
   surahName,
+  basmalah,
   isFullRecitation,
   revealedAyahs,
   onToggleAyah,
 }) => {
   const startsSurah = ayahs.some((a) => a.numberInSurah === 1);
-  const showBasmalah = startsSurah && surahNumber !== 1 && surahNumber !== 9;
+  const showBasmalah = startsSurah && basmalah !== null;
 
   const isMasked = (ayah: Ayah): boolean =>
     isFullRecitation && !revealedAyahs.has(ayah.numberInSurah);
@@ -122,7 +127,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
 
             {showBasmalah && (
               <div className="mb-3 text-center font-quran text-lg text-[#5a4a25] sm:text-xl">
-                بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                {basmalah}
               </div>
             )}
 
@@ -362,7 +367,13 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     if (!audio) return;
 
     const ayahNumber = playbackSession.ayahNumbers[playbackSession.ayahIndex];
-    audio.src = getAyahAudioUrl(selectedReciter.id, surah.number, ayahNumber);
+    const ayah = surah.ayahs[ayahNumber - 1];
+    audio.src = getAyahAudioUrl(
+      selectedReciter.id,
+      surah.number,
+      getAudioAyahNumber(ayah ?? { numberInSurah: ayahNumber }, riwaya),
+      riwaya,
+    );
     audio.onended = () => {
       if (playbackSession.ayahIndex + 1 < playbackSession.ayahNumbers.length) {
         setPlaybackSession({ ...playbackSession, ayahIndex: playbackSession.ayahIndex + 1 });
@@ -839,6 +850,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         pageNumber={pageNumber}
                         surahNumber={surah.number}
                         surahName={surah.name}
+                        basmalah={
+                          surah.basmalah ??
+                          (surah.number !== 1 && surah.number !== 9 ? HAFS_BASMALAH : null)
+                        }
                         isFullRecitation={isFullRecitation}
                         revealedAyahs={revealedAyahs}
                         onToggleAyah={toggleRevealedAyah}

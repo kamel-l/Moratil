@@ -9,8 +9,8 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { Reciter, Surah } from '../types/quran';
-import { POPULAR_RECITERS, getAyahAudioUrl } from '../utils/audioReciters';
+import { Reciter, Riwaya, Surah } from '../types/quran';
+import { POPULAR_RECITERS, getAyahAudioUrl, getAudioAyahNumber } from '../utils/audioReciters';
 import { formatTime } from '../utils/arabicUtils';
 import { cn } from '../utils/cn';
 
@@ -22,6 +22,7 @@ interface AudioPlayerBarProps {
   onClose: () => void;
   onAyahChange: (ayahNum: number) => void;
   isOpen: boolean;
+  riwaya?: Riwaya;
 }
 
 type RepeatMode = 1 | 3 | 5 | 99;
@@ -39,6 +40,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   onClose,
   onAyahChange,
   isOpen,
+  riwaya = 'hafs',
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -62,11 +64,17 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     const audio = audioRef.current;
     if (!audio) return;
 
-    audio.src = getAyahAudioUrl(selectedReciter.id, currentSurah.number, currentAyahNumber);
+    const ayah = currentSurah.ayahs[currentAyahNumber - 1];
+    audio.src = getAyahAudioUrl(
+      selectedReciter.id,
+      currentSurah.number,
+      getAudioAyahNumber(ayah ?? { numberInSurah: currentAyahNumber }, riwaya),
+      riwaya,
+    );
     setCurrentTime(0);
     setDuration(0);
     setRepeatCounter(0);
-  }, [selectedReciter.id, currentSurah.number, currentAyahNumber]);
+  }, [selectedReciter.id, currentSurah, currentAyahNumber, riwaya]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = playbackSpeed;

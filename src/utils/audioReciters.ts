@@ -93,6 +93,19 @@ export function getRecitersByRiwaya(riwaya: Riwaya): Reciter[] {
 }
 
 /**
+ * Audio collections are numbered with the Hafs identity. A Warsh verse (for
+ * example 89:31) therefore has to be played with the Hafs verse that covers it
+ * (89:30). The mapping is generated with the text, never guessed at runtime.
+ */
+export function getAudioAyahNumber(
+  ayah: { numberInSurah: number; audioAyahNumber?: number },
+  riwaya: Riwaya = 'hafs',
+): number {
+  if (riwaya !== 'warsh') return ayah.numberInSurah;
+  return ayah.audioAyahNumber ?? ayah.numberInSurah;
+}
+
+/**
  * ✅ رابط الصوت — يبني الرابط من مجلد القارئ نفسه مباشرة.
  *
  * ملاحظة مهمة:

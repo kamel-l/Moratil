@@ -585,9 +585,11 @@ function normalizeMasteryMap(value: unknown): Record<string, VerseMastery> {
   return map;
 }
 
-export function getVerseMasteryMap(): Record<string, VerseMastery> {
+export function getVerseMasteryMap(riwaya?: Riwaya): Record<string, VerseMastery> {
   const key = storageKey(MASTERY_KEY);
-  if (masteryCache?.storageKey === key) return masteryCache.value;
+  if (masteryCache?.storageKey === key) {
+    return riwaya ? filterMasteryByRiwaya(masteryCache.value, riwaya) : masteryCache.value;
+  }
 
   const stored = readJson(key);
   if (stored === undefined) {
@@ -598,7 +600,22 @@ export function getVerseMasteryMap(): Record<string, VerseMastery> {
 
   const map = normalizeMasteryMap(stored);
   masteryCache = { storageKey: key, value: map };
-  return map;
+  return riwaya ? filterMasteryByRiwaya(map, riwaya) : map;
+}
+
+function filterMasteryByRiwaya(
+  map: Record<string, VerseMastery>,
+  riwaya: Riwaya,
+): Record<string, VerseMastery> {
+  const filtered: Record<string, VerseMastery> = {};
+  for (const [key, entry] of Object.entries(map)) {
+    if ((entry.riwaya ?? 'hafs') === riwaya) filtered[key] = entry;
+  }
+  return filtered;
+}
+
+function masteryKey(surahNumber: number, ayahNumber: number, riwaya: Riwaya): string {
+  return riwaya === 'warsh' ? `warsh_${surahNumber}_${ayahNumber}` : `${surahNumber}_${ayahNumber}`;
 }
 
 export function saveVerseMasteryMap(map: Record<string, VerseMastery>): void {
@@ -613,17 +630,19 @@ export function recordVerseResult(
   ayahNumber: number,
   isFlawless: boolean,
   mistakes: { expectedWord: string; recitedWord: string }[] = [],
+  riwaya: Riwaya = getRiwaya(),
 ): VerseMastery {
   const map = getVerseMasteryMap();
-  const key = `${surahNumber}_${ayahNumber}`;
+  const key = masteryKey(surahNumber, ayahNumber, riwaya);
   const now = new Date();
 
   const existing = map[key];
   const current: VerseMastery = existing
-    ? { ...existing, recentMistakes: [...existing.recentMistakes] }
+    ? { ...existing, recentMistakes: [...existing.recentMistakes], riwaya }
     : {
         surahNumber,
         ayahNumber,
+        riwaya,
         level: 'new',
         consecutiveSuccessCount: 0,
         mistakeCount: 0,
@@ -704,17 +723,20 @@ export function recordVerseResult(
   return current;
 }
 
-export function getVersesNeedingReinforcement(): VerseMastery[] {
+export function getVersesNeedingReinforcement(riwaya: Riwaya = getRiwaya()): VerseMastery[] {
   const now = new Date();
-  return Object.values(getVerseMasteryMap()).filter(
+  return Object.values(getVerseMasteryMap(riwaya)).filter(
     (item) =>
       item.level === 'review_needed' || item.mistakeCount > 0 || new Date(item.nextReviewAt) <= now,
   );
 }
 
-export function getVersesDueForReview(now = new Date()): VerseMastery[] {
+export function getVersesDueForReview(
+  now = new Date(),
+  riwaya: Riwaya = getRiwaya(),
+): VerseMastery[] {
   const nowTime = now.getTime();
-  return Object.values(getVerseMasteryMap()).filter((item) => {
+  return Object.values(getVerseMasteryMap(riwaya)).filter((item) => {
     const nextReviewTime = Date.parse(item.nextReviewAt);
     return Number.isFinite(nextReviewTime) && nextReviewTime <= nowTime;
   });

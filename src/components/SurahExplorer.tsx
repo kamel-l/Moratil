@@ -10,9 +10,9 @@ import {
   Sparkles,
   Volume2,
 } from 'lucide-react';
-import { ALL_SURAHS } from '../data/quranSurahsList';
+import { getSurahsForRiwaya } from '../data/riwayat';
 import { getSurahWithAyahs } from '../data/quranData';
-import { Surah, Ayah } from '../types/quran';
+import { Surah, Ayah, Riwaya } from '../types/quran';
 import {
   Badge,
   Button,
@@ -28,6 +28,7 @@ interface SurahExplorerProps {
   onPlaySurahAudio: (surahNumber: number) => void;
   onOpenTafsir: (ayah: Ayah) => void;
   completedSurahs: number[];
+  riwaya: Riwaya;
 }
 
 type SurahFilter = 'all' | 'juz30' | 'makki' | 'madani';
@@ -44,6 +45,7 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
   onPlaySurahAudio,
   onOpenTafsir,
   completedSurahs,
+  riwaya,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<SurahFilter>('all');
@@ -51,10 +53,12 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
   const [isLoadingSurah, setIsLoadingSurah] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const surahs = useMemo(() => getSurahsForRiwaya(riwaya), [riwaya]);
+
   const filteredSurahs = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return ALL_SURAHS.filter((surah) => {
+    return surahs.filter((surah) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         surah.name.includes(normalizedSearch) ||
@@ -69,23 +73,26 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
 
       return true;
     });
-  }, [searchTerm, filterType]);
+  }, [searchTerm, filterType, surahs]);
 
   const completedSurahSet = useMemo(() => new Set(completedSurahs), [completedSurahs]);
 
-  const openReadingMode = useCallback(async (surahNumber: number) => {
-    setIsLoadingSurah(true);
-    setLoadError(null);
-    try {
-      const fullSurah = await getSurahWithAyahs(surahNumber);
-      setActiveReadingSurah(fullSurah);
-    } catch (error) {
-      console.error('Unable to load surah:', error);
-      setLoadError('تعذّر تحميل السورة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.');
-    } finally {
-      setIsLoadingSurah(false);
-    }
-  }, []);
+  const openReadingMode = useCallback(
+    async (surahNumber: number) => {
+      setIsLoadingSurah(true);
+      setLoadError(null);
+      try {
+        const fullSurah = await getSurahWithAyahs(surahNumber, riwaya);
+        setActiveReadingSurah(fullSurah);
+      } catch (error) {
+        console.error('Unable to load surah:', error);
+        setLoadError('تعذّر تحميل السورة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.');
+      } finally {
+        setIsLoadingSurah(false);
+      }
+    },
+    [riwaya],
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -134,6 +141,11 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
           </div>
 
           <div className="space-y-8 divide-y divide-stone-100 p-6 sm:p-10">
+            {activeReadingSurah.basmalah && (
+              <p className="pb-2 text-center font-quran text-xl leading-loose text-emerald-900 sm:text-2xl">
+                {activeReadingSurah.basmalah}
+              </p>
+            )}
             {activeReadingSurah.ayahs.map((ayah) => (
               <div key={ayah.numberInSurah} className="space-y-4 pt-6 first:pt-0">
                 <div className="text-right">

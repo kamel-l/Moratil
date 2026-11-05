@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Surah, Ayah, Reciter, Riwaya, QuranChallenge } from '../types/quran';
 import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
-import { getAyahAudioUrl, getRecitersByRiwaya } from '../utils/audioReciters';
+import { getAyahAudioUrl, getAudioAyahNumber, getRecitersByRiwaya } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
 import { useAyahAudio } from '../hooks/useAyahAudio';
@@ -20,7 +20,7 @@ interface VoiceReciterProps {
   onOpenTafsir: (ayah: Ayah) => void;
   onStatsUpdate: () => void;
   onSelectSurahChange: (surahNum: number, ayahNum?: number) => void;
-  allSurahsList: { number: number; name: string; numberOfAyahs: number }[];
+  allSurahsList: ReadonlyArray<{ number: number; name: string; numberOfAyahs: number }>;
   embedded?: boolean;
   initialTab?: 'recite' | 'test';
   onClose?: () => void;
@@ -257,7 +257,13 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
       expectedWord: verseWords[parseInt(idx, 10)]?.original || '',
       recitedWord: heard,
     }));
-    recordVerseResult(surah.number, currentAyah.numberInSurah, isFlawless, mistakesArray);
+    recordVerseResult(
+      surah.number,
+      currentAyah.numberInSurah,
+      isFlawless,
+      mistakesArray,
+      effectiveRiwaya,
+    );
     addPointsAndVerses(isFlawless ? 35 : 20, 1, 30, isFlawless ? 100 : 85);
     onStatsUpdate();
 
@@ -346,7 +352,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     const url = getAyahAudioUrl(
       targetReciter.id,
       surah.number,
-      currentAyah.numberInSurah,
+      getAudioAyahNumber(currentAyah, effectiveRiwaya),
       effectiveRiwaya,
     );
 
@@ -527,6 +533,11 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
 
             <div className="px-4 py-5 min-h-[140px]">
+              {currentAyah.numberInSurah === 1 && surah.basmalah && (
+                <p className="mb-3 text-center font-quran text-lg text-emerald-900 sm:text-xl">
+                  {surah.basmalah}
+                </p>
+              )}
               <div className="flex flex-wrap gap-1.5 text-xl sm:text-2xl leading-[2.1] font-quran text-right">
                 {verseWords.map((w, idx) => {
                   const isMatched = matchedWords.includes(idx);

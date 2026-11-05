@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import { Plus, Play, Target, Trophy, CheckCircle2 } from 'lucide-react';
-import { ALL_SURAHS } from '../data/quranSurahsList';
-import { QuranChallenge } from '../types/quran';
+import { Riwaya, QuranChallenge } from '../types/quran';
 
 interface CompetitionLeaderboardProps {
   challenges: QuranChallenge[];
+  surahs: readonly { number: number; name: string; numberOfAyahs: number }[];
+  riwaya: Riwaya;
   onStartChallenge: (challenge: QuranChallenge) => void;
   onCreateChallenge: (challenge: QuranChallenge) => void;
 }
 
 export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
   challenges,
+  surahs,
+  riwaya,
   onStartChallenge,
   onCreateChallenge,
 }) => {
@@ -19,7 +22,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
   const [ayahEnd, setAyahEnd] = useState(5);
   const [difficulty, setDifficulty] = useState<QuranChallenge['difficulty']>('سهل');
   const [rewardPoints, setRewardPoints] = useState(10);
-  const selectedSurah = ALL_SURAHS.find((surah) => surah.number === surahNumber) ?? ALL_SURAHS[0];
+  const selectedSurah = surahs.find((surah) => surah.number === surahNumber) ?? surahs[0];
 
   const handleCreateChallenge = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -29,6 +32,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       surahNumber,
       ayahStart,
       ayahEnd,
+      riwaya,
       rewardPoints,
       difficulty,
       expiresInHours: 24,
@@ -70,14 +74,14 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
               value={surahNumber}
               onChange={(event) => {
                 const number = Number(event.target.value);
-                const surah = ALL_SURAHS.find((item) => item.number === number) ?? ALL_SURAHS[0];
+                const surah = surahs.find((item) => item.number === number) ?? surahs[0];
                 setSurahNumber(number);
                 setAyahStart(1);
                 setAyahEnd(Math.min(5, surah.numberOfAyahs));
               }}
               className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
             >
-              {ALL_SURAHS.map((surah) => (
+              {surahs.map((surah) => (
                 <option key={surah.number} value={surah.number}>
                   {surah.name}
                 </option>

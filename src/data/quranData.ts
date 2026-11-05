@@ -1,6 +1,7 @@
 import { Surah, Ayah, Riwaya } from '../types/quran';
 import { ALL_SURAHS } from './quranSurahsList';
-import { WARSH_QURAN } from './warshQuran';
+import { getSurahMetaForRiwaya } from './riwayat';
+import { WARSH_TOTAL_AYAHS } from './warshManifest';
 
 interface ApiAyah {
   numberInSurah: number;
@@ -772,7 +773,7 @@ export const PRELOADED_SURAHS: Record<number, Surah> = {
  * In-memory cache for surahs fetched dynamically from Quran API
  */
 const dynamicSurahCache: Record<number, Surah> = {};
-const quranPageCache: Record<number, QuranPageAyah[]> = {};
+const quranPageCache: Record<string, QuranPageAyah[]> = {};
 const surahPageCache: Record<number, (number | undefined)[]> = {};
 let fullQuranTextCache: QuranTextAyah[] | null = null;
 let fullQuranTextRequest: Promise<QuranTextAyah[]> | null = null;
@@ -802,30 +803,201 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function applyWarshText(surah: Surah): Surah {
-  const warshTexts = WARSH_QURAN[surah.number];
-  if (!warshTexts || warshTexts.length !== surah.ayahs.length) return surah;
+interface WarshSurahEntry {
+  number: number;
+  ayahCount: number;
+  hasBasmalah: boolean;
+  revelation: string;
+  ayahs: string[];
+  pages: number[];
+  juz: number[];
+  /** Hafs verse number whose recording covers each Warsh verse. */
+  audio: (number | null)[];
+}
+
+export interface WarshDocument {
+  riwaya: 'warsh';
+  nameAr: string;
+  totalAyahs: number;
+  basmalah: string;
+  surahs: WarshSurahEntry[];
+}
+
+const WARSH_TEXT_URL = `${import.meta.env.BASE_URL}quran/warsh.json`;
+
+let warshDocumentCache: WarshDocument | null = null;
+let warshDocumentRequest: Promise<WarshDocument> | null = null;
+
+export function isWarshTextLoaded(): boolean {
+  return warshDocumentCache !== null;
+}
+
+/**
+ * Validates the generated Warsh file before any of it reaches a screen. The
+ * file is built from a checksummed KFGQPC release, so a malformed download
+ * means the asset is corrupt, not that the text needs "fixing".
+ */
+function parseWarshDocument(value: unknown): WarshDocument {
+  if (!isRecord(value) || value.riwaya !== 'warsh' || !Array.isArray(value.surahs)) {
+    throw new Error('ملف نص رواية ورش غير صالح.');
+  }
+  if (value.surahs.length !== 114) {
+    throw new Error('ملف نص رواية ورش لا يحتوي على 114 سورة.');
+  }
+
+  const surahs: WarshSurahEntry[] = [];
+  let total = 0;
+
+  for (let index = 0; index < 114; index += 1) {
+    const raw = value.surahs[index];
+    if (!isRecord(raw) || raw.number !== index + 1) {
+      throw new Error(`بيانات السورة ${index + 1} غير صالحة في نص ورش.`);
+    }
+    const { ayahs, pages, juz, audio } = raw;
+    if (
+      !Array.isArray(ayahs) ||
+      !Array.isArray(pages) ||
+      !Array.isArray(juz) ||
+      !Array.isArray(audio)
+    ) {
+      throw new Error(`بيانات السورة ${index + 1} غير مكتملة في نص ورش.`);
+    }
+
+    const expected = getSurahMetaForRiwaya('warsh', index + 1).numberOfAyahs;
+    if (
+      ayahs.length !== expected ||
+      pages.length !== expected ||
+      juz.length !== expected ||
+      audio.length !== expected
+    ) {
+      throw new Error(`عدد آيات السورة ${index + 1} لا يطابق ترقيم رواية ورش.`);
+    }
+
+    const texts: string[] = [];
+    const pageNumbers: number[] = [];
+    const juzNumbers: number[] = [];
+    const audioNumbers: (number | null)[] = [];
+
+    for (let position = 0; position < expected; position += 1) {
+      const text = ayahs[position];
+      const page = pages[position];
+      const juzNumber = juz[position];
+      const audioNumber = audio[position];
+
+      if (typeof text !== 'string' || text.trim() === '') {
+        throw new Error(`الآية ${index + 1}:${position + 1} فارغة في نص ورش.`);
+      }
+      if (typeof page !== 'number' || !Number.isInteger(page) || page < 1 || page > 604) {
+        throw new Error(`رقم صفحة غير صالح للآية ${index + 1}:${position + 1}.`);
+      }
+      if (
+        typeof juzNumber !== 'number' ||
+        !Number.isInteger(juzNumber) ||
+        juzNumber < 1 ||
+        juzNumber > 30
+      ) {
+        throw new Error(`رقم جزء غير صالح للآية ${index + 1}:${position + 1}.`);
+      }
+      if (
+        audioNumber !== null &&
+        (typeof audioNumber !== 'number' || !Number.isInteger(audioNumber) || audioNumber < 1)
+      ) {
+        throw new Error(`رقم صوت غير صالح للآية ${index + 1}:${position + 1}.`);
+      }
+
+      texts.push(text);
+      pageNumbers.push(page);
+      juzNumbers.push(juzNumber);
+      audioNumbers.push(audioNumber);
+    }
+
+    total += expected;
+    surahs.push({
+      number: index + 1,
+      ayahCount: expected,
+      hasBasmalah: raw.hasBasmalah === true,
+      revelation: typeof raw.revelation === 'string' ? raw.revelation : '',
+      ayahs: texts,
+      pages: pageNumbers,
+      juz: juzNumbers,
+      audio: audioNumbers,
+    });
+  }
+
+  if (total !== WARSH_TOTAL_AYAHS) {
+    throw new Error(`نص رواية ورش غير مكتمل: ${total} آية بدل ${WARSH_TOTAL_AYAHS}.`);
+  }
+
   return {
-    ...surah,
-    ayahs: surah.ayahs.map((ayah, index) => ({ ...ayah, text: warshTexts[index] })),
+    riwaya: 'warsh',
+    nameAr: typeof value.nameAr === 'string' ? value.nameAr : 'ورش عن نافع',
+    totalAyahs: total,
+    basmalah: typeof value.basmalah === 'string' ? value.basmalah : '',
+    surahs,
   };
 }
 
-function getWarshQuranTextAyahs(): QuranTextAyah[] {
-  const ayahs: QuranTextAyah[] = [];
-  for (const meta of ALL_SURAHS) {
-    const texts = WARSH_QURAN[meta.number];
-    if (!texts) continue;
-    for (let index = 0; index < texts.length; index++) {
-      ayahs.push({
-        surahNumber: meta.number,
-        surahName: meta.name,
-        numberInSurah: index + 1,
-        text: texts[index],
-      });
-    }
-  }
-  return ayahs;
+/**
+ * Loads the bundled Warsh text once per session. The asset is local (served
+ * from `public/quran`), so this does not depend on a Quran API.
+ */
+export function loadWarshText(): Promise<WarshDocument> {
+  if (warshDocumentCache) return Promise.resolve(warshDocumentCache);
+  if (warshDocumentRequest) return warshDocumentRequest;
+
+  warshDocumentRequest = fetch(WARSH_TEXT_URL)
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`تعذر تحميل نص رواية ورش (${response.status}).`);
+      }
+      const document = parseWarshDocument((await response.json()) as unknown);
+      warshDocumentCache = document;
+      return document;
+    })
+    .catch((error: unknown) => {
+      warshDocumentRequest = null;
+      throw error;
+    });
+
+  return warshDocumentRequest;
+}
+
+async function getWarshSurah(surahNumber: number): Promise<Surah> {
+  const meta = getSurahMetaForRiwaya('warsh', surahNumber);
+  const document = await loadWarshText();
+  const entry = document.surahs[surahNumber - 1];
+  if (!entry) throw new Error(`السورة ${surahNumber} غير موجودة في نص رواية ورش.`);
+
+  return {
+    number: meta.number,
+    name: meta.name,
+    englishName: meta.englishName,
+    revelationType: meta.revelationType,
+    numberOfAyahs: meta.numberOfAyahs,
+    juzStart: meta.juzStart,
+    pageStart: meta.pageStart,
+    basmalah: meta.standaloneBasmalah ?? undefined,
+    ayahs: entry.ayahs.map((text, index) => ({
+      numberInSurah: index + 1,
+      text,
+      juz: entry.juz[index],
+      page: entry.pages[index],
+      audioAyahNumber: entry.audio[index] ?? index + 1,
+    })),
+  };
+}
+
+async function getWarshQuranTextAyahs(): Promise<QuranTextAyah[]> {
+  const document = await loadWarshText();
+  return document.surahs.flatMap((entry) => {
+    const meta = getSurahMetaForRiwaya('warsh', entry.number);
+    return entry.ayahs.map((text, index) => ({
+      surahNumber: entry.number,
+      surahName: meta.name,
+      numberInSurah: index + 1,
+      text,
+    }));
+  });
 }
 
 export async function getAllQuranAyahs(riwaya: Riwaya = 'hafs'): Promise<QuranTextAyah[]> {
@@ -899,6 +1071,8 @@ export async function getAllQuranAyahs(riwaya: Riwaya = 'hafs'): Promise<QuranTe
  * Loads a Surah either from bundled high-precision data or fetches dynamically from Quran API
  */
 export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'hafs'): Promise<Surah> {
+  if (riwaya === 'warsh') return getWarshSurah(surahNumber);
+
   const meta = ALL_SURAHS.find((s) => s.number === surahNumber);
   const expectedAyahCount = meta?.numberOfAyahs;
 
@@ -907,7 +1081,7 @@ export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'h
     preloadedSurah &&
     hasCompleteAyahSequence(preloadedSurah.ayahs, expectedAyahCount ?? preloadedSurah.numberOfAyahs)
   ) {
-    return riwaya === 'warsh' ? applyWarshText(preloadedSurah) : preloadedSurah;
+    return preloadedSurah;
   }
 
   const cachedSurah = dynamicSurahCache[surahNumber];
@@ -915,7 +1089,7 @@ export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'h
     cachedSurah &&
     hasCompleteAyahSequence(cachedSurah.ayahs, expectedAyahCount ?? cachedSurah.numberOfAyahs)
   ) {
-    return riwaya === 'warsh' ? applyWarshText(cachedSurah) : cachedSurah;
+    return cachedSurah;
   }
 
   try {
@@ -963,7 +1137,7 @@ export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'h
         };
 
         dynamicSurahCache[surahNumber] = surah;
-        return riwaya === 'warsh' ? applyWarshText(surah) : surah;
+        return surah;
       }
     }
   } catch (err) {
@@ -975,7 +1149,25 @@ export async function getSurahWithAyahs(surahNumber: number, riwaya: Riwaya = 'h
   );
 }
 
-export async function getAyahPageNumber(surahNumber: number, ayahNumber: number): Promise<number> {
+export async function getAyahPageNumber(
+  surahNumber: number,
+  ayahNumber: number,
+  riwaya: Riwaya = 'hafs',
+): Promise<number> {
+  if (riwaya === 'warsh') {
+    const document = await loadWarshText();
+    const pageNumber = document.surahs[surahNumber - 1]?.pages[ayahNumber - 1];
+    if (
+      typeof pageNumber !== 'number' ||
+      !Number.isInteger(pageNumber) ||
+      pageNumber < 1 ||
+      pageNumber > 604
+    ) {
+      throw new Error(`لم يُعثر على رقم صفحة الآية ${ayahNumber} من السورة ${surahNumber}.`);
+    }
+    return pageNumber;
+  }
+
   const bundledSurah = PRELOADED_SURAHS[surahNumber];
   if (bundledSurah && (surahNumber === 1 || (surahNumber >= 112 && surahNumber <= 114))) {
     return bundledSurah.pageStart;
@@ -1013,13 +1205,43 @@ export async function getAyahPageNumber(surahNumber: number, ayahNumber: number)
   return pageNumber;
 }
 
-export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]> {
+export async function getQuranPage(
+  pageNumber: number,
+  riwaya: Riwaya = 'hafs',
+): Promise<QuranPageAyah[]> {
   if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
     throw new Error('رقم صفحة المصحف غير صالح.');
   }
 
-  if (quranPageCache[pageNumber]) {
-    return quranPageCache[pageNumber];
+  const cacheKey = `${riwaya}:${pageNumber}`;
+  if (quranPageCache[cacheKey]) {
+    return quranPageCache[cacheKey];
+  }
+
+  if (riwaya === 'warsh') {
+    const document = await loadWarshText();
+    const pageAyahs: QuranPageAyah[] = [];
+
+    for (const entry of document.surahs) {
+      const meta = getSurahMetaForRiwaya('warsh', entry.number);
+      entry.pages.forEach((page, index) => {
+        if (page !== pageNumber) return;
+        pageAyahs.push({
+          surahNumber: entry.number,
+          surahName: meta.name,
+          numberInSurah: index + 1,
+          text: entry.ayahs[index],
+          juz: entry.juz[index],
+        });
+      });
+    }
+
+    if (pageAyahs.length === 0) {
+      throw new Error(`لم تُعثر على آيات في صفحة المصحف رقم ${pageNumber}.`);
+    }
+
+    quranPageCache[cacheKey] = pageAyahs;
+    return pageAyahs;
   }
 
   if (pageNumber === 1) {
@@ -1030,7 +1252,7 @@ export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]>
       text: ayah.text,
       juz: ayah.juz,
     }));
-    quranPageCache[pageNumber] = pageAyahs;
+    quranPageCache[cacheKey] = pageAyahs;
     return pageAyahs;
   }
 
@@ -1044,7 +1266,7 @@ export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]>
         juz: ayah.juz,
       })),
     );
-    quranPageCache[pageNumber] = pageAyahs;
+    quranPageCache[cacheKey] = pageAyahs;
     return pageAyahs;
   }
 
@@ -1078,6 +1300,6 @@ export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]>
     throw new Error(`لم تُعثر على آيات في صفحة المصحف رقم ${pageNumber}.`);
   }
 
-  quranPageCache[pageNumber] = pageAyahs;
+  quranPageCache[cacheKey] = pageAyahs;
   return pageAyahs;
 }
