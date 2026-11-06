@@ -13,7 +13,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { Ayah, Reciter, Riwaya, Surah } from '../types/quran';
-import { getSurahWithAyahs } from '../data/quranData';
+import { getAyahPageNumber, getSurahWithAyahs } from '../data/quranData';
 import { SurahMeta } from '../data/quranSurahsList';
 import { getAyahAudioUrl, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
 import { removeOpeningBasmalah } from '../utils/arabicUtils';
@@ -158,9 +158,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
                     >
                       <span
                         className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-[#6b5025] ${
-                          masked
-                            ? 'border-[#a08750] bg-[#fbe5b8]'
-                            : 'border-[#a08750] bg-[#fdfaf0]'
+                          masked ? 'border-[#a08750] bg-[#fbe5b8]' : 'border-[#a08750] bg-[#fdfaf0]'
                         }`}
                         style={{ boxShadow: 'inset 0 0 0 1px #a08750' }}
                       >
@@ -220,26 +218,42 @@ const MushafPassage: React.FC<MushafPassageProps> = ({
         compact ? 'px-3 py-3' : 'px-4 py-5 sm:px-6 sm:py-6'
       }`}
     >
-      <span className="pointer-events-none absolute top-1 right-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
-      <span className="pointer-events-none absolute top-1 left-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
-      <span className="pointer-events-none absolute bottom-1 right-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
-      <span className="pointer-events-none absolute bottom-1 left-1.5 select-none text-xs text-amber-700/40" aria-hidden="true">۞</span>
+      <span
+        className="pointer-events-none absolute top-1 right-1.5 select-none text-xs text-amber-700/40"
+        aria-hidden="true"
+      >
+        ۞
+      </span>
+      <span
+        className="pointer-events-none absolute top-1 left-1.5 select-none text-xs text-amber-700/40"
+        aria-hidden="true"
+      >
+        ۞
+      </span>
+      <span
+        className="pointer-events-none absolute bottom-1 right-1.5 select-none text-xs text-amber-700/40"
+        aria-hidden="true"
+      >
+        ۞
+      </span>
+      <span
+        className="pointer-events-none absolute bottom-1 left-1.5 select-none text-xs text-amber-700/40"
+        aria-hidden="true"
+      >
+        ۞
+      </span>
 
       <div
         dir="rtl"
         className={`font-quran text-stone-900 ${
-          compact
-            ? 'text-xl leading-[2.2] sm:text-2xl'
-            : 'text-2xl leading-[2.5] sm:text-[1.75rem]'
+          compact ? 'text-xl leading-[2.2] sm:text-2xl' : 'text-2xl leading-[2.5] sm:text-[1.75rem]'
         }`}
       >
         {ayahs.map((ayah) => {
           const masked = shouldMask(ayah);
           return (
             <React.Fragment key={ayah.numberInSurah}>
-              <span className={masked ? 'select-none opacity-80 blur-sm' : ''}>
-                {ayah.text}
-              </span>
+              <span className={masked ? 'select-none opacity-80 blur-sm' : ''}>{ayah.text}</span>
               <button
                 type="button"
                 onClick={() => onToggleAyah(ayah.numberInSurah)}
@@ -282,15 +296,16 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const [endAyah, setEndAyah] = useState(7);
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
-  const [unitSize, setUnitSize] = useState<UnitSize>(2);
+  const [unitSize, setUnitSize] = useState<UnitSize>('page');
   const [repeatCount, setRepeatCount] = useState(3);
   const [hiddenAyahCount, setHiddenAyahCount] = useState(0);
   const [isFullRecitation, setIsFullRecitation] = useState(false);
   const [revealedAyahs, setRevealedAyahs] = useState<Set<number>>(() => new Set());
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('cards');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('mushaf');
   const [playbackSession, setPlaybackSession] = useState<PlaybackSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pageMetadataError, setPageMetadataError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -305,6 +320,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     let isCurrent = true;
     setIsLoading(true);
     setLoadError(null);
+    setPageMetadataError(null);
 
     // إيقاف أي تشغيل سابق فورًا عند تغيير السورة أو الرواية
     setPlaybackSession(null);
@@ -316,7 +332,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     }
 
     getSurahWithAyahs(surahNumber, riwaya) // ✅ تمرير الرواية
-      .then((loadedSurah) => {
+      .then(async (loadedSurah) => {
         if (!isCurrent) return;
         const prepared: Surah =
           loadedSurah.number === 1
@@ -327,11 +343,41 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   index === 0 ? { ...ayah, text: removeOpeningBasmalah(ayah.text) } : ayah,
                 ),
               };
-        setSurah(prepared);
+        let surahWithPages = prepared;
+        if (prepared.ayahs.some((ayah) => typeof ayah.page !== 'number')) {
+          try {
+            const firstAyahWithoutPage = prepared.ayahs.find(
+              (ayah) => typeof ayah.page !== 'number',
+            );
+            if (firstAyahWithoutPage) {
+              await getAyahPageNumber(surahNumber, firstAyahWithoutPage.numberInSurah);
+              const ayahs = await Promise.all(
+                prepared.ayahs.map(async (ayah) => ({
+                  ...ayah,
+                  page:
+                    typeof ayah.page === 'number'
+                      ? ayah.page
+                      : await getAyahPageNumber(surahNumber, ayah.numberInSurah),
+                })),
+              );
+              surahWithPages = { ...prepared, ayahs };
+            }
+          } catch (error) {
+            console.error('Unable to load Quran page numbers for memorization:', error);
+            if (isCurrent) {
+              setPageMetadataError(
+                'تعذر تحميل أرقام صفحات المصحف. تحقق من اتصالك بالإنترنت أو اختر عددًا من الآيات لكل وحدة.',
+              );
+            }
+          }
+        }
 
-        const pages = [...new Set(prepared.ayahs.map(pageOf))].sort((a, b) => a - b);
+        if (!isCurrent) return;
+        setSurah(surahWithPages);
+
+        const pages = [...new Set(surahWithPages.ayahs.map(pageOf))].sort((a, b) => a - b);
         setStartAyah(1);
-        setEndAyah(prepared.ayahs.length);
+        setEndAyah(surahWithPages.ayahs.length);
         setStartPage(pages[0] ?? 1);
         setEndPage(pages[pages.length - 1] ?? 1);
 
@@ -419,9 +465,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
         return p >= startPage && p <= endPage;
       });
     }
-    return surah.ayahs.filter(
-      (a) => a.numberInSurah >= startAyah && a.numberInSurah <= endAyah,
-    );
+    return surah.ayahs.filter((a) => a.numberInSurah >= startAyah && a.numberInSurah <= endAyah);
   }, [surah, unitSize, startPage, endPage, startAyah, endAyah]);
 
   const units = useMemo(
@@ -723,8 +767,8 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   {isPageMode
                     ? 'عرض الصفحات كما في المصحف المطبوع — اضغط رقم الآية للكشف أو الإخفاء'
                     : displayMode === 'cards'
-                    ? 'استمع إلى الوحدة وردد الآيات معها'
-                    : 'عرض النص كصفحة مصحف — اضغط رقم الآية للكشف أو الإخفاء'}
+                      ? 'استمع إلى الوحدة وردد الآيات معها'
+                      : 'عرض النص كصفحة مصحف — اضغط رقم الآية للكشف أو الإخفاء'}
                 </p>
               </div>
 
@@ -789,71 +833,79 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
             {isPageMode ? (
               <div className="space-y-6">
-                {pageGroups.map(([pageNumber, pageAyahs]) => {
-                  const isPagePlaying =
-                    activeScope === 'unit' && activeUnitStart === pageAyahs[0].numberInSurah;
-                  return (
-                    <article
-                      key={pageNumber}
-                      className="rounded-2xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4"
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800">
-                            {arabicDigits(pageNumber)}
-                          </span>
-                          <h3 className="text-sm font-bold text-emerald-900">
-                            صفحة {arabicDigits(pageNumber)}
-                            <span className="mr-2 font-normal text-stone-500">
-                              الآيات {pageAyahs[0].numberInSurah.toLocaleString('ar-EG')}–
-                              {pageAyahs[
-                                pageAyahs.length - 1
-                              ].numberInSurah.toLocaleString('ar-EG')}
+                {pageMetadataError ? (
+                  <p
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"
+                    role="alert"
+                  >
+                    {pageMetadataError}
+                  </p>
+                ) : (
+                  pageGroups.map(([pageNumber, pageAyahs]) => {
+                    const isPagePlaying =
+                      activeScope === 'unit' && activeUnitStart === pageAyahs[0].numberInSurah;
+                    return (
+                      <article
+                        key={pageNumber}
+                        className="rounded-2xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800">
+                              {arabicDigits(pageNumber)}
                             </span>
-                          </h3>
+                            <h3 className="text-sm font-bold text-emerald-900">
+                              صفحة {arabicDigits(pageNumber)}
+                              <span className="mr-2 font-normal text-stone-500">
+                                الآيات {pageAyahs[0].numberInSurah.toLocaleString('ar-EG')}–
+                                {pageAyahs[pageAyahs.length - 1].numberInSurah.toLocaleString(
+                                  'ar-EG',
+                                )}
+                              </span>
+                            </h3>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={isPagePlaying ? 'danger' : 'primary'}
+                            icon={
+                              isPagePlaying ? (
+                                <Pause className="h-4 w-4" />
+                              ) : (
+                                <Headphones className="h-4 w-4" />
+                              )
+                            }
+                            onClick={() => {
+                              if (isPagePlaying) stopPlayback();
+                              else playAyahs(pageAyahs, 'unit');
+                            }}
+                            aria-label={
+                              isPagePlaying ? 'إيقاف التلاوة' : `استماع إلى صفحة ${pageNumber}`
+                            }
+                          >
+                            {isPagePlaying ? 'إيقاف' : 'استمع للصفحة'}
+                          </Button>
                         </div>
-                        <Button
-                          size="sm"
-                          variant={isPagePlaying ? 'danger' : 'primary'}
-                          icon={
-                            isPagePlaying ? (
-                              <Pause className="h-4 w-4" />
-                            ) : (
-                              <Headphones className="h-4 w-4" />
-                            )
-                          }
-                          onClick={() => {
-                            if (isPagePlaying) stopPlayback();
-                            else playAyahs(pageAyahs, 'unit');
-                          }}
-                          aria-label={
-                            isPagePlaying ? 'إيقاف التلاوة' : `استماع إلى صفحة ${pageNumber}`
-                          }
-                        >
-                          {isPagePlaying ? 'إيقاف' : 'استمع للصفحة'}
-                        </Button>
-                      </div>
 
-                      <MushafPage
-                        ayahs={pageAyahs}
-                        pageNumber={pageNumber}
-                        surahNumber={surah.number}
-                        surahName={surah.name}
-                        isFullRecitation={isFullRecitation}
-                        revealedAyahs={revealedAyahs}
-                        onToggleAyah={toggleRevealedAyah}
-                      />
-                    </article>
-                  );
-                })}
+                        <MushafPage
+                          ayahs={pageAyahs}
+                          pageNumber={pageNumber}
+                          surahNumber={surah.number}
+                          surahName={surah.name}
+                          isFullRecitation={isFullRecitation}
+                          revealedAyahs={revealedAyahs}
+                          onToggleAyah={toggleRevealedAyah}
+                        />
+                      </article>
+                    );
+                  })
+                )}
               </div>
             ) : isFullRecitation && displayMode === 'mushaf' ? (
               <article className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h3 className="text-sm font-bold text-emerald-900">تسميع المقطع كاملًا</h3>
                   <span className="text-xs text-stone-500">
-                    الآيات {startAyah.toLocaleString('ar-EG')}–
-                    {endAyah.toLocaleString('ar-EG')}
+                    الآيات {startAyah.toLocaleString('ar-EG')}–{endAyah.toLocaleString('ar-EG')}
                   </span>
                 </div>
                 <MushafPassage

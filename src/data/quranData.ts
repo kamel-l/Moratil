@@ -1,6 +1,5 @@
 import { Surah, Ayah, Riwaya } from '../types/quran';
 import { ALL_SURAHS } from './quranSurahsList';
-import { WARSH_QURAN } from './warshQuran';
 
 interface ApiAyah {
   numberInSurah: number;
@@ -802,7 +801,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function applyWarshText(surah: Surah): Surah {
+async function applyWarshText(surah: Surah): Promise<Surah> {
+  const { WARSH_QURAN } = await import('./warshQuran');
   const warshTexts = WARSH_QURAN[surah.number];
   if (!warshTexts || warshTexts.length !== surah.ayahs.length) return surah;
   return {
@@ -811,7 +811,8 @@ function applyWarshText(surah: Surah): Surah {
   };
 }
 
-function getWarshQuranTextAyahs(): QuranTextAyah[] {
+async function getWarshQuranTextAyahs(): Promise<QuranTextAyah[]> {
+  const { WARSH_QURAN } = await import('./warshQuran');
   const ayahs: QuranTextAyah[] = [];
   for (const meta of ALL_SURAHS) {
     const texts = WARSH_QURAN[meta.number];
