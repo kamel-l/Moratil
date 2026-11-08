@@ -63,8 +63,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
   const recognitionRef = useRef<any>(null);
   const incomingSpeechHandlerRef = useRef<
-    (spokenText: string) => { completed: boolean; isFlawless: boolean } | undefined
+    (spokenText: string, alternatives?: string[]) => { completed: boolean; isFlawless: boolean } | undefined
   >(() => undefined);
+  const previewSpeechHandlerRef = useRef<(interimText: string) => void>(() => {});
   const ayahCompletionHandlerRef = useRef<(isFlawless: boolean) => void>(() => {});
   const nativeRecognitionRunnerRef = useRef<() => Promise<void>>(async () => {});
   const nativeRecognitionActiveRef = useRef(false);
@@ -82,12 +83,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   }, [currentAyah]);
   const {
     currentWordIdx,
+    matchedWords,
+    failedWords,
     activeMistakeAlert,
     isAyahCompleted,
+    previewWordIdx,
     setIsAyahCompleted,
     setActiveMistakeAlert,
+    setPreviewWordIdx,
     completionLockRef,
     handleIncomingSpokenText,
+    previewSpokenText,
     resetRecitationState,
     failedWordsRef,
   } = useRecitationSession(verseWords);
@@ -221,6 +227,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
+      recognition.maxAlternatives = 3; // Ask for extra candidates to recover misheard words
       recognition.lang = 'ar-SA'; // Arabic (Saudi Arabia) for Quranic phonetics
 
       recognition.onstart = () => {
@@ -282,16 +289,33 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       recognition.onresult = (event: any) => {
         if (!recognitionEnabledRef.current) return;
         let finalTranscript = '';
+        let interimTranscript = '';
+        const alternatives: string[] = [];
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const trans = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
+          const result = event.results[i];
+          const trans = result[0]?.transcript ?? '';
+          if (result.isFinal) {
             finalTranscript += trans + ' ';
+            for (let k = 1; k < result.length; k += 1) {
+              const alt = result[k]?.transcript?.trim();
+              if (alt) alternatives.push(alt);
+            }
+          } else {
+            interimTranscript += trans + ' ';
           }
         }
 
+        // Interim results give instant visual progress while the user is speaking.
+        if (interimTranscript.trim()) {
+          previewSpeechHandlerRef.current(interimTranscript.trim());
+        }
+
         if (finalTranscript.trim()) {
-          const nextState = incomingSpeechHandlerRef.current(finalTranscript.trim());
+          const nextState = incomingSpeechHandlerRef.current(
+            finalTranscript.trim(),
+            alternatives,
+          );
           if (nextState?.completed) {
             ayahCompletionHandlerRef.current(nextState.isFlawless);
           }
@@ -314,6 +338,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   }, []);
 
   incomingSpeechHandlerRef.current = handleIncomingSpokenText;
+  previewSpeechHandlerRef.current = previewSpokenText;
 
   const listenWithNativeRecognition = async () => {
     if (!nativeRecognitionActiveRef.current) return;
@@ -321,7 +346,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     try {
       const { matches } = await SpeechRecognition.start({
         language: 'ar-SA',
-        maxResults: 1,
+        maxResults: 3,
         partialResults: false,
         popup: false,
       });
@@ -329,7 +354,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
       const recognizedText = matches?.[0]?.trim();
       if (recognizedText) {
-        const nextState = incomingSpeechHandlerRef.current(recognizedText);
+        const alternatives = (matches ?? []).slice(1).filter((match) => match && match.trim());
+        const nextState = incomingSpeechHandlerRef.current(recognizedText, alternatives);
         if (nextState?.completed) {
           ayahCompletionHandlerRef.current(nextState.isFlawless);
         }
@@ -440,6 +466,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     setIsAyahCompleted(false);
     isAyahCompletedRef.current = false;
     setIsListening(false);
+    setPreviewWordIdx(null);
 
     if (Capacitor.isNativePlatform()) {
       if (nativeRecognitionActiveRef.current) {
@@ -611,7 +638,72 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
         </div>
 
-        <div className="flex min-h-56 items-center justify-center bg-white/5 px-4 py-8">
+        <div className="flex min-h-56 flex-col items-center justify-center gap-5 bg-white/5 px-4 py-8">
+          {/* Live word-by-word progress. Letters stay hidden to preserve blind recitation. */}
+          {verseWords.length > 0 && (
+            <div className="w-full max-w-md space-y-3">
+              <div className="flex items-center justify-center gap-4 text-[11px] font-medium">
+                <span className="flex items-center gap-1 text-jade-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-gold-300" />
+                  متقن: {matchedWords.length}
+                </span>
+                <span className="flex items-center gap-1 text-rose-300">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  خطأ: {Object.keys(failedWords).length}
+                </span>
+                <span className="text-jade-100/60">
+                  المتبقي: {Math.max(0, verseWords.length - currentWordIdx)}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-1.5" dir="rtl">
+                {verseWords.map((word) => {
+                  const isMatched = matchedWords.includes(word.index);
+                  const isFailed = failedWords[word.index] !== undefined;
+                  const isCurrent = word.index === currentWordIdx && !isAyahCompleted;
+                  const isPreview =
+                    previewWordIdx !== null &&
+                    word.index < previewWordIdx &&
+                    !isMatched &&
+                    !isFailed;
+
+                  let tone = 'bg-white/10 border-white/10';
+                  if (isFailed) tone = 'bg-rose-500/60 border-rose-400/50';
+                  else if (isMatched) tone = 'bg-jade-500/60 border-jade-400/50';
+                  if (isPreview) tone = 'bg-gold-400/40 border-gold-400/40';
+                  if (isCurrent) tone = 'bg-gold-400 border-gold-400';
+
+                  return (
+                    <span
+                      key={word.index}
+                      className={`h-4 w-4 rounded-md border transition-all duration-200 ${tone} ${
+                        isCurrent ? 'scale-125 animate-pulse' : ''
+                      }`}
+                      title={
+                        isFailed
+                          ? `كلمة ${word.index + 1}: ${failedWords[word.index]}`
+                          : `كلمة ${word.index + 1}`
+                      }
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full bg-gold-400 transition-all duration-300"
+                  style={{
+                    width: `${
+                      verseWords.length
+                        ? Math.round((currentWordIdx / verseWords.length) * 100)
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Active Error Detection / Correction Alert */}
           {activeMistakeAlert && !isAyahCompleted && (
             <div

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   CalendarClock,
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Sparkles,
   BookOpen,
+  ChevronDown,
 } from 'lucide-react';
 import { RevisionPlan, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
@@ -35,9 +36,33 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   const [selectedSurahNums, setSelectedSurahNums] = useState<number[]>([1, 112, 113, 114]);
   const [dailyTarget, setDailyTarget] = useState(15);
   const [durationDays, setDurationDays] = useState(14);
+  const [collapsedSurahs, setCollapsedSurahs] = useState<number[]>([]);
 
   const getSurahName = (num: number) => {
     return ALL_SURAHS.find((s) => s.number === num)?.name || `سورة ${num}`;
+  };
+
+  const groupedForgottenVerses = useMemo(() => {
+    const groups = new Map<number, VerseMastery[]>();
+    forgottenVerses.forEach((item) => {
+      const list = groups.get(item.surahNumber);
+      if (list) list.push(item);
+      else groups.set(item.surahNumber, [item]);
+    });
+
+    return Array.from(groups.entries())
+      .map(([surahNumber, verses]) => ({
+        surahNumber,
+        verses: [...verses].sort((a, b) => a.ayahNumber - b.ayahNumber),
+        totalMistakes: verses.reduce((sum, verse) => sum + verse.mistakeCount, 0),
+      }))
+      .sort((a, b) => a.surahNumber - b.surahNumber);
+  }, [forgottenVerses]);
+
+  const toggleSurahGroup = (surahNumber: number) => {
+    setCollapsedSurahs((prev) =>
+      prev.includes(surahNumber) ? prev.filter((num) => num !== surahNumber) : [...prev, surahNumber],
+    );
   };
 
   const handleCompleteDay = (planId: string) => {
@@ -134,58 +159,104 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {forgottenVerses.map((item) => {
-              const surahName = getSurahName(item.surahNumber);
-              const lastMistake = item.recentMistakes[0];
+          <div className="space-y-3">
+            {groupedForgottenVerses.map((group) => {
+              const surahName = getSurahName(group.surahNumber);
+              const isCollapsed = collapsedSurahs.includes(group.surahNumber);
 
               return (
-                <div
-                  key={`${item.surahNumber}_${item.ayahNumber}`}
-                  className="glass-panel rounded-2xl border-gold-400/30 hover:border-gold-400 p-5 transition-all space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-base text-white">سورة {surahName}</span>
-                      <span className="text-xs bg-white/5 text-jade-100/80 px-2 py-0.5 rounded-md font-semibold">
-                        الآية {item.ayahNumber}
+                <div key={group.surahNumber} className="glass-panel rounded-2xl overflow-hidden">
+                  {/* Surah Group Header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleSurahGroup(group.surahNumber)}
+                    aria-expanded={!isCollapsed}
+                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-xl bg-gold-400/15 border border-gold-400/30 text-gold-300 font-bold text-xs flex items-center justify-center font-display shrink-0">
+                        {group.surahNumber}
                       </span>
+                      <div className="text-right">
+                        <div className="font-bold text-white text-sm">سورة {surahName}</div>
+                        <div className="text-[11px] text-jade-100/60">
+                          {group.verses.length} آية تحتاج تثبيتاً · {group.totalMistakes} خطأ سابق
+                        </div>
+                      </div>
                     </div>
 
-                    <span className="text-[11px] font-medium text-gold-300 bg-gold-400/15 border border-gold-400/30 px-2 py-0.5 rounded-md">
-                      أخطاء سابقة: {item.mistakeCount}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gold-400/15 text-gold-200 border border-gold-400/30">
+                        {group.verses.length}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-jade-100/60 transition-transform ${
+                          isCollapsed ? '' : 'rotate-180'
+                        }`}
+                      />
+                    </div>
+                  </button>
 
-                  {/* Previous Mistake Details */}
-                  {lastMistake && (
-                    <div className="bg-white/5 rounded-xl p-3 text-xs text-jade-100/70 border border-white/10 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-jade-100/60">موضع التعثر السابق:</span>
-                        <span className="text-rose-300 font-bold">"{lastMistake.recitedWord}"</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-jade-100/60">الكلمة الصحيحة في المصحف:</span>
-                        <span className="text-gold-300 font-bold font-quran text-sm">
-                          "{lastMistake.expectedWord}"
-                        </span>
-                      </div>
+                  {!isCollapsed && (
+                    <div className="border-t border-white/10 divide-y divide-white/10">
+                      {group.verses.map((item) => {
+                        const lastMistake = item.recentMistakes[0];
+
+                        return (
+                          <div
+                            key={`${item.surahNumber}_${item.ayahNumber}`}
+                            className="p-4 space-y-3 hover:bg-white/5 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-white">
+                                الآية {item.ayahNumber}
+                              </span>
+
+                              <span className="text-[11px] font-medium text-gold-300 bg-gold-400/15 border border-gold-400/30 px-2 py-0.5 rounded-md">
+                                أخطاء سابقة: {item.mistakeCount}
+                              </span>
+                            </div>
+
+                            {/* Previous Mistake Details */}
+                            {lastMistake && (
+                              <div className="bg-white/5 rounded-xl p-3 text-xs text-jade-100/70 border border-white/10 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-jade-100/60">موضع التعثر السابق:</span>
+                                  <span className="text-rose-300 font-bold">
+                                    "{lastMistake.recitedWord}"
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-jade-100/60">
+                                    الكلمة الصحيحة في المصحف:
+                                  </span>
+                                  <span className="text-gold-300 font-bold font-quran text-sm">
+                                    "{lastMistake.expectedWord}"
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-jade-100/60">
+                                التكرار المتباعد: يحتاج جلسة تسميع
+                              </span>
+
+                              <button
+                                onClick={() =>
+                                  onStartPracticingVerse(item.surahNumber, item.ayahNumber)
+                                }
+                                className="flex items-center gap-1.5 bg-gold-400 hover:bg-gold-300 text-jade-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-lg shadow-gold-500/20"
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                                <span>تسميع وتثبيت</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-jade-100/60">
-                      التكرار المتباعد: يحتاج جلسة تسميع
-                    </span>
-
-                    <button
-                      onClick={() => onStartPracticingVerse(item.surahNumber, item.ayahNumber)}
-                      className="flex items-center gap-1.5 bg-gold-400 hover:bg-gold-300 text-jade-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-lg shadow-gold-500/20"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>تسميع وتثبيت</span>
-                    </button>
-                  </div>
                 </div>
               );
             })}
