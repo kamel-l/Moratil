@@ -775,6 +775,60 @@ export interface QuranPageAyah {
   juz: number;
 }
 
+// Minimal normalization used only to compare the Basmala. It is intentionally
+// independent from `normalizeArabicText` (speech-recognition utility) so that
+// future STT tuning cannot silently alter how Quranic text is processed.
+const BASMALA_TASHKEEL_REGEX = /[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g;
+const BASMALA_NORMALIZED = 'بسم الله الرحمن الرحيم';
+
+function normalizeForBasmala(text: string): string {
+  return text
+    .replace(BASMALA_TASHKEEL_REGEX, '')
+    .replace(/\u0671/g, 'ا') // Waslah alef
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The Quran API embeds the Basmala inside the first ayah of most surahs.
+ * This removes that prefix while preserving the remainder verbatim.
+ * Returns the text unchanged when no Basmala prefix is present.
+ */
+export function stripLeadingBismillah(text: string): string {
+  const prefix = text.match(/^\s*(?:\S+\s+){4}/);
+  if (!prefix) return text;
+  if (normalizeForBasmala(prefix[0]) !== BASMALA_NORMALIZED) return text;
+  return text.slice(prefix[0].length);
+}
+
+/**
+ * Applies the Basmala removal rule: every surah except Al-Fatiha (whose Basmala is
+ * its own ayah) has it stripped from the first ayah. At-Tawbah has none and is untouched.
+ */
+function sanitizeAyahText(surahNumber: number, numberInSurah: number, text: string): string {
+  return numberInSurah === 1 && surahNumber !== 1 ? stripLeadingBismillah(text) : text;
+}
+
+interface AlQuranApiAyah {
+  numberInSurah: number;
+  text: string;
+  juz: number;
+  page: number;
+}
+
+interface AlQuranApiEdition {
+  name: string;
+  englishName: string;
+  revelationType: string;
+  numberOfAyahs: number;
+  ayahs: AlQuranApiAyah[];
+}
+
+interface AlQuranApiSurahResponse {
+  data: [AlQuranApiEdition, AlQuranApiEdition];
+}
+
 /**
  * Loads a Surah either from bundled high-precision data or fetches dynamically from Quran API
  */
@@ -795,16 +849,16 @@ export async function getSurahWithAyahs(surahNumber: number): Promise<Surah> {
       `https://api.alquran.cloud/v1/surah/${surahNumber}/editions/quran-uthmani,ar.muyassar`,
     );
     if (response.ok) {
-      const data = await response.json();
-      if (data?.data && Array.isArray(data.data) && data.data.length >= 2) {
-        const textEdition = data.data[0];
-        const tafsirEdition = data.data[1];
+      const data = (await response.json()) as Partial<AlQuranApiSurahResponse>;
+      const editions = data?.data;
+      if (Array.isArray(editions) && editions.length >= 2) {
+        const [textEdition, tafsirEdition] = editions;
 
-        const ayahs: Ayah[] = textEdition.ayahs.map((item: any, idx: number) => {
+        const ayahs: Ayah[] = textEdition.ayahs.map((item, idx) => {
           const tafsirItem = tafsirEdition.ayahs[idx];
           return {
             numberInSurah: item.numberInSurah,
-            text: item.text,
+            text: sanitizeAyahText(surahNumber, item.numberInSurah, item.text),
             juz: item.juz,
             page: item.page,
             tafsir: tafsirItem ? tafsirItem.text : undefined,
@@ -930,7 +984,7 @@ export async function getQuranPage(pageNumber: number): Promise<QuranPageAyah[]>
       surahNumber: ayah.surah.number,
       surahName: ayah.surah.name,
       numberInSurah: ayah.numberInSurah,
-      text: ayah.text,
+      text: sanitizeAyahText(ayah.surah.number, ayah.numberInSurah, ayah.text),
       juz: ayah.juz,
     }),
   );
