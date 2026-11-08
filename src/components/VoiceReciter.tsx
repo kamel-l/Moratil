@@ -532,7 +532,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Top Controller: Surah Picker, Mode, Navigation */}
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-5 shadow-xs">
+      <div className="glass-panel rounded-2xl p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           {/* Surah Selector & Ayah Index */}
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -542,7 +542,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 void stopSurahRecitation();
                 onSelectSurahChange(Number(e.target.value));
               }}
-              className="min-w-0 flex-1 sm:flex-initial bg-stone-50 border border-stone-300 text-stone-900 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-600 cursor-pointer"
+              className="min-w-0 flex-1 sm:flex-initial bg-white/5 border border-white/15 text-white rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-gold-400 cursor-pointer"
             >
               {allSurahsList.map((s) => (
                 <option key={s.number} value={s.number}>
@@ -551,9 +551,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               ))}
             </select>
 
-            <div className="flex items-center gap-1 bg-stone-100 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-700">
+            <div className="flex items-center gap-1 bg-white/5 px-3 py-1.5 rounded-lg text-xs font-medium text-jade-100/80">
               <span>الآية</span>
-              <span className="font-bold text-emerald-800 text-sm">
+              <span className="font-bold text-gold-300 text-sm">
                 {currentAyah.numberInSurah}
               </span>
               <span>من</span>
@@ -562,17 +562,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           </div>
 
           {/* Reference audio mode */}
-          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl w-full sm:w-auto justify-center">
+          <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl w-full sm:w-auto justify-center">
             <button
               onClick={() => setMode(mode === 'listen_repeat' ? 'karaoke' : 'listen_repeat')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
                 mode === 'listen_repeat'
-                  ? 'bg-white text-emerald-900 shadow-xs'
-                  : 'text-stone-600 hover:text-stone-900'
+                  ? 'bg-white/10 text-gold-300 shadow-xs'
+                  : 'text-jade-100/60 hover:text-white'
               }`}
               title="الشيخ يقرأ أولاً ثم يفتح لك الميكروفون لتردد بعده وتصحح"
             >
-              <Headphones className="w-3.5 h-3.5 text-emerald-600" />
+              <Headphones className="w-3.5 h-3.5 text-gold-300" />
               <span>استمع ثم ردّد</span>
             </button>
           </div>
@@ -580,7 +580,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           {/* Tafsir Quick Action */}
           <button
             onClick={() => onOpenTafsir(currentAyah)}
-            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-medium text-gold-300 hover:text-gold-200 bg-white/5 hover:bg-white/10 border border-gold-400/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>التفسير الميسر</span>
@@ -589,11 +589,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       </div>
 
       {/* Main Recitation Arena */}
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden relative">
+      <div className="glass-panel rounded-3xl overflow-hidden relative">
         {/* Top Header of Ayah Box */}
-        <div className="px-6 py-4 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-xs text-stone-500">
+        <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex items-center justify-between text-xs text-jade-100/60">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-stone-800">
+            <span className="font-semibold font-display text-jade-100/80">
               سورة {surah.name} ({surah.revelationType})
             </span>
             <span>·</span>
@@ -603,50 +603,50 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={giveHint}
-              className="flex items-center gap-1 text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 px-2 py-1 rounded-md text-[11px] transition-colors"
+              className="flex items-center gap-1 text-jade-100/70 hover:text-white hover:bg-white/10 px-2 py-1 rounded-md text-[11px] transition-colors"
             >
-              <HelpCircle className="w-3.5 h-3.5 text-amber-600" />
+              <HelpCircle className="w-3.5 h-3.5 text-gold-200" />
               <span>تلميح</span>
             </button>
           </div>
         </div>
 
-        <div className="flex min-h-56 items-center justify-center bg-stone-50 px-4 py-8">
+        <div className="flex min-h-56 items-center justify-center bg-white/5 px-4 py-8">
           {/* Active Error Detection / Correction Alert */}
           {activeMistakeAlert && !isAyahCompleted && (
             <div
-              className="w-full max-w-lg bg-rose-50 border border-rose-200 rounded-2xl p-4 text-right shadow-xs animate-in fade-in slide-in-from-bottom-2"
+              className="w-full max-w-lg bg-rose-500/15 border border-rose-400/30 rounded-2xl p-4 text-right shadow-xs animate-in fade-in slide-in-from-bottom-2"
               role="alert"
             >
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                <div className="space-y-1.5 text-xs text-rose-900 flex-1">
+                <AlertCircle className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
+                <div className="space-y-1.5 text-xs text-rose-200 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-rose-800">
+                    <span className="font-bold text-sm text-rose-200">
                       {activeMistakeAlert.heard === 'تلميح استحضار'
                         ? 'تلميح للكلمة التالية'
                         : 'كلمة غير صحيحة'}
                     </span>
                     <button
                       onClick={playAyahAudio}
-                      className="flex items-center gap-1 text-[11px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2.5 py-1 rounded-md font-semibold transition-colors"
+                      className="flex items-center gap-1 text-[11px] text-gold-300 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-md font-semibold transition-colors"
                     >
                       <Volume2 className="w-3.5 h-3.5" />
                       <span>استمع للفظ الصحيح</span>
                     </button>
                   </div>
 
-                  <p className="text-stone-600">
+                  <p className="text-jade-100/70">
                     الكلمة الصحيحة:{' '}
-                    <span className="font-quran text-lg font-bold text-emerald-800 px-1">
+                    <span className="font-quran text-lg font-bold text-gold-300 px-1">
                       {activeMistakeAlert.expected}
                     </span>
                   </p>
 
                   {activeMistakeAlert.heard && activeMistakeAlert.heard !== 'تلميح استحضار' && (
-                    <p className="text-stone-500 text-[11px]">
+                    <p className="text-jade-100/60 text-[11px]">
                       ما سُمِع:{' '}
-                      <span className="text-rose-600 font-medium">{activeMistakeAlert.heard}</span>
+                      <span className="text-rose-300 font-medium">{activeMistakeAlert.heard}</span>
                     </p>
                   )}
                 </div>
@@ -658,12 +658,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           {surahRecitationResult &&
             isAyahCompleted &&
             currentAyahIndex === surah.ayahs.length - 1 && (
-              <div className="mt-6 w-full max-w-md bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-center shadow-xs animate-in zoom-in-95">
-                <div className="flex items-center justify-center gap-2 text-emerald-800 font-bold text-base mb-1">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <div className="mt-6 w-full max-w-md bg-jade-500/15 border border-jade-400/30 rounded-2xl p-4 text-center shadow-xs animate-in zoom-in-95">
+                <div className="flex items-center justify-center gap-2 text-jade-200 font-bold text-base mb-1">
+                  <CheckCircle2 className="w-5 h-5 text-gold-300" />
                   <span>ما شاء الله! اكتمل التسميع</span>
                 </div>
-                <p className="text-sm font-bold text-emerald-800">
+                <p className="text-sm font-bold text-jade-200">
                   جودة مطابقة الكلمات:{' '}
                   {Math.round(
                     (surahRecitationResult.accuratelyMatchedAyahs /
@@ -672,11 +672,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                   )}
                   %
                 </p>
-                <p className="mt-1 text-xs text-emerald-700">
+                <p className="mt-1 text-xs text-jade-200">
                   {surahRecitationResult.accuratelyMatchedAyahs} من{' '}
                   {surahRecitationResult.completedAyahs} آية طوبقت كلماتها دون أخطاء متبقية.
                 </p>
-                <p className="mt-2 text-[11px] text-stone-600">
+                <p className="mt-2 text-[11px] text-jade-100/70">
                   التقييم يعتمد على مطابقة النص عبر التعرّف الصوتي، ولا يقيّم أحكام التجويد.
                 </p>
               </div>
@@ -684,13 +684,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
         </div>
 
         {/* Bottom Recitation Control Dock */}
-        <div className="bg-stone-50 px-6 py-4 border-t border-stone-200 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white/5 px-6 py-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
           {/* Navigation: Prev / Next Ayah */}
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrevAyah}
               disabled={currentAyahIndex === 0}
-              className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               title="الآية السابقة"
             >
               <ChevronRight className="w-5 h-5" />
@@ -699,7 +699,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             <button
               onClick={handleNextAyah}
               disabled={currentAyahIndex === surah.ayahs.length - 1}
-              className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               title="الآية التالية"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -710,7 +710,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 ayahCompletionHandledRef.current = false;
                 resetRecitationState();
               }}
-              className="p-2.5 rounded-xl border border-stone-200 bg-white text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
+              className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-jade-100/70 hover:text-white hover:bg-white/10 transition-colors"
               title="إعادة تسميع هذه الآية"
             >
               <RotateCcw className="w-5 h-5" />
@@ -723,8 +723,8 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               onClick={toggleListening}
               className={`relative flex items-center justify-center gap-2 px-6 py-3 rounded-full font-bold text-sm shadow-md transition-all cursor-pointer ${
                 isListening
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-4 ring-rose-200'
-                  : 'bg-emerald-700 hover:bg-emerald-800 text-white ring-4 ring-emerald-100'
+                  ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse ring-4 ring-rose-500/30'
+                  : 'bg-gold-400 hover:bg-gold-300 text-jade-950 ring-4 ring-gold-400/30'
               }`}
             >
               {isListening ? (
@@ -740,17 +740,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               )}
             </button>
             {!isListening && (
-              <span className="w-full text-center text-[11px] text-stone-500">
+              <span className="w-full text-center text-[11px] text-jade-100/60">
                 ينتقل تلقائيًا بين الآيات حتى نهاية السورة.
               </span>
             )}
 
             <button
               onClick={() => void stopSurahRecitation()}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 font-semibold text-xs transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-jade-100 hover:bg-white/10 font-semibold text-xs transition-colors"
               title="إيقاف السورة الحالية"
             >
-              <MicOff className="w-4 h-4 text-rose-600" />
+              <MicOff className="w-4 h-4 text-rose-300" />
               <span>إيقاف السورة</span>
             </button>
 
@@ -759,12 +759,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
               onClick={playAyahAudio}
               className={`flex items-center gap-1.5 px-4 py-3 rounded-xl border font-semibold text-xs transition-colors cursor-pointer ${
                 isPlayingAudio
-                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800 animate-pulse'
-                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
+                  ? 'bg-gold-400/15 border-gold-400/30 text-gold-200 animate-pulse'
+                  : 'bg-white/5 border-white/10 text-jade-100 hover:bg-white/10'
               }`}
               title="استمع لتلاوة الشيخ للآية"
             >
-              <Volume2 className="w-4 h-4 text-emerald-600" />
+              <Volume2 className="w-4 h-4 text-gold-300" />
               <span className="hidden sm:inline">
                 {isPlayingAudio
                   ? 'جارٍ التشغيل...'
@@ -777,7 +777,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSimulatedInput(!showSimulatedInput)}
-              className="text-xs text-stone-500 hover:text-stone-800 underline decoration-dotted"
+              className="text-xs text-jade-100/60 hover:text-jade-100/80 underline decoration-dotted"
             >
               {showSimulatedInput ? 'إخفاء محاكي التسميع' : 'محاكي التسميع والكلمات'}
             </button>
@@ -786,11 +786,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
         {/* Fallback Simulator Drawer (Allows testing or practicing without microphone) */}
         {showSimulatedInput && (
-          <div className="bg-amber-50/70 border-t border-amber-200 p-4 text-xs text-amber-950">
+          <div className="bg-gold-400/10 border-t border-gold-400/30 p-4 text-xs text-gold-200">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="space-y-0.5">
-                <span className="font-bold">محاكي التسميع التفاعلي:</span>
-                <p className="text-stone-600 text-[11px]">
+                <span className="font-bold font-display">محاكي التسميع التفاعلي:</span>
+                <p className="text-jade-100/70 text-[11px]">
                   انقر على الكلمة التالية لنطقها، أو اكتب ما تحفظه للتحقق الفوري.
                 </p>
               </div>
@@ -799,7 +799,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 {currentWordIdx < verseWords.length && (
                   <button
                     onClick={() => submitSimulatedWord(verseWords[currentWordIdx].original)}
-                    className="bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-800 transition-colors shadow-xs"
+                    className="bg-gold-400 hover:bg-gold-300 text-jade-950 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-lg shadow-gold-500/20"
                   >
                     نطق كلمة: "{verseWords[currentWordIdx].original}"
                   </button>
@@ -807,7 +807,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
                 <button
                   onClick={() => submitSimulatedWord('كلمة_خاطئة')}
-                  className="bg-rose-100 text-rose-800 border border-rose-300 font-medium px-2.5 py-1.5 rounded-lg text-xs hover:bg-rose-200 transition-colors"
+                  className="bg-rose-500/15 text-rose-200 border border-rose-400/30 font-medium px-2.5 py-1.5 rounded-lg text-xs hover:bg-rose-500/25 transition-colors"
                 >
                   اختبار خطأ
                 </button>
@@ -818,12 +818,12 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       </div>
 
       {/* Quick Memorization Tips Card */}
-      <div className="bg-stone-50 rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex items-start gap-4">
-        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-          <Sparkles className="w-5 h-5 text-emerald-700" />
+      <div className="glass-panel rounded-2xl p-4 sm:p-5 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-gold-400/15 text-gold-300 flex items-center justify-center shrink-0">
+          <Sparkles className="w-5 h-5 text-gold-300" />
         </div>
-        <div className="space-y-1 text-xs text-stone-600">
-          <span className="font-bold text-stone-900 text-sm">
+        <div className="space-y-1 text-xs text-jade-100/70">
+          <span className="font-bold font-display text-white text-sm">
             نصيحة إتقان الحفظ: التكرار المتباعد والتصحيح الفوري
           </span>
           <p>

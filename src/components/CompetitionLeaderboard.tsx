@@ -79,16 +79,16 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Hero Header */}
-      <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
+      <div className="bg-brand-gradient text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
         <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 bg-white/5 text-gold-200 border border-gold-400/30 px-3 py-1 rounded-full text-xs font-semibold">
             <Trophy className="w-3.5 h-3.5" />
             <span>وفي ذلك فليتنافس المتنافسون</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-display">
             حلقة التنافس ومسابقة الأصدقاء
           </h1>
-          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+          <p className="text-xs sm:text-sm text-jade-100/80 leading-relaxed">
             الصحبة الصالحة تشحذ الهمم وتعين على الاستمرار في تعاهد القرآن. نافس أصدقاءك في حفظ
             ومراجعة الآيات، واجمع الحسنات، وتصدر لوحة الشرف الأسبوعية.
           </p>
@@ -105,26 +105,26 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
           return (
             <div
               key={user.id}
-              className={`bg-white rounded-3xl p-5 border text-center flex flex-col items-center justify-between relative shadow-xs ${
+              className={`glass-panel rounded-3xl p-5 text-center flex flex-col items-center justify-between relative ${
                 isFirst
-                  ? 'border-amber-400 bg-gradient-to-b from-amber-50/50 to-white ring-2 ring-amber-300 sm:-translate-y-2'
-                  : 'border-stone-200'
+                  ? 'border-gold-400 bg-gradient-to-b from-gold-400/10 to-transparent ring-2 ring-gold-400/40 sm:-translate-y-2'
+                  : ''
               }`}
             >
               {isFirst && (
-                <div className="absolute -top-3.5 bg-amber-500 text-white p-1 rounded-full shadow-md">
+                <div className="absolute -top-3.5 bg-gold-400 text-jade-950 p-1 rounded-full shadow-md">
                   <Crown className="w-5 h-5" />
                 </div>
               )}
 
               <div className="space-y-3 w-full">
                 <div className="relative inline-block mt-2">
-                  <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center text-3xl shadow-inner border border-stone-200">
+                  <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center text-3xl shadow-inner border border-white/10">
                     {user.avatar}
                   </div>
                   <span
                     className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs ${
-                      isFirst ? 'bg-amber-500' : isSecond ? 'bg-stone-500' : 'bg-amber-700'
+                      isFirst ? 'bg-gold-400' : isSecond ? 'bg-white/30' : 'bg-gold-600'
                     }`}
                   >
                     {user.rank}
@@ -132,28 +132,28 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                 </div>
 
                 <div>
-                  <h3 className="font-bold text-stone-900 text-sm">{user.name}</h3>
-                  <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-md">
+                  <h3 className="font-bold text-white text-sm">{user.name}</h3>
+                  <span className="text-[11px] text-gold-200 font-medium bg-white/5 border border-gold-400/30 px-2 py-0.5 rounded-md">
                     {user.badge}
                   </span>
                 </div>
               </div>
 
-              <div className="w-full mt-4 pt-3 border-t border-stone-100 space-y-1.5 text-xs">
-                <div className="flex justify-between text-stone-600">
+              <div className="w-full mt-4 pt-3 border-t border-white/10 space-y-1.5 text-xs">
+                <div className="flex justify-between text-jade-100/70">
                   <span>الحسنات والنقاط</span>
-                  <span className="font-bold text-stone-900">
+                  <span className="font-bold text-white">
                     {user.points.toLocaleString('ar-EG')}
                   </span>
                 </div>
-                <div className="flex justify-between text-stone-600">
+                <div className="flex justify-between text-jade-100/70">
                   <span>آيات اليوم</span>
-                  <span className="font-semibold text-emerald-700">{user.versesToday} آية</span>
+                  <span className="font-semibold text-gold-300">{user.versesToday} آية</span>
                 </div>
-                <div className="flex justify-between text-stone-600">
+                <div className="flex justify-between text-jade-100/70">
                   <span>التتابع</span>
-                  <span className="font-semibold text-amber-600 flex items-center gap-0.5">
-                    <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                  <span className="font-semibold text-gold-300 flex items-center gap-0.5">
+                    <Flame className="w-3.5 h-3.5 fill-gold-300 text-gold-300" />
                     {user.streakDays} أيام
                   </span>
                 </div>
@@ -167,33 +167,33 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-emerald-700" />
-            <h2 className="text-lg font-bold text-stone-900">تحديات التسميع اليومية</h2>
+            <Target className="w-5 h-5 text-gold-300" />
+            <h2 className="text-lg font-bold text-white">تحديات التسميع اليومية</h2>
           </div>
-          <span className="text-xs text-stone-500">تتجدد يومياً لنيل نقاط وحسنات إضافية</span>
+          <span className="text-xs text-jade-100/60">تتجدد يومياً لنيل نقاط وحسنات إضافية</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {challenges.map((challenge) => (
             <div
               key={challenge.id}
-              className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs flex flex-col justify-between space-y-3 hover:border-emerald-300 transition-colors"
+              className="glass-panel hover:border-gold-400/50 rounded-2xl p-5 flex flex-col justify-between space-y-3 transition-colors"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-semibold">
+                  <span className="bg-gold-400/15 text-gold-200 border border-gold-400/30 px-2 py-0.5 rounded-md font-semibold">
                     +{challenge.rewardPoints} نقطة
                   </span>
-                  <span className="text-stone-500">{challenge.difficulty}</span>
+                  <span className="text-jade-100/60">{challenge.difficulty}</span>
                 </div>
-                <h3 className="font-bold text-stone-900 text-sm leading-snug">{challenge.title}</h3>
+                <h3 className="font-bold text-white text-sm leading-snug">{challenge.title}</h3>
               </div>
 
-              <div className="pt-2 flex items-center justify-between border-t border-stone-100 text-xs">
-                <span className="text-stone-500">ينتهي خلال {challenge.expiresInHours} ساعة</span>
+              <div className="pt-2 flex items-center justify-between border-t border-white/10 text-xs">
+                <span className="text-jade-100/60">ينتهي خلال {challenge.expiresInHours} ساعة</span>
                 <button
                   onClick={() => onStartChallenge(challenge)}
-                  className="flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  className="flex items-center gap-1 bg-gold-400 hover:bg-gold-300 text-jade-950 font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-lg shadow-gold-500/20"
                 >
                   <Play className="w-3.5 h-3.5" />
                   <span>بدء التحدي</span>
@@ -205,16 +205,16 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       </div>
 
       {/* Friends Ranking Table & Interactive Encouragements */}
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
+      <div className="glass-panel rounded-3xl overflow-hidden">
+        <div className="p-5 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-emerald-700" />
-            <h2 className="text-base font-bold text-stone-900">ترتيب حلقة الحفظ والأصدقاء</h2>
+            <Users className="w-5 h-5 text-gold-300" />
+            <h2 className="text-base font-bold text-white">ترتيب حلقة الحفظ والأصدقاء</h2>
           </div>
 
           <button
             onClick={() => setShowAddFriend(true)}
-            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-gold-200 border border-gold-400/30 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             <span>إضافة صديق للحلقة</span>
@@ -223,7 +223,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
 
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
-            <thead className="bg-stone-50 text-stone-600 font-semibold border-b border-stone-100">
+            <thead className="bg-white/5 text-jade-100/70 font-semibold border-b border-white/10">
               <tr>
                 <th className="py-3 px-4">الترتيب</th>
                 <th className="py-3 px-4">المتسابق</th>
@@ -234,66 +234,66 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                 <th className="py-3 px-4">تشجيع أخوي</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-white/10">
               {sortedFriends.map((friend) => {
                 const isMe = friend.id === 'f_me';
 
                 return (
                   <tr
                     key={friend.id}
-                    className={`hover:bg-stone-50/80 transition-colors ${
-                      isMe ? 'bg-emerald-50/40 font-semibold' : ''
+                    className={`hover:bg-white/5 transition-colors ${
+                      isMe ? 'bg-gold-400/10 font-semibold' : ''
                     }`}
                   >
-                    <td className="py-3.5 px-4 font-bold text-stone-700">#{friend.rank}</td>
+                    <td className="py-3.5 px-4 font-bold text-jade-100/80">#{friend.rank}</td>
 
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-2.5">
                         <span className="text-xl">{friend.avatar}</span>
                         <div>
-                          <div className="font-bold text-stone-900">{friend.name}</div>
-                          <span className="text-[11px] text-stone-500 font-normal">
+                          <div className="font-bold text-white">{friend.name}</div>
+                          <span className="text-[11px] text-jade-100/60 font-normal">
                             {friend.lastActive}
                           </span>
                         </div>
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4 font-bold text-emerald-800 text-sm">
+                    <td className="py-3.5 px-4 font-bold text-gold-300 text-sm">
                       {friend.points.toLocaleString('ar-EG')}
                     </td>
 
-                    <td className="py-3.5 px-4 text-stone-700">{friend.versesToday} آية</td>
+                    <td className="py-3.5 px-4 text-jade-100/80">{friend.versesToday} آية</td>
 
                     <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
-                        <Flame className="w-3.5 h-3.5 fill-amber-500" />
+                      <span className="inline-flex items-center gap-1 font-semibold text-gold-300">
+                        <Flame className="w-3.5 h-3.5 fill-gold-300" />
                         {friend.streakDays} أيام
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4 font-semibold text-emerald-700">
+                    <td className="py-3.5 px-4 font-semibold text-gold-300">
                       {friend.accuracy}%
                     </td>
 
                     <td className="py-3.5 px-4">
                       {isMe ? (
-                        <span className="text-[11px] text-stone-400">حسابك الحالي</span>
+                        <span className="text-[11px] text-jade-100/45">حسابك الحالي</span>
                       ) : sentCheers[friend.id] ? (
-                        <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded-md animate-fade-in">
+                        <span className="text-[11px] text-jade-200 font-bold bg-jade-500/15 px-2 py-1 rounded-md animate-fade-in">
                           {sentCheers[friend.id]}
                         </span>
                       ) : (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleSendCheer(friend.id, 'بارك الله في همتك! 🌟')}
-                            className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2.5 py-1 rounded-lg text-[11px] transition-colors"
+                            className="bg-white/5 hover:bg-white/10 text-jade-100 border border-white/10 px-2.5 py-1 rounded-lg text-[11px] transition-colors"
                           >
                             تشجيع 👏
                           </button>
                           <button
                             onClick={() => handleSendCheer(friend.id, 'تنافس على الخير! 🌿')}
-                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2 py-1 rounded-lg text-[11px] transition-colors"
+                            className="bg-gold-400/15 hover:bg-gold-400/25 text-gold-200 border border-gold-400/30 px-2 py-1 rounded-lg text-[11px] transition-colors"
                           >
                             دعاء 🤲
                           </button>
@@ -310,10 +310,10 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
 
       {/* Modal: Add Friend */}
       {showAddFriend && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-xl">
-            <h3 className="font-bold text-stone-900 text-base">إضافة رفيق إلى حلقة التنافس</h3>
-            <p className="text-xs text-stone-500">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-jade-900 border border-white/10 text-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+            <h3 className="font-bold text-white text-base">إضافة رفيق إلى حلقة التنافس</h3>
+            <p className="text-xs text-jade-100/60">
               أدخل اسم الصديق أو رمز المشاركة الخاص به للتنافس معاً.
             </p>
 
@@ -324,20 +324,20 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
                 placeholder="اسم الصديق (مثال: عبدالله الراجحي)"
                 value={friendNameInput}
                 onChange={(e) => setFriendNameInput(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3 text-stone-900 text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs placeholder:text-jade-100/40 focus:outline-none focus:ring-2 focus:ring-gold-400"
               />
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddFriend(false)}
-                  className="px-3 py-1.5 text-stone-600 hover:bg-stone-100 rounded-lg font-semibold"
+                  className="px-3 py-1.5 text-jade-100/70 hover:bg-white/5 rounded-lg font-semibold"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer"
+                  className="px-4 py-2 bg-gold-400 hover:bg-gold-300 text-jade-950 rounded-xl font-bold cursor-pointer shadow-lg shadow-gold-500/20"
                 >
                   إضافة ومنافسة
                 </button>

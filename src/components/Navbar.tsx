@@ -44,7 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-xs">
+    <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur-md bg-jade-950/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-4">
           {/* Brand Identity */}
@@ -52,19 +52,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-2 sm:gap-3 cursor-pointer"
             onClick={() => onSelectTab('recite')}
           >
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-700 text-amber-300 flex items-center justify-center shadow-inner font-bold text-xl sm:text-2xl font-serif">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gold-400 text-jade-950 flex items-center justify-center shadow-lg shadow-gold-500/20 font-bold text-xl sm:text-2xl font-display">
               مُ
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-lg sm:text-xl text-stone-900 tracking-tight font-serif">
+                <span className="font-bold text-lg sm:text-xl text-white tracking-tight font-display">
                   مُرتِّل
                 </span>
-                <span className="hidden sm:inline-flex text-xs bg-emerald-50 text-emerald-800 font-medium px-2 py-0.5 rounded-sm border border-emerald-200">
+                <span className="hidden sm:inline-flex text-xs bg-white/5 text-gold-200 font-medium px-2 py-0.5 rounded-md border border-gold-400/30">
                   القرآن الذكي
                 </span>
               </div>
-              <p className="text-[11px] text-stone-500 hidden sm:block">
+              <p className="text-[11px] text-jade-100/60 hidden sm:block">
                 تحفيظ ومراجعة القرآن الكريم بالتصحيح الصوتي اللحظي
               </p>
             </div>
@@ -76,12 +76,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             {forgottenVersesCount > 0 && (
               <button
                 onClick={onOpenForgottenVerses}
-                className="flex items-center gap-1 px-1.5 sm:gap-1.5 sm:px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-medium transition-all group animate-pulse"
+                className="flex items-center gap-1 px-1.5 sm:gap-1.5 sm:px-2.5 py-1.5 rounded-lg bg-gold-400/15 hover:bg-gold-400/25 text-gold-200 border border-gold-400/30 text-xs font-medium transition-all group animate-pulse"
                 title="تنبيه: آيات تحتاج لمراجعة وتثبيت"
               >
-                <AlertTriangle className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
+                <AlertTriangle className="w-4 h-4 text-gold-300 group-hover:scale-110 transition-transform" />
                 <span className="hidden md:inline">آيات تحتاج تثبيت:</span>
-                <span className="bg-amber-600 text-white text-[11px] font-bold px-1.5 py-0.2 rounded-full">
+                <span className="bg-gold-400 text-jade-950 text-[11px] font-bold px-1.5 py-0.2 rounded-full">
                   {forgottenVersesCount}
                 </span>
               </button>
@@ -89,23 +89,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Streak Counter */}
             <div
-              className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-stone-100/90 text-stone-800 text-xs font-semibold"
+              className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-semibold"
               title="أيام الالتزام المتتالية بالحفظ والمراجعة"
             >
-              <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <Flame className="w-4 h-4 text-gold-300 fill-gold-300" />
               <span>{stats.streakDays}</span>
-              <span className="text-stone-500 font-normal hidden sm:inline">أيام</span>
+              <span className="text-jade-100/60 font-normal hidden sm:inline">أيام</span>
             </div>
 
             {/* Points / Hasanat Counter */}
             <button
               onClick={onOpenRewards}
-              className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 border border-emerald-200 text-xs font-semibold transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-1.5 rounded-lg bg-gold-400/10 hover:bg-gold-400/20 text-gold-200 border border-gold-400/30 text-xs font-semibold transition-colors cursor-pointer"
               title="رصيد الحسنات ونقاط الإتقان - انقر لعرض الأوسمة"
             >
-              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <Sparkles className="w-4 h-4 text-gold-300" />
               <span>{stats.points.toLocaleString('ar-EG')}</span>
-              <span className="text-emerald-700 font-normal hidden sm:inline">حسنة</span>
+              <span className="text-gold-300 font-normal hidden sm:inline">حسنة</span>
             </button>
 
             {/* Audio Toggle Button */}
@@ -113,8 +113,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onToggleAudioPlayer}
               className={`p-1.5 sm:p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1 ${
                 isAudioPlaying
-                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm animate-pulse'
-                  : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                  ? 'bg-gold-400 text-jade-950 border-gold-400 shadow-lg shadow-gold-500/20 animate-pulse'
+                  : 'bg-white/5 hover:bg-white/10 text-jade-100 border-white/10'
               }`}
               title="مشغل تلاوات القراء"
             >
@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Navigation Bar / Tabs */}
         <LayoutGroup id="main-nav">
-          <nav className="flex items-center gap-1 overflow-x-auto py-2 border-t border-stone-100 no-scrollbar">
+          <nav className="flex items-center gap-1 overflow-x-auto py-2 border-t border-white/10 no-scrollbar">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -137,19 +137,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.97 }}
                   className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-                    isActive ? 'text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                    isActive
+                      ? 'text-jade-950 font-bold'
+                      : 'text-jade-100/70 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="nav-active-pill"
-                      className="absolute inset-0 bg-emerald-800 rounded-lg shadow-xs"
+                      className="absolute inset-0 bg-gold-400 rounded-lg shadow-lg shadow-gold-500/20"
                       transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                     />
                   )}
                   <Icon
                     className={`relative z-10 w-4 h-4 ${
-                      isActive ? 'text-amber-300' : 'text-stone-500'
+                      isActive ? 'text-jade-900' : 'text-jade-100/50'
                     }`}
                   />
                   <span className="relative z-10">{item.label}</span>

@@ -135,7 +135,7 @@ export default function App() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20"
+      className="min-h-screen bg-jade-950 text-white pb-28 font-sans selection:bg-gold-400/25"
     >
       {/* Top Navbar */}
       <Navbar
