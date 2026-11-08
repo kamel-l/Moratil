@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { QuranWordMeta } from '../utils/arabicUtils';
-import { normalizeArabicText, wordSimilarity } from '../utils/arabicUtils';
+import { isWordMatch, normalizeArabicText } from '../utils/arabicUtils';
 
 export interface RecognitionState {
   currentWordIdx: number;
@@ -8,6 +8,12 @@ export interface RecognitionState {
   failedWords: Record<number, string>;
   activeMistakeAlert: { expected: string; heard: string; wordIdx: number } | null;
 }
+
+/** Maximum number of upcoming words a spoken token may be aligned to. */
+const LOOK_AHEAD_WORDS = 3;
+
+/** Filler words the recognizer emits but that are never part of the Quran text. */
+const FILLER_TOKENS = new Set(['يعني', 'امم', 'ااه', 'اه', 'اوه', 'ام']);
 
 export function evaluateSpokenText(
   verseWords: QuranWordMeta[],
@@ -28,10 +34,10 @@ export function evaluateSpokenText(
     const normSpoken = normalizeArabicText(latestSpoken);
     if (normSpoken.length < 2 || normSpoken === 'ال') continue;
 
-    const lookAheadLimit = Math.min(nextWordIdx + 2, verseWords.length - 1);
+    const lookAheadLimit = Math.min(nextWordIdx + LOOK_AHEAD_WORDS, verseWords.length - 1);
     let matchedIndex = -1;
     for (let candidateIndex = nextWordIdx; candidateIndex <= lookAheadLimit; candidateIndex += 1) {
-      if (wordSimilarity(latestSpoken, verseWords[candidateIndex].original) >= 0.7) {
+      if (isWordMatch(latestSpoken, verseWords[candidateIndex].original)) {
         matchedIndex = candidateIndex;
         break;
       }
@@ -55,6 +61,9 @@ export function evaluateSpokenText(
       if (!skippedExpectedWord) nextMistake = null;
       continue;
     }
+
+    // Ignore recognizer filler noise that matches nothing nearby.
+    if (FILLER_TOKENS.has(normSpoken)) continue;
 
     const expectedMeta = verseWords[nextWordIdx];
     if (!expectedMeta) break;
@@ -84,6 +93,31 @@ export function evaluateSpokenText(
   };
 }
 
+/**
+ * Runs the recognizer's alternative transcriptions and keeps the best one, so a
+ * single misheard variant does not derail the whole recitation.
+ */
+export function evaluateAlternatives(
+  verseWords: QuranWordMeta[],
+  state: RecognitionState,
+  candidates: string[],
+): RecognitionState & { completed: boolean; isFlawless: boolean } {
+  const score = (result: RecognitionState & { completed: boolean; isFlawless: boolean }) =>
+    result.currentWordIdx * 10 -
+    Object.keys(result.failedWords).length * 3 +
+    (result.completed ? 5 : 0) +
+    (result.isFlawless ? 10 : 0);
+
+  let best: (RecognitionState & { completed: boolean; isFlawless: boolean }) | null = null;
+  for (const candidate of candidates) {
+    if (!candidate || !candidate.trim()) continue;
+    const result = evaluateSpokenText(verseWords, state, candidate);
+    if (!best || score(result) > score(best)) best = result;
+  }
+
+  return best ?? { ...state, completed: false, isFlawless: false };
+}
+
 export function useRecitationSession(verseWords: QuranWordMeta[]) {
   const [currentWordIdx, setCurrentWordIdx] = useState(0);
   const [matchedWords, setMatchedWords] = useState<number[]>([]);
@@ -94,6 +128,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
     wordIdx: number;
   } | null>(null);
   const [isAyahCompleted, setIsAyahCompleted] = useState(false);
+  const [previewWordIdx, setPreviewWordIdx] = useState<number | null>(null);
   const completionLockRef = useRef(false);
   const currentWordIdxRef = useRef(0);
   const matchedWordsRef = useRef<number[]>([]);
@@ -113,11 +148,17 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
     setFailedWords({});
     setActiveMistakeAlert(null);
     setIsAyahCompleted(false);
+    setPreviewWordIdx(null);
   }, []);
 
+  /**
+   * Handles finalized speech chunks. `alternatives` are the recognizer's other
+   * candidate transcriptions; the one that best matches the verse is used.
+   */
   const handleIncomingSpokenText = useCallback(
     (
       spokenText: string,
+      alternatives: string[] = [],
     ): (RecognitionState & { completed: boolean; isFlawless: boolean }) | undefined => {
       if (
         completionLockRef.current ||
@@ -127,7 +168,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
         return undefined;
       }
 
-      const nextState = evaluateSpokenText(
+      const nextState = evaluateAlternatives(
         verseWords,
         {
           currentWordIdx: currentWordIdxRef.current,
@@ -135,7 +176,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
           failedWords: failedWordsRef.current,
           activeMistakeAlert: activeMistakeAlertRef.current,
         },
-        spokenText,
+        [spokenText, ...alternatives],
       );
 
       currentWordIdxRef.current = nextState.currentWordIdx;
@@ -147,6 +188,7 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
       setMatchedWords(nextState.matchedWords);
       setFailedWords(nextState.failedWords);
       setActiveMistakeAlert(nextState.activeMistakeAlert);
+      setPreviewWordIdx(null);
 
       if (nextState.completed) {
         setIsAyahCompleted(true);
@@ -157,16 +199,46 @@ export function useRecitationSession(verseWords: QuranWordMeta[]) {
     [isAyahCompleted, verseWords],
   );
 
+  /**
+   * Live preview of the word being recited from an interim transcript. It never
+   * mutates the committed state, so in-progress guesses cannot corrupt results.
+   */
+  const previewSpokenText = useCallback(
+    (interimText: string) => {
+      if (completionLockRef.current || isAyahCompleted) return;
+      if (!interimText.trim()) {
+        setPreviewWordIdx(null);
+        return;
+      }
+
+      const preview = evaluateSpokenText(
+        verseWords,
+        {
+          currentWordIdx: currentWordIdxRef.current,
+          matchedWords: matchedWordsRef.current,
+          failedWords: failedWordsRef.current,
+          activeMistakeAlert: activeMistakeAlertRef.current,
+        },
+        interimText,
+      );
+      setPreviewWordIdx(preview.currentWordIdx);
+    },
+    [isAyahCompleted, verseWords],
+  );
+
   return {
     currentWordIdx,
     matchedWords,
     failedWords,
     activeMistakeAlert,
     isAyahCompleted,
+    previewWordIdx,
     setIsAyahCompleted,
     setActiveMistakeAlert,
+    setPreviewWordIdx,
     completionLockRef,
     handleIncomingSpokenText,
+    previewSpokenText,
     resetRecitationState,
     currentWordIdxRef,
     matchedWordsRef,

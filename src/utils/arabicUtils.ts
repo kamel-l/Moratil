@@ -3,7 +3,7 @@
  */
 
 // Regex for Quranic Tashkeel and diacritical marks
-const TASHKEEL_REGEX = /[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g;
+const TASHKEEL_REGEX = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08FF]/g;
 const NON_ARABIC_OR_SYMBOLS =
   /[\u0600-\u060F\u061B\u061F\u06D4\uFD3E\uFD3F«»()0-9٠-٩.,?!:;'"\-—_\n\r]/g;
 
@@ -49,6 +49,40 @@ export function normalizeArabicText(text: string): string {
   str = str.replace(/\s+/g, ' ').trim();
 
   return str;
+}
+
+/**
+ * Groups of Arabic letters that speech recognizers frequently confuse
+ * (close places of articulation). Every letter in a group is collapsed to the
+ * group's first letter so that, for example, "الصراط" and "السراط" still match.
+ */
+const PHONETIC_GROUPS: readonly string[][] = [
+  ['ه', 'ح'],
+  ['ت', 'ط'],
+  ['س', 'ص', 'ث'],
+  ['ز', 'ذ', 'ظ'],
+  ['د', 'ض'],
+];
+
+const PHONETIC_MAP: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const group of PHONETIC_GROUPS) {
+    for (const letter of group) map[letter] = group[0];
+  }
+  return map;
+})();
+
+/**
+ * Collapses confusable Arabic consonants so that near-homophones produced by
+ * the speech recognizer compare equal to the expected Quranic word.
+ */
+export function phoneticNormalize(text: string): string {
+  if (!text) return '';
+  return normalizeArabicText(text)
+    .replace(/[^\u0621-\u064A\s]/g, '')
+    .replace(/./g, (char) => PHONETIC_MAP[char] ?? char)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -102,6 +136,15 @@ export function levenshteinDistance(a: string, b: string): number {
 }
 
 /**
+ * Similarity ratio (0..1) derived from the Levenshtein distance.
+ */
+function similarityRatio(a: string, b: string): number {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 0;
+  return Math.max(0, (maxLen - levenshteinDistance(a, b)) / maxLen);
+}
+
+/**
  * Computes similarity percentage between 0 and 1
  */
 export function wordSimilarity(word1: string, word2: string): number {
@@ -121,9 +164,32 @@ export function wordSimilarity(word1: string, word2: string): number {
     if (w2.startsWith('ال') && w2.slice(2) === w1) return 0.92;
   }
 
-  const maxLen = Math.max(w1.length, w2.length);
-  const distance = levenshteinDistance(w1, w2);
-  return Math.max(0, (maxLen - distance) / maxLen);
+  const exactSimilarity = similarityRatio(w1, w2);
+  // Fallback that tolerates the consonant confusions speech recognizers make.
+  const phoneticSimilarity =
+    similarityRatio(phoneticNormalize(w1), phoneticNormalize(w2)) * 0.97;
+
+  return Math.max(exactSimilarity, phoneticSimilarity);
+}
+
+/**
+ * Decides whether a spoken word matches an expected Quranic word.
+ * The tolerance scales with word length: short words must match almost exactly
+ * (to avoid accepting wrong words), while longer words tolerate small errors.
+ */
+export function isWordMatch(spoken: string, expected: string): boolean {
+  const spokenNorm = normalizeArabicText(spoken);
+  const expectedNorm = normalizeArabicText(expected);
+  if (!spokenNorm || !expectedNorm) return false;
+  if (spokenNorm === expectedNorm) return true;
+
+  const shortest = Math.min(spokenNorm.length, expectedNorm.length);
+  const similarity = wordSimilarity(spokenNorm, expectedNorm);
+
+  if (shortest <= 2) return false;
+  if (shortest === 3) return similarity >= 0.8;
+  if (shortest === 4) return similarity >= 0.75;
+  return similarity >= 0.7;
 }
 
 /**
