@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, LayoutGroup } from 'motion/react';
 import {
   Mic,
   CalendarClock,
@@ -124,26 +125,39 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Navigation Bar / Tabs */}
-        <nav className="flex items-center gap-1 overflow-x-auto py-2 border-t border-stone-100 no-scrollbar">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onSelectTab(item.id)}
-                className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-                  isActive
-                    ? 'bg-emerald-800 text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-amber-300' : 'text-stone-500'}`} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <LayoutGroup id="main-nav">
+          <nav className="flex items-center gap-1 overflow-x-auto py-2 border-t border-stone-100 no-scrollbar">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <motion.button
+                  key={item.id}
+                  onClick={() => onSelectTab(item.id)}
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.97 }}
+                  className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
+                    isActive ? 'text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="nav-active-pill"
+                      className="absolute inset-0 bg-emerald-800 rounded-lg shadow-xs"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <Icon
+                    className={`relative z-10 w-4 h-4 ${
+                      isActive ? 'text-amber-300' : 'text-stone-500'
+                    }`}
+                  />
+                  <span className="relative z-10">{item.label}</span>
+                </motion.button>
+              );
+            })}
+          </nav>
+        </LayoutGroup>
       </div>
     </header>
   );

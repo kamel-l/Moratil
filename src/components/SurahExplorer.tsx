@@ -1,8 +1,11 @@
 import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { Search, BookOpen, Mic, Volume2, Check, Sparkles, Filter, ArrowRight } from 'lucide-react';
 import { ALL_SURAHS, SurahMeta } from '../data/quranSurahsList';
 import { getSurahWithAyahs } from '../data/quranData';
 import { Surah, Ayah } from '../types/quran';
+import { TiltCard } from './ui/TiltCard';
+import { staggerContainer, staggerItem } from './ui/Reveal';
 
 interface SurahExplorerProps {
   onSelectSurahForRecitation: (surahNumber: number) => void;
@@ -199,15 +202,21 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
           </div>
 
           {/* Surahs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 perspective-1200"
+          >
             {filteredSurahs.map((s) => {
               const isMemorized = completedSurahs.includes(s.number);
 
               return (
-                <div
-                  key={s.number}
-                  className="bg-white rounded-2xl border border-stone-200 hover:border-emerald-300 p-5 shadow-xs transition-all space-y-4 flex flex-col justify-between group"
-                >
+                <motion.div key={s.number} variants={staggerItem} className="h-full">
+                  <TiltCard
+                    maxTilt={6}
+                    className="h-full preserve-3d bg-white rounded-2xl border border-stone-200 hover:border-emerald-300 p-5 shadow-xs space-y-4 flex flex-col justify-between group"
+                  >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-stone-100 group-hover:bg-emerald-50 text-stone-700 group-hover:text-emerald-800 font-bold text-sm flex items-center justify-center transition-colors">
@@ -264,10 +273,11 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
                       <Volume2 className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
+                  </TiltCard>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         </>
       )}
     </div>

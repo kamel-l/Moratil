@@ -1,5 +1,40 @@
 @import 'tailwindcss';
 
+/*
+  Thème « Émeraude & Or mystique »
+  - Émeraude profond : couleur de marque (sérénité, sacré)
+  - Or : accents premium (récompenses, éléments sacrés)
+  - Fond crème : lisibilité longue durée sur texte arabe
+*/
+@theme {
+  /* Palette Or */
+  --color-gold-50: #fdfaef;
+  --color-gold-100: #faf1d4;
+  --color-gold-200: #f4e1a4;
+  --color-gold-300: #eccb6c;
+  --color-gold-400: #e0b544;
+  --color-gold-500: #cfa12f;
+  --color-gold-600: #b3821f;
+  --color-gold-700: #8f631c;
+  --color-gold-800: #764f1d;
+  --color-gold-900: #65421d;
+
+  /* Efflorescence : émeraude profond « nuit sacrée » */
+  --color-jade-50: #eefbf5;
+  --color-jade-100: #d5f5e6;
+  --color-jade-200: #aeead0;
+  --color-jade-300: #78d8b4;
+  --color-jade-400: #43bf93;
+  --color-jade-500: #1fa477;
+  --color-jade-600: #12855f;
+  --color-jade-700: #0d6a4e;
+  --color-jade-800: #0b5340;
+  --color-jade-900: #093f32;
+  --color-jade-950: #04231d;
+
+  --font-display: 'Reem Kufi', 'Amiri', serif;
+}
+
 @layer base {
   body {
     font-family:
@@ -11,6 +46,18 @@
       Roboto,
       sans-serif;
   }
+
+  /* Respect du réglage système « réduire les animations » */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 .font-quran {
@@ -20,6 +67,10 @@
 
 .font-scheherazade {
   font-family: 'Scheherazade New', 'Amiri', serif;
+}
+
+.font-display {
+  font-family: 'Reem Kufi', 'Amiri', serif;
 }
 
 /* Islamic arabesque subtle pattern backgrounds */
@@ -37,6 +88,50 @@
 .bg-pattern-subtle {
   background-image: radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/* Dégradé émeraude profond → or : signature visuelle de la marque */
+.bg-brand-gradient {
+  background-image: linear-gradient(135deg, #04231d 0%, #0b5340 45%, #0d6a4e 100%);
+}
+
+.text-gold-gradient {
+  background-image: linear-gradient(120deg, #f4e1a4 0%, #e0b544 45%, #cfa12f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Verre dépoli pour panneaux flottants (dark glassmorphism) */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Contexte 3D pour les cartes à inclinaison */
+.perspective-1200 {
+  perspective: 1200px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* Halo lumineux animé (or) */
+@keyframes float-orb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -24px, 0) scale(1.06);
+  }
+}
+
+.animate-float-orb {
+  animation: float-orb 9s ease-in-out infinite;
 }
 
 /* Custom scrollbar for Quran reader */

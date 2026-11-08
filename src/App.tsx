@@ -4,7 +4,9 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Navbar } from './components/Navbar';
+import { Landing } from './components/Landing';
 import { VoiceReciter } from './components/VoiceReciter';
 import { RevisionPlans } from './components/RevisionPlans';
 import { SurahExplorer } from './components/SurahExplorer';
@@ -37,6 +39,7 @@ import {
 } from './services/storageService';
 
 export default function App() {
+  const [showLanding, setShowLanding] = useState(true);
   const [currentTab, setCurrentTab] = useState<string>('recite');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
@@ -110,8 +113,30 @@ export default function App() {
     setIsAudioPlayerOpen(true);
   };
 
+  if (showLanding) {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="landing"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <Landing onEnter={() => setShowLanding(false)} />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20">
+    <motion.div
+      key="workspace"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="min-h-screen bg-stone-100/60 text-stone-900 pb-28 font-sans selection:bg-emerald-500/20"
+    >
       {/* Top Navbar */}
       <Navbar
         currentTab={currentTab}
@@ -126,60 +151,70 @@ export default function App() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {/* Tab 1: Voice Recitation & Real-time Error Correction */}
-        {currentTab === 'recite' && (
-          <VoiceReciter
-            surah={currentSurah}
-            initialAyahNumber={initialAyahForReciter}
-            selectedReciter={selectedReciter}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            onStatsUpdate={refreshAllState}
-            onSelectSurahChange={(num, ayahNum = 1) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(ayahNum);
-            }}
-            allSurahsList={ALL_SURAHS}
-          />
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={currentTab}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {/* Tab 1: Voice Recitation & Real-time Error Correction */}
+            {currentTab === 'recite' && (
+              <VoiceReciter
+                surah={currentSurah}
+                initialAyahNumber={initialAyahForReciter}
+                selectedReciter={selectedReciter}
+                onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+                onStatsUpdate={refreshAllState}
+                onSelectSurahChange={(num, ayahNum = 1) => {
+                  setSelectedSurahNumber(num);
+                  setInitialAyahForReciter(ayahNum);
+                }}
+                allSurahsList={ALL_SURAHS}
+              />
+            )}
 
-        {/* Tab 2: Periodic Revision Plans & Forgotten Verses (SRS) */}
-        {currentTab === 'revision' && (
-          <RevisionPlans
-            plans={plans}
-            forgottenVerses={forgottenVerses}
-            onStartPracticingVerse={handleStartPracticingVerse}
-            onRefreshPlans={refreshAllState}
-          />
-        )}
+            {/* Tab 2: Periodic Revision Plans & Forgotten Verses (SRS) */}
+            {currentTab === 'revision' && (
+              <RevisionPlans
+                plans={plans}
+                forgottenVerses={forgottenVerses}
+                onStartPracticingVerse={handleStartPracticingVerse}
+                onRefreshPlans={refreshAllState}
+              />
+            )}
 
-        {/* Tab 3: Quran Explorer & Tafsir Al-Muyassar */}
-        {currentTab === 'explorer' && (
-          <SurahExplorer
-            onSelectSurahForRecitation={(num) => {
-              setSelectedSurahNumber(num);
-              setInitialAyahForReciter(1);
-              setCurrentTab('recite');
-            }}
-            onPlaySurahAudio={handlePlaySurahAudio}
-            onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
-            completedSurahs={stats.completedSurahs}
-          />
-        )}
+            {/* Tab 3: Quran Explorer & Tafsir Al-Muyassar */}
+            {currentTab === 'explorer' && (
+              <SurahExplorer
+                onSelectSurahForRecitation={(num) => {
+                  setSelectedSurahNumber(num);
+                  setInitialAyahForReciter(1);
+                  setCurrentTab('recite');
+                }}
+                onPlaySurahAudio={handlePlaySurahAudio}
+                onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+                completedSurahs={stats.completedSurahs}
+              />
+            )}
 
-        {/* Tab 4: Friends Competition & Leaderboard */}
-        {currentTab === 'competition' && (
-          <CompetitionLeaderboard
-            friends={friends}
-            challenges={challenges}
-            onStartChallenge={handleStartChallenge}
-            onRefresh={refreshAllState}
-          />
-        )}
+            {/* Tab 4: Friends Competition & Leaderboard */}
+            {currentTab === 'competition' && (
+              <CompetitionLeaderboard
+                friends={friends}
+                challenges={challenges}
+                onStartChallenge={handleStartChallenge}
+                onRefresh={refreshAllState}
+              />
+            )}
 
-        {/* Tab 5: Daily Performance Statistics */}
-        {currentTab === 'stats' && (
-          <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
-        )}
+            {/* Tab 5: Daily Performance Statistics */}
+            {currentTab === 'stats' && (
+              <StatsDashboard stats={stats} verseMasteryMap={verseMasteryMap} />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Sticky Bottom Audio Player Bar */}
@@ -210,6 +245,6 @@ export default function App() {
       {isRewardsModalOpen && (
         <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
       )}
-    </div>
+    </motion.div>
   );
 }

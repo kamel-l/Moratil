@@ -1,0 +1,54 @@
+{
+  "id": "https://murattil.app/",
+  "name": "مُرتِّل | تحفيظ ومراجعة القرآن الكريم الذكي",
+  "short_name": "مُرتِّل",
+  "description": "منصة تفاعلية ذكية لحفظ ومراجعة القرآن الكريم بالتكرار المتباعد والتصحيح الصوتي اللحظي بدون تشتيت.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "dir": "rtl",
+  "lang": "ar",
+  "categories": ["education", "books", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "التسميع الصوتي والتصحيح",
+      "short_name": "تسميع",
+      "description": "افتح استوديو التسميع والتصحيح المباشر بالصوت",
+      "url": "/?tab=recite",
+      "icons": [{ "src": "/icon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "خطط المراجعة والتثبيت",
+      "short_name": "مراجعة",
+      "description": "جدول المراجعة التكرار المتباعد والآيات المتعثرة",
+      "url": "/?tab=revision",
+      "icons": [{ "src": "/icon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "المصحف والتفسير الميسر",
+      "short_name": "المصحف",
+      "description": "تصفح سور القرآن الكريم مع التفسير الميسر",
+      "url": "/?tab=explorer",
+      "icons": [{ "src": "/icon.svg", "sizes": "96x96" }]
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "com.quranhifdh.app"
+    }
+  ],
+  "prefer_related_applications": false
+}

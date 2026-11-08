@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#04201a" />
+      <stop offset="50%" stop-color="#0d1117" />
+      <stop offset="100%" stop-color="#061814" />
+    </linearGradient>
+
+    <!-- Gold Calligraphy Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffbeb" />
+      <stop offset="35%" stop-color="#fde68a" />
+      <stop offset="70%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+
+    <!-- Emerald Border Glow -->
+    <linearGradient id="emeraldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#059669" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.7" />
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Container -->
+  <rect width="512" height="512" rx="120" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="116" fill="none" stroke="url(#emeraldBorder)" stroke-width="6" />
+
+  <!-- Geometric Arabesque Octagram Halo -->
+  <g transform="translate(256, 256)" opacity="0.35" filter="url(#softGlow)">
+    <rect x="-140" y="-140" width="280" height="280" rx="36" fill="none" stroke="#10b981" stroke-width="4" transform="rotate(0)" />
+    <rect x="-140" y="-140" width="280" height="280" rx="36" fill="none" stroke="#f59e0b" stroke-width="4" transform="rotate(45)" />
+    <circle r="160" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="6 8" />
+  </g>
+
+  <!-- Central Calligraphy "مُ" -->
+  <g text-anchor="middle" dominant-baseline="central">
+    <text
+      x="256"
+      y="246"
+      font-family="'Amiri', 'Scheherazade New', 'Cairo', serif"
+      font-size="240"
+      font-weight="bold"
+      fill="url(#goldGrad)"
+      filter="drop-shadow(0 8px 24px rgba(245, 158, 11, 0.35))"
+    >
+      مُ
+    </text>
+  </g>
+
+  <!-- Subtitle Badge "مُرتِّل" -->
+  <g text-anchor="middle">
+    <text
+      x="256"
+      y="420"
+      font-family="'Cairo', sans-serif"
+      font-size="40"
+      font-weight="800"
+      letter-spacing="2"
+      fill="#34d399"
+      opacity="0.9"
+    >
+      مُرتِّل
+    </text>
+  </g>
+</svg>
