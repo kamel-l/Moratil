@@ -86,16 +86,16 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Hero Header */}
-      <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
+      <div className="bg-brand-gradient text-white rounded-3xl p-6 sm:p-8 relative overflow-hidden">
         <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-800/80 border border-emerald-700/60 px-3 py-1 rounded-full text-xs text-amber-300 font-medium">
+          <div className="inline-flex items-center gap-2 bg-white/5 border border-gold-400/30 px-3 py-1 rounded-full text-xs text-gold-200 font-medium">
             <CalendarClock className="w-3.5 h-3.5" />
             <span>نظام التكرار المتباعد (Spaced Repetition)</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-display text-white">
             خطط المراجعة وتنبيهات تثبيت الحفظ
           </h1>
-          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+          <p className="text-xs sm:text-sm text-jade-100/80 leading-relaxed">
             القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك
             للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
           </p>
@@ -106,29 +106,29 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <div className="p-2 rounded-xl bg-gold-400/15 text-gold-300">
+              <AlertTriangle className="w-5 h-5 text-gold-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-stone-900">
+              <h2 className="text-lg font-bold text-white">
                 تنبيه: آيات تحتاج لتثبيت وتكرار عاجل
               </h2>
-              <p className="text-xs text-stone-500">
+              <p className="text-xs text-jade-100/60">
                 آيات أظهرت خوارزمية التعرف الصوتي تعثراً في حفظها أو حان موعد مراجعتها المتباعدة
               </p>
             </div>
           </div>
 
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gold-400/15 text-gold-200 border border-gold-400/30">
             {forgottenVerses.length} آيات
           </span>
         </div>
 
         {forgottenVerses.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-stone-200 p-8 text-center space-y-2">
-            <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto" />
-            <h3 className="font-bold text-stone-900 text-base">ما شاء الله! جميع محفوظاتك متقنة</h3>
-            <p className="text-xs text-stone-500 max-w-md mx-auto">
+          <div className="glass-panel rounded-2xl p-8 text-center space-y-2">
+            <CheckCircle className="w-10 h-10 text-jade-300 mx-auto" />
+            <h3 className="font-bold text-white text-base">ما شاء الله! جميع محفوظاتك متقنة</h3>
+            <p className="text-xs text-jade-100/60 max-w-md mx-auto">
               لا توجد آيات متعثرة حالياً. واصل المراجعة اليومية المنتظمة لتحافظ على هذا المستوى
               الممتاز.
             </p>
@@ -142,31 +142,31 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
               return (
                 <div
                   key={`${item.surahNumber}_${item.ayahNumber}`}
-                  className="bg-white rounded-2xl border border-amber-200/80 hover:border-amber-400 p-5 shadow-xs transition-all space-y-3"
+                  className="glass-panel rounded-2xl border-gold-400/30 hover:border-gold-400 p-5 transition-all space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-base text-stone-900">سورة {surahName}</span>
-                      <span className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded-md font-semibold">
+                      <span className="font-bold text-base text-white">سورة {surahName}</span>
+                      <span className="text-xs bg-white/5 text-jade-100/80 px-2 py-0.5 rounded-md font-semibold">
                         الآية {item.ayahNumber}
                       </span>
                     </div>
 
-                    <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                    <span className="text-[11px] font-medium text-gold-300 bg-gold-400/15 border border-gold-400/30 px-2 py-0.5 rounded-md">
                       أخطاء سابقة: {item.mistakeCount}
                     </span>
                   </div>
 
                   {/* Previous Mistake Details */}
                   {lastMistake && (
-                    <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-600 border border-stone-100 space-y-1">
+                    <div className="bg-white/5 rounded-xl p-3 text-xs text-jade-100/70 border border-white/10 space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-stone-500">موضع التعثر السابق:</span>
-                        <span className="text-rose-600 font-bold">"{lastMistake.recitedWord}"</span>
+                        <span className="text-jade-100/60">موضع التعثر السابق:</span>
+                        <span className="text-rose-300 font-bold">"{lastMistake.recitedWord}"</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-stone-500">الكلمة الصحيحة في المصحف:</span>
-                        <span className="text-emerald-700 font-bold font-quran text-sm">
+                        <span className="text-jade-100/60">الكلمة الصحيحة في المصحف:</span>
+                        <span className="text-gold-300 font-bold font-quran text-sm">
                           "{lastMistake.expectedWord}"
                         </span>
                       </div>
@@ -174,13 +174,13 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                   )}
 
                   <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-stone-500">
+                    <span className="text-[11px] text-jade-100/60">
                       التكرار المتباعد: يحتاج جلسة تسميع
                     </span>
 
                     <button
                       onClick={() => onStartPracticingVerse(item.surahNumber, item.ayahNumber)}
-                      className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-xs"
+                      className="flex items-center gap-1.5 bg-gold-400 hover:bg-gold-300 text-jade-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-lg shadow-gold-500/20"
                     >
                       <Play className="w-3.5 h-3.5" />
                       <span>تسميع وتثبيت</span>
@@ -197,12 +197,12 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
       <div className="space-y-4 pt-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
-              <CalendarClock className="w-5 h-5 text-emerald-700" />
+            <div className="p-2 rounded-xl bg-white/5 text-gold-300">
+              <CalendarClock className="w-5 h-5 text-gold-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-stone-900">خطط المراجعة الدورية النشطة</h2>
-              <p className="text-xs text-stone-500">
+              <h2 className="text-lg font-bold text-white">خطط المراجعة الدورية النشطة</h2>
+              <p className="text-xs text-jade-100/60">
                 برامج مجدولة لمراجعة السور والأجزاء وفق خطة زمنية ومعدل يومي
               </p>
             </div>
@@ -210,9 +210,9 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 bg-white border border-stone-300 hover:border-emerald-600 text-stone-800 text-xs font-semibold px-3.5 py-2 rounded-xl transition-all shadow-xs"
+            className="flex items-center gap-1.5 glass-panel text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition-all hover:border-gold-400/30 hover:bg-white/10"
           >
-            <Plus className="w-4 h-4 text-emerald-600" />
+            <Plus className="w-4 h-4 text-gold-300" />
             <span>خطة مراجعة جديدة</span>
           </button>
         </div>
@@ -228,54 +228,54 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             return (
               <div
                 key={plan.id}
-                className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-emerald-300 transition-colors"
+                className="glass-panel rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-gold-400/30 transition-colors"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gold-200 bg-white/5 px-2 py-0.5 rounded-md border border-gold-400/30">
                       {plan.category === 'spaced_repetition'
                         ? 'تكرار متباعد'
                         : plan.category === 'daily_wird'
                           ? 'ورد يومي'
                           : 'تثبيت سورة'}
                     </span>
-                    <span className="text-xs text-stone-500">
+                    <span className="text-xs text-jade-100/60">
                       اليوم {plan.currentDay} من {plan.durationDays}
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-stone-900 text-base leading-snug">{plan.title}</h3>
-                  <p className="text-xs text-stone-500 line-clamp-2">{plan.description}</p>
+                  <h3 className="font-bold text-white text-base leading-snug">{plan.title}</h3>
+                  <p className="text-xs text-jade-100/60 line-clamp-2">{plan.description}</p>
                 </div>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-xs text-stone-600">
+                  <div className="flex items-center justify-between text-xs text-jade-100/70">
                     <span>نسبة الإنجاز</span>
-                    <span className="font-bold text-emerald-700">{progressPercent}%</span>
+                    <span className="font-bold text-gold-300">{progressPercent}%</span>
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                     <div
-                      className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+                      className="bg-gold-400 h-full rounded-full transition-all duration-500"
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
 
-                  <div className="text-[11px] text-stone-500 flex items-center justify-between pt-1">
+                  <div className="text-[11px] text-jade-100/60 flex items-center justify-between pt-1">
                     <span>الهدف: {plan.dailyTargetAyahs} آية / يوم</span>
                     <span>{plan.targetSurahs.length} سور مدرجة</span>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-stone-100 flex items-center gap-2">
+                <div className="pt-2 border-t border-white/10 flex items-center gap-2">
                   <button
                     onClick={() => {
                       if (plan.targetSurahs.length > 0) {
                         onStartPracticingVerse(plan.targetSurahs[0], 1);
                       }
                     }}
-                    className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-semibold py-2 rounded-xl text-center transition-colors"
+                    className="flex-1 glass-panel text-white text-xs font-semibold py-2 rounded-xl text-center transition-colors hover:bg-white/10"
                   >
                     ابدأ مراجعة اليوم
                   </button>
@@ -283,10 +283,10 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                   <button
                     onClick={() => handleCompleteDay(plan.id)}
                     disabled={isFinished}
-                    className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition-colors disabled:opacity-40"
+                    className="p-2 bg-jade-500/15 hover:bg-jade-500/25 text-jade-300 rounded-xl transition-colors disabled:opacity-40"
                     title="تأكيد إتمام ورد اليوم (+50 حسنة)"
                   >
-                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    <CheckCircle className="w-5 h-5 text-jade-300" />
                   </button>
                 </div>
               </div>
@@ -297,13 +297,13 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
       {/* Modal: Create Custom Plan */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <h3 className="font-bold text-stone-900 text-lg">إنشاء خطة مراجعة دورية مخصصة</h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-jade-900 border border-white/10 text-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="font-bold text-white text-lg">إنشاء خطة مراجعة دورية مخصصة</h3>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-stone-400 hover:text-stone-700 text-sm font-bold"
+                className="text-jade-100/60 hover:text-white text-sm font-bold"
               >
                 ✕
               </button>
@@ -311,46 +311,46 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
 
             <form onSubmit={handleCreatePlan} className="space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="font-semibold text-stone-800">اسم الخطة أو الهدف:</label>
+                <label className="font-semibold text-jade-100/80">اسم الخطة أو الهدف:</label>
                 <input
                   type="text"
                   required
                   placeholder="مثال: مراجعة سورة الكهف أسبوعياً، تثبيت جزء تبارك..."
                   value={newPlanTitle}
                   onChange={(e) => setNewPlanTitle(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3 text-stone-900 text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-stone-800">الهدف اليومي (عدد الآيات):</label>
+                  <label className="font-semibold text-jade-100/80">الهدف اليومي (عدد الآيات):</label>
                   <input
                     type="number"
                     min={1}
                     max={100}
                     value={dailyTarget}
                     onChange={(e) => setDailyTarget(Number(e.target.value))}
-                    className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3 text-stone-900 text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-stone-800">مدة الخطة (بالأيام):</label>
+                  <label className="font-semibold text-jade-100/80">مدة الخطة (بالأيام):</label>
                   <input
                     type="number"
                     min={3}
                     max={90}
                     value={durationDays}
                     onChange={(e) => setDurationDays(Number(e.target.value))}
-                    className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3 text-stone-900 text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-semibold text-stone-800">اختر السور المستهدفة:</label>
-                <div className="max-h-40 overflow-y-auto border border-stone-200 rounded-xl p-2.5 grid grid-cols-2 gap-2 bg-stone-50">
+                <label className="font-semibold text-jade-100/80">اختر السور المستهدفة:</label>
+                <div className="max-h-40 overflow-y-auto border border-white/10 rounded-xl p-2.5 grid grid-cols-2 gap-2 bg-white/5">
                   {ALL_SURAHS.slice(0, 30).map((s) => {
                     const isChecked = selectedSurahNums.includes(s.number);
                     return (
@@ -368,9 +368,9 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                               setSelectedSurahNums(selectedSurahNums.filter((n) => n !== s.number));
                             }
                           }}
-                          className="accent-emerald-600 rounded"
+                          className="accent-gold-400 rounded"
                         />
-                        <span className="text-[11px] text-stone-700">
+                        <span className="text-[11px] text-jade-100/80">
                           {s.number}. {s.name}
                         </span>
                       </label>
@@ -383,13 +383,13 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl text-stone-600 hover:bg-stone-100 font-semibold"
+                  className="px-4 py-2 rounded-xl text-jade-100/70 hover:bg-white/5 font-semibold"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-xs cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 text-jade-950 font-bold shadow-lg shadow-gold-500/20 cursor-pointer"
                 >
                   إنشاء الخطة والبدء
                 </button>

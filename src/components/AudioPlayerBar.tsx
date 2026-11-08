@@ -139,28 +139,28 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-stone-900/95 backdrop-blur-md text-white border-t border-stone-800 shadow-2xl p-3 sm:p-4 animate-in slide-in-from-bottom">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-jade-950/95 backdrop-blur-md text-white border-t border-white/10 shadow-2xl p-3 sm:p-4 animate-in slide-in-from-bottom">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Reciter Info & Surah Info */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-800 flex items-center justify-center text-amber-300 font-serif font-bold text-lg shadow-inner">
+            <div className="w-10 h-10 rounded-xl bg-gold-400 flex items-center justify-center text-jade-950 font-display font-bold text-lg shadow-inner">
               قرآن
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-stone-100 font-serif">
+                <span className="font-bold text-sm text-white font-display">
                   سورة {currentSurah.name} (آية {currentAyahNumber})
                 </span>
                 {selectedReciter.hasTeacherStyle && (
-                  <span className="text-[10px] bg-emerald-900/90 text-emerald-300 border border-emerald-700 px-1.5 py-0.2 rounded-md font-medium">
+                  <span className="text-[10px] bg-gold-400/15 text-gold-200 border border-gold-400/30 px-1.5 py-0.2 rounded-md font-medium">
                     مصحف معلّم
                   </span>
                 )}
               </div>
               <button
                 onClick={() => setShowReciterPicker(!showReciterPicker)}
-                className="text-xs text-stone-400 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                className="text-xs text-jade-100/60 hover:text-gold-300 flex items-center gap-1 transition-colors"
               >
                 <span>القارئ: {selectedReciter.name}</span>
                 <ChevronDown className="w-3.5 h-3.5" />
@@ -168,7 +168,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             </div>
           </div>
 
-          <button onClick={onClose} className="md:hidden text-stone-400 hover:text-white p-1">
+          <button onClick={onClose} className="md:hidden text-jade-100/60 hover:text-white p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -179,7 +179,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             {/* Speed Toggle */}
             <button
               onClick={cycleSpeed}
-              className="text-[11px] font-bold text-stone-400 hover:text-white px-2 py-1 rounded-md hover:bg-stone-800 transition-colors"
+              className="text-[11px] font-bold text-jade-100/60 hover:text-white px-2 py-1 rounded-md hover:bg-white/10 transition-colors"
               title="سرعة التلاوة"
             >
               {playbackSpeed}x
@@ -189,7 +189,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <button
               onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
               disabled={currentAyahNumber <= 1}
-              className="text-stone-300 hover:text-white disabled:opacity-30 transition-colors p-1"
+              className="text-jade-100/70 hover:text-white disabled:opacity-30 transition-colors p-1"
               title="الآية السابقة"
             >
               <SkipForward className="w-4 h-4" />
@@ -198,7 +198,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             {/* Play / Pause Main Button */}
             <button
               onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
+              className="w-10 h-10 rounded-full bg-gold-400 hover:bg-gold-300 text-jade-950 flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
             >
               {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 mr-0.5" />}
             </button>
@@ -209,7 +209,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 onAyahChange(Math.min(currentSurah.ayahs.length, currentAyahNumber + 1))
               }
               disabled={currentAyahNumber >= currentSurah.ayahs.length}
-              className="text-stone-300 hover:text-white disabled:opacity-30 transition-colors p-1"
+              className="text-jade-100/70 hover:text-white disabled:opacity-30 transition-colors p-1"
               title="الآية التالية"
             >
               <SkipBack className="w-4 h-4" />
@@ -220,8 +220,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               onClick={cycleRepeat}
               className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
                 repeatMode > 1
-                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                  : 'text-stone-400 hover:text-white'
+                  ? 'bg-gold-400/15 text-gold-200 border border-gold-400/30'
+                  : 'text-jade-100/60 hover:text-white'
               }`}
               title="تكرار الآية لتثبيت الحفظ"
             >
@@ -231,7 +231,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           </div>
 
           {/* Progress Bar & Timestamps */}
-          <div className="flex items-center gap-2 w-full text-[10px] text-stone-400">
+          <div className="flex items-center gap-2 w-full text-[10px] text-jade-100/60">
             <span>{formatTime(currentTime)}</span>
             <input
               type="range"
@@ -239,7 +239,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               max={duration || 100}
               value={currentTime}
               onChange={handleSeek}
-              className="w-full h-1 bg-stone-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              className="w-full h-1 bg-white/15 rounded-lg appearance-none cursor-pointer accent-[#e0b544]"
             />
             <span>{formatTime(duration)}</span>
           </div>
@@ -249,7 +249,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         <div className="hidden md:flex items-center gap-3">
           <button
             onClick={onClose}
-            className="text-stone-400 hover:text-white p-2 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
+            className="text-jade-100/60 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
             title="إغلاق المشغل"
           >
             <X className="w-5 h-5" />
@@ -259,7 +259,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
       {/* Reciters Modal / Dropdown Picker */}
       {showReciterPicker && (
-        <div className="max-w-2xl mx-auto mt-3 pt-3 border-t border-stone-800 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+        <div className="max-w-2xl mx-auto mt-3 pt-3 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           {POPULAR_RECITERS.map((r) => {
             const isCurrent = r.id === selectedReciter.id;
             return (
@@ -271,15 +271,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 }}
                 className={`p-2.5 rounded-xl text-right flex items-center justify-between transition-colors ${
                   isCurrent
-                    ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-600'
-                    : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300'
+                    ? 'bg-gold-400/15 text-gold-200 border border-gold-400/30'
+                    : 'bg-white/5 hover:bg-white/10 text-jade-100'
                 }`}
               >
                 <div>
-                  <div className="font-bold text-stone-100">{r.name}</div>
-                  <div className="text-[11px] text-stone-400">{r.description}</div>
+                  <div className="font-bold text-white">{r.name}</div>
+                  <div className="text-[11px] text-jade-100/60">{r.description}</div>
                 </div>
-                {isCurrent && <UserCheck className="w-4 h-4 text-emerald-400" />}
+                {isCurrent && <UserCheck className="w-4 h-4 text-gold-300" />}
               </button>
             );
           })}
