@@ -15,6 +15,7 @@ import {
   Zap,
   Brain,
   Star,
+  BellRing,
 } from 'lucide-react';
 import { TiltCard } from './ui/TiltCard';
 import { Reveal, staggerContainer, staggerItem } from './ui/Reveal';
@@ -241,59 +242,68 @@ export const Landing: React.FC<LandingProps> = ({ onEnter }) => {
             </motion.div>
           </div>
 
-          {/* Colonne maquette 3D */}
+          {/* Carte de rappel — session de récitation */}
           <motion.div
             {...heroItem(0.2)}
             className="relative perspective-1200 mx-auto w-full max-w-md"
           >
             <TiltCard maxTilt={9} lift={16} className="preserve-3d">
-              <div className="rounded-3xl bg-white/95 text-stone-900 shadow-2xl shadow-black/40 border border-white/40 overflow-hidden">
-                <div className="bg-brand-gradient text-white px-6 py-5 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-jade-100/80">الآن تتلو</p>
-                    <p className="font-display font-bold text-lg">سورة الفاتحة</p>
+              <div className="relative overflow-hidden glass-panel rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl shadow-black/40">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-16 -right-12 w-44 h-44 rounded-full bg-gold-400/20 blur-3xl"
+                />
+
+                {/* En-tête du rappel */}
+                <div className="relative flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gold-400/15 border border-gold-400/30 text-gold-300 flex items-center justify-center animate-pulse-ring shrink-0">
+                    <BellRing className="w-6 h-6" />
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-gold-400/20 border border-gold-400/40 flex items-center justify-center animate-pulse-ring">
-                    <Mic className="w-6 h-6 text-gold-300" />
+                  <div className="min-w-0">
+                    <span className="inline-block text-[11px] font-bold text-gold-200 bg-white/5 border border-gold-400/30 px-2.5 py-1 rounded-full">
+                      تذكير اليوم
+                    </span>
+                    <h3 className="font-display font-bold text-lg text-white mt-1.5">
+                      لديك جلسة تسميع اليوم
+                    </h3>
                   </div>
                 </div>
 
-                <div className="p-6 space-y-4">
-                  <p className="font-quran text-2xl leading-loose text-center text-stone-800">
-                    بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-                  </p>
+                <p className="relative text-sm text-jade-100/75 leading-relaxed">
+                  حان وقت مراجعتك اليومية — لا تدع سلسلة التزامك تنقطع، سمّع آياتك وثبّت حفظك.
+                </p>
 
-                  {/* Fausse forme d'onde */}
-                  <div className="flex items-end justify-center gap-1 h-12">
-                    {[10, 22, 34, 18, 42, 28, 14, 30, 46, 20, 12, 26, 38, 16].map((h, i) => (
-                      <motion.span
-                        key={i}
-                        className="w-1.5 rounded-full bg-jade-500/70"
-                        animate={prefersReduced ? undefined : { height: [h, h * 1.6, h] }}
-                        transition={{
-                          duration: 1.1,
-                          repeat: Infinity,
-                          delay: i * 0.06,
-                          ease: 'easeInOut',
-                        }}
-                        style={{ height: h }}
-                      />
-                    ))}
+                {/* Détails de la session */}
+                <div className="relative bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5 font-semibold text-white">
+                      <BookOpen className="w-4 h-4 text-jade-300" />
+                      سورة الفاتحة
+                    </span>
+                    <span className="text-xs text-jade-100/60">الآية 1 من 7</span>
+                  </div>
+
+                  <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full w-[14%] rounded-full bg-gold-400" />
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 font-semibold text-jade-700">
+                    <span className="flex items-center gap-1.5 font-semibold text-jade-300">
                       <Check className="w-4 h-4" />
-                      إتقان 98%
+                      الهدف اليومي: 15 آية
                     </span>
-                    <span className="text-stone-500">الآية 1 من 7</span>
+                    <span className="text-gold-300 font-bold">1,240 حسنة</span>
                   </div>
                 </div>
 
-                <div className="px-6 py-4 bg-stone-50 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
-                  <span>سلسلة الالتزام: 12 يومًا</span>
-                  <span className="text-gold-600 font-bold">1,240 حسنة</span>
-                </div>
+                {/* Action */}
+                <button
+                  onClick={onEnter}
+                  className="relative w-full flex items-center justify-center gap-2 bg-gold-400 hover:bg-gold-300 text-jade-950 font-bold px-6 py-3.5 rounded-2xl transition-all shadow-lg shadow-gold-500/25 cursor-pointer"
+                >
+                  <Mic className="w-5 h-5" />
+                  <span>ابدأ التسميع الآن</span>
+                </button>
               </div>
             </TiltCard>
           </motion.div>
