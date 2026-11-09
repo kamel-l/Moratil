@@ -36,7 +36,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   const [selectedSurahNums, setSelectedSurahNums] = useState<number[]>([1, 112, 113, 114]);
   const [dailyTarget, setDailyTarget] = useState(15);
   const [durationDays, setDurationDays] = useState(14);
-  const [collapsedSurahs, setCollapsedSurahs] = useState<number[]>([]);
+  const [expandedSurahs, setExpandedSurahs] = useState<number[]>([]);
 
   const getSurahName = (num: number) => {
     return ALL_SURAHS.find((s) => s.number === num)?.name || `سورة ${num}`;
@@ -60,7 +60,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   }, [forgottenVerses]);
 
   const toggleSurahGroup = (surahNumber: number) => {
-    setCollapsedSurahs((prev) =>
+    setExpandedSurahs((prev) =>
       prev.includes(surahNumber) ? prev.filter((num) => num !== surahNumber) : [...prev, surahNumber],
     );
   };
@@ -162,7 +162,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
           <div className="space-y-3">
             {groupedForgottenVerses.map((group) => {
               const surahName = getSurahName(group.surahNumber);
-              const isCollapsed = collapsedSurahs.includes(group.surahNumber);
+              const isExpanded = expandedSurahs.includes(group.surahNumber);
 
               return (
                 <div key={group.surahNumber} className="glass-panel rounded-2xl overflow-hidden">
@@ -170,7 +170,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                   <button
                     type="button"
                     onClick={() => toggleSurahGroup(group.surahNumber)}
-                    aria-expanded={!isCollapsed}
+                    aria-expanded={isExpanded}
                     className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer text-right"
                   >
                     <div className="flex items-center gap-3">
@@ -191,13 +191,13 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
                       </span>
                       <ChevronDown
                         className={`w-4 h-4 text-jade-100/60 transition-transform ${
-                          isCollapsed ? '' : 'rotate-180'
+                          isExpanded ? 'rotate-180' : ''
                         }`}
                       />
                     </div>
                   </button>
 
-                  {!isCollapsed && (
+                  {isExpanded && (
                     <div className="border-t border-white/10 divide-y divide-white/10">
                       {group.verses.map((item) => {
                         const lastMistake = item.recentMistakes[0];
