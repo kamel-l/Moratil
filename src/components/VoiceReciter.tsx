@@ -569,10 +569,11 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
                 void stopSurahRecitation();
                 onSelectSurahChange(Number(e.target.value));
               }}
+              style={{ colorScheme: 'dark' }}
               className="min-w-0 flex-1 sm:flex-initial bg-white/5 border border-white/15 text-white rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-gold-400 cursor-pointer"
             >
               {allSurahsList.map((s) => (
-                <option key={s.number} value={s.number}>
+                <option key={s.number} value={s.number} className="bg-jade-900 text-white">
                   {s.number}. سورة {s.name} ({s.numberOfAyahs} آيات)
                 </option>
               ))}
