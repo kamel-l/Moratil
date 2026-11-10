@@ -206,6 +206,7 @@ export default function App() {
                 riwayah={riwayah}
                 onStartReciting={handleStartPracticingVerse}
                 onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
+                onStatsUpdate={refreshAllState}
               />
             )}
 

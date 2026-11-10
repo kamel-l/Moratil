@@ -21,6 +21,7 @@ import {
   DisplayUnit,
 } from '../utils/displayUnits';
 import { DisplayUnitControl } from './ui/DisplayUnitControl';
+import { MemorizationSession } from './MemorizationSession';
 import { Ayah, Surah, RiwayahKey } from '../types/quran';
 
 /** أرقام عربية-هندية لعرض أرقام الآيات والصفحات كما في المصحف. */
@@ -30,13 +31,16 @@ interface MemorizationProps {
   riwayah: RiwayahKey;
   onStartReciting: (surahNumber: number, ayahNumber: number) => void;
   onOpenTafsir: (ayah: Ayah) => void;
+  onStatsUpdate: () => void;
 }
 
 export const Memorization: React.FC<MemorizationProps> = ({
   riwayah,
   onStartReciting,
   onOpenTafsir,
+  onStatsUpdate,
 }) => {
+  const [section, setSection] = useState<'session' | 'read'>('session');
   const [surahNumber, setSurahNumber] = useState(1);
   const [surah, setSurah] = useState<Surah | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -151,6 +155,36 @@ export const Memorization: React.FC<MemorizationProps> = ({
         </div>
       </div>
 
+      {/* Section Toggle */}
+      <div className="glass-panel rounded-2xl p-1.5 flex items-center gap-1">
+        <button
+          onClick={() => setSection('session')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+            section === 'session'
+              ? 'bg-gold-400 text-jade-950 shadow-lg shadow-gold-500/20'
+              : 'text-jade-100/70 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <BookMarked className="w-4 h-4" />
+          جلسة الحفظ
+        </button>
+        <button
+          onClick={() => setSection('read')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+            section === 'read'
+              ? 'bg-gold-400 text-jade-950 shadow-lg shadow-gold-500/20'
+              : 'text-jade-100/70 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          قراءة النصّ
+        </button>
+      </div>
+
+      {section === 'session' ? (
+        <MemorizationSession riwayah={riwayah} onStatsUpdate={onStatsUpdate} />
+      ) : (
+        <>
       {/* Controls */}
       <div className="glass-panel rounded-2xl p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -360,6 +394,8 @@ export const Memorization: React.FC<MemorizationProps> = ({
             </>
           )}
         </motion.div>
+      )}
+        </>
       )}
     </div>
   );
