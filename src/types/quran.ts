@@ -115,3 +115,15 @@ export interface WordMatchStatus {
   status: 'correct' | 'wrong' | 'current' | 'pending';
   heardWord?: string;
 }
+
+export type RiwayahKey = 'hafs' | 'warsh';
+
+export interface RiwayahInfo {
+  key: RiwayahKey;
+  label: string; // e.g. "حفص"
+  fullName: string; // e.g. "حفص عن عاصم"
+  fontFamily: string; // CSS font-family name of the mushaf font
+  fontUrl: string; // .ttf source for the @font-face rule
+  ayahCount: number; // total ayat in this riwayah
+  hasAudio: boolean; // whether a recited audio player is available
+}

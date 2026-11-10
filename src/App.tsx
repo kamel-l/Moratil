@@ -10,6 +10,7 @@ import { Landing } from './components/Landing';
 import { VoiceReciter } from './components/VoiceReciter';
 import { RevisionPlans } from './components/RevisionPlans';
 import { SurahExplorer } from './components/SurahExplorer';
+import { Memorization } from './components/Memorization';
 import { CompetitionLeaderboard } from './components/CompetitionLeaderboard';
 import { StatsDashboard } from './components/StatsDashboard';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
@@ -25,9 +26,12 @@ import {
   RevisionPlan,
   FriendUser,
   QuranChallenge,
+  RiwayahKey,
 } from './types/quran';
 import { ALL_SURAHS } from './data/quranSurahsList';
-import { getSurahWithAyahs, PRELOADED_SURAHS } from './data/quranData';
+import { PRELOADED_SURAHS } from './data/quranData';
+import { getSurahWithAyahsByRiwayah } from './data/riwayahData';
+import { ensureRiwayahFont, RIWAYAT } from './data/riwayahConfig';
 import { POPULAR_RECITERS } from './utils/audioReciters';
 import {
   getUserStats,
@@ -41,6 +45,7 @@ import {
 export default function App() {
   const [showLanding, setShowLanding] = useState(true);
   const [currentTab, setCurrentTab] = useState<string>('recite');
+  const [riwayah, setRiwayah] = useState<RiwayahKey>('hafs');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(1);
   const [currentSurah, setCurrentSurah] = useState<Surah>(PRELOADED_SURAHS[1]);
   const [initialAyahForReciter, setInitialAyahForReciter] = useState<number>(1);
@@ -61,10 +66,10 @@ export default function App() {
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
 
-  // Load surah when selectedSurahNumber changes
+  // Load surah when selectedSurahNumber or riwayah changes
   useEffect(() => {
     let isMounted = true;
-    getSurahWithAyahs(selectedSurahNumber)
+    getSurahWithAyahsByRiwayah(selectedSurahNumber, riwayah)
       .then((surahData) => {
         if (isMounted) {
           setCurrentSurah(surahData);
@@ -79,7 +84,22 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [selectedSurahNumber]);
+  }, [selectedSurahNumber, riwayah]);
+
+  // Register the mushaf font for the selected riwayah once.
+  useEffect(() => {
+    ensureRiwayahFont(riwayah);
+  }, [riwayah]);
+
+  // Switching riwayah changes ayah boundaries; restart at the first ayah and
+  // stop the (Hafs-only) audio player when the riwayah has no audio.
+  useEffect(() => {
+    setInitialAyahForReciter(1);
+    setAudioAyahNumber(1);
+    if (!RIWAYAT[riwayah].hasAudio) {
+      setIsAudioPlayerOpen(false);
+    }
+  }, [riwayah]);
 
   const refreshAllState = useCallback(() => {
     setStats(getUserStats());
@@ -108,6 +128,7 @@ export default function App() {
 
   // Play audio for a specific surah
   const handlePlaySurahAudio = (surahNum: number) => {
+    if (!RIWAYAT[riwayah].hasAudio) return;
     setSelectedSurahNumber(surahNum);
     setAudioAyahNumber(1);
     setIsAudioPlayerOpen(true);
@@ -147,6 +168,9 @@ export default function App() {
         onOpenRewards={() => setIsRewardsModalOpen(true)}
         onToggleAudioPlayer={() => setIsAudioPlayerOpen(!isAudioPlayerOpen)}
         isAudioPlaying={isAudioPlayerOpen}
+        riwayah={riwayah}
+        onSelectRiwayah={setRiwayah}
+        audioAvailable={RIWAYAT[riwayah].hasAudio}
       />
 
       {/* Main Container */}
@@ -165,6 +189,7 @@ export default function App() {
                 surah={currentSurah}
                 initialAyahNumber={initialAyahForReciter}
                 selectedReciter={selectedReciter}
+                riwayah={riwayah}
                 onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
                 onStatsUpdate={refreshAllState}
                 onSelectSurahChange={(num, ayahNum = 1) => {
@@ -172,6 +197,15 @@ export default function App() {
                   setInitialAyahForReciter(ayahNum);
                 }}
                 allSurahsList={ALL_SURAHS}
+              />
+            )}
+
+            {/* Tab 2: Memorization (reading in the chosen riwayah) */}
+            {currentTab === 'memorize' && (
+              <Memorization
+                riwayah={riwayah}
+                onStartReciting={handleStartPracticingVerse}
+                onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
               />
             )}
 
@@ -196,6 +230,7 @@ export default function App() {
                 onPlaySurahAudio={handlePlaySurahAudio}
                 onOpenTafsir={(ayah) => setActiveTafsirAyah(ayah)}
                 completedSurahs={stats.completedSurahs}
+                riwayah={riwayah}
               />
             )}
 

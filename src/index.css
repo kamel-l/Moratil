@@ -168,3 +168,123 @@
 .animate-pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* صفحة مصحف مزخرفة (تبويب الحفظ) — إطار ذهبي حول صفحة داكنة */
+.mushaf-page {
+  position: relative;
+  padding: 10px;
+  border-radius: 1.5rem;
+  background-image: linear-gradient(
+    140deg,
+    rgba(224, 181, 68, 0.55),
+    rgba(224, 181, 68, 0.1) 42%,
+    rgba(31, 164, 119, 0.4)
+  );
+  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.8);
+}
+
+.mushaf-page-inner {
+  position: relative;
+  border-radius: 1.15rem;
+  background-color: #04231d;
+  background-image:
+    radial-gradient(circle at 50% -10%, rgba(224, 181, 68, 0.08), transparent 55%),
+    radial-gradient(rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+  background-size:
+    auto,
+    24px 24px;
+  padding: 2rem 1.5rem 1.25rem;
+  box-shadow: inset 0 0 0 1px rgba(224, 181, 68, 0.2);
+}
+
+/* شريط اسم السورة داخل الصفحة */
+.mushaf-surah-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 auto 1.25rem;
+  padding: 0.55rem 1.25rem;
+  border: 1px solid rgba(224, 181, 68, 0.5);
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    rgba(224, 181, 68, 0.04),
+    rgba(224, 181, 68, 0.18),
+    rgba(224, 181, 68, 0.04)
+  );
+  color: #f4e1a4;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-weight: 700;
+}
+.mushaf-surah-band::before {
+  content: '﴿';
+  color: rgba(224, 181, 68, 0.7);
+}
+.mushaf-surah-band::after {
+  content: '﴾';
+  color: rgba(224, 181, 68, 0.7);
+}
+
+/* البسملة أعلى السورة */
+.mushaf-bismillah {
+  text-align: center;
+  color: #eccb6c;
+  margin-bottom: 1.5rem;
+  font-size: clamp(1.15rem, 3.5vw, 1.5rem);
+  line-height: 2;
+}
+
+/* نصّ الآيات المتّصل كما في المصحف */
+.mushaf-text {
+  text-align: justify;
+  text-align-last: center;
+  color: #f5efe1;
+  font-size: clamp(1.35rem, 4.5vw, 1.9rem);
+  line-height: 2.5;
+  word-spacing: 0.06em;
+}
+
+/* زخرفة رقم الآية */
+.mushaf-ayah-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  margin: 0 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(224, 181, 68, 0.55);
+  background: radial-gradient(circle at 50% 35%, rgba(224, 181, 68, 0.28), rgba(224, 181, 68, 0.04));
+  color: #f4e1a4;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+button.mushaf-ayah-num {
+  cursor: pointer;
+}
+button.mushaf-ayah-num:hover {
+  transform: scale(1.12);
+  background: rgba(224, 181, 68, 0.4);
+  color: #04231d;
+}
+
+/* رقم الصفحة في أسفل الصفحة */
+.mushaf-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 1.5rem;
+  color: #eccb6c;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-size: 0.95rem;
+}

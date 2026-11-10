@@ -15,17 +15,27 @@ import {
   Headphones,
   Sparkles,
 } from 'lucide-react';
-import { Surah, Ayah, Reciter } from '../types/quran';
+import { Surah, Ayah, Reciter, RiwayahKey } from '../types/quran';
 import { extractWords } from '../utils/arabicUtils';
 import { getAyahAudioUrl } from '../utils/audioReciters';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import { useRecitationSession } from '../hooks/useRecitationSession';
 import { useAyahAudio } from '../hooks/useAyahAudio';
+import { RIWAYAT, riwayahFontFamily } from '../data/riwayahConfig';
+import { getAyahPages } from '../data/mushafPages';
+import {
+  buildAyahUnits,
+  findUnitIndexForAyah,
+  unitLabel,
+  DisplayUnit,
+} from '../utils/displayUnits';
+import { DisplayUnitControl } from './ui/DisplayUnitControl';
 
 interface VoiceReciterProps {
   surah: Surah;
   initialAyahNumber?: number;
   selectedReciter: Reciter;
+  riwayah: RiwayahKey;
   onOpenTafsir: (ayah: Ayah) => void;
   onStatsUpdate: () => void;
   onSelectSurahChange: (surahNum: number, ayahNum?: number) => void;
@@ -38,6 +48,7 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   surah,
   initialAyahNumber = 1,
   selectedReciter,
+  riwayah,
   onOpenTafsir,
   onStatsUpdate,
   onSelectSurahChange,
@@ -46,6 +57,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const [currentAyahIndex, setCurrentAyahIndex] = useState(() =>
     Math.max(0, Math.min(surah.ayahs.length - 1, initialAyahNumber - 1)),
   );
+
+  const [unit, setUnit] = useState<DisplayUnit>(1);
+  const [pages, setPages] = useState<number[] | null>(null);
 
   const [mode, setMode] = useState<RecitationMode>('karaoke');
   const [isListening, setIsListening] = useState(false);
@@ -81,6 +95,29 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
   const verseWords = useMemo(() => {
     return extractWords(currentAyah.text);
   }, [currentAyah]);
+
+  // Mushaf page numbers are only needed for the "full page" navigation unit.
+  useEffect(() => {
+    let isMounted = true;
+    setPages(null);
+    getAyahPages(surah.number, riwayah)
+      .then((data) => {
+        if (isMounted) setPages(data);
+      })
+      .catch(() => {
+        if (isMounted) setPages(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [surah.number, riwayah]);
+
+  const units = useMemo(
+    () => buildAyahUnits(surah.ayahs.length, unit, pages ?? undefined),
+    [surah.ayahs.length, unit, pages],
+  );
+
+  const currentUnitIndex = findUnitIndexForAyah(units, currentAyahIndex);
   const {
     currentWordIdx,
     matchedWords,
@@ -522,18 +559,25 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
     });
   };
 
-  const handleNextAyah = () => {
-    if (currentAyahIndex < surah.ayahs.length - 1) {
-      if (isSurahRecitationModeRef.current) void stopSurahRecitation();
-      setCurrentAyahIndex((prev) => prev + 1);
-    }
+  const goToAyahIndex = (targetIndex: number) => {
+    const clamped = Math.max(0, Math.min(surah.ayahs.length - 1, targetIndex));
+    if (clamped === currentAyahIndex) return;
+    if (isSurahRecitationModeRef.current) void stopSurahRecitation();
+    setCurrentAyahIndex(clamped);
   };
 
-  const handlePrevAyah = () => {
-    if (currentAyahIndex > 0) {
-      if (isSurahRecitationModeRef.current) void stopSurahRecitation();
-      setCurrentAyahIndex((prev) => prev - 1);
-    }
+  // Recitation keeps advancing ayah by ayah so word matching stays per-ayah.
+  const handleNextAyah = () => goToAyahIndex(currentAyahIndex + 1);
+
+  // Manual navigation follows the selected display unit (1 / 3 / 5 / full page).
+  const handleNextUnit = () => {
+    const nextUnit = units[currentUnitIndex + 1];
+    if (nextUnit) goToAyahIndex(nextUnit.startIndex);
+  };
+
+  const handlePrevUnit = () => {
+    const prevUnit = units[currentUnitIndex - 1];
+    if (prevUnit) goToAyahIndex(prevUnit.startIndex);
   };
 
   // Manual word simulator (for devices where mic is restricted or testing)
@@ -614,6 +658,17 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             <span>التفسير الميسر</span>
           </button>
         </div>
+
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <DisplayUnitControl value={unit} onChange={setUnit} />
+          <span className="text-[11px] font-semibold text-jade-100/70">
+            وحدة التنقّل: {unitLabel(units[currentUnitIndex])}
+            <span className="text-jade-100/45">
+              {' '}
+              · {currentUnitIndex + 1}/{units.length}
+            </span>
+          </span>
+        </div>
       </div>
 
       {/* Main Recitation Arena */}
@@ -626,6 +681,9 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
             </span>
             <span>·</span>
             <span>الجزء {currentAyah.juz}</span>
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-gold-200 bg-gold-400/10 border border-gold-400/30 px-2 py-0.5 rounded-md">
+              رواية {RIWAYAT[riwayah].label}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -731,7 +789,10 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
 
                   <p className="text-jade-100/70">
                     الكلمة الصحيحة:{' '}
-                    <span className="font-quran text-lg font-bold text-gold-300 px-1">
+                    <span
+                      className="font-quran text-lg font-bold text-gold-300 px-1"
+                      style={{ fontFamily: riwayahFontFamily(riwayah) }}
+                    >
                       {activeMistakeAlert.expected}
                     </span>
                   </p>
@@ -781,19 +842,19 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
           {/* Navigation: Prev / Next Ayah */}
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrevAyah}
-              disabled={currentAyahIndex === 0}
+              onClick={handlePrevUnit}
+              disabled={currentUnitIndex <= 0}
               className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="الآية السابقة"
+              title={unit === 1 ? 'الآية السابقة' : 'المقطع السابق'}
             >
               <ChevronRight className="w-5 h-5" />
             </button>
 
             <button
-              onClick={handleNextAyah}
-              disabled={currentAyahIndex === surah.ayahs.length - 1}
+              onClick={handleNextUnit}
+              disabled={currentUnitIndex >= units.length - 1}
               className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="الآية التالية"
+              title={unit === 1 ? 'الآية التالية' : 'المقطع التالي'}
             >
               <ChevronLeft className="w-5 h-5" />
             </button>

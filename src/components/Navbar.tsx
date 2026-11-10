@@ -11,8 +11,10 @@ import {
   AlertTriangle,
   Sparkles,
   Volume2,
+  BookMarked,
 } from 'lucide-react';
-import { UserStats } from '../types/quran';
+import { UserStats, RiwayahKey } from '../types/quran';
+import { RIWAYAT, RIWAYAH_ORDER } from '../data/riwayahConfig';
 
 interface NavbarProps {
   currentTab: string;
@@ -23,6 +25,9 @@ interface NavbarProps {
   onOpenRewards: () => void;
   onToggleAudioPlayer: () => void;
   isAudioPlaying: boolean;
+  riwayah: RiwayahKey;
+  onSelectRiwayah: (riwayah: RiwayahKey) => void;
+  audioAvailable: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -34,9 +39,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRewards,
   onToggleAudioPlayer,
   isAudioPlaying,
+  riwayah,
+  onSelectRiwayah,
+  audioAvailable,
 }) => {
   const navItems = [
     { id: 'recite', label: 'التسميع والتصحيح', icon: Mic },
+    { id: 'memorize', label: 'الحفظ', icon: BookMarked },
     { id: 'revision', label: 'خطط المراجعة والتثبيت', icon: CalendarClock },
     { id: 'explorer', label: 'المصحف والتفسير', icon: BookOpen },
     { id: 'competition', label: 'التنافس والأصدقاء', icon: Trophy },
@@ -72,6 +81,30 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Quick Stat Indicators */}
           <div className="flex items-center gap-1 sm:gap-3">
+            {/* Riwayah Switcher (global) */}
+            <div
+              className="flex items-center gap-0.5 bg-white/5 border border-white/10 rounded-lg p-0.5"
+              title="اختيار الرواية لكل التطبيق"
+            >
+              {RIWAYAH_ORDER.map((key) => {
+                const isActive = riwayah === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => onSelectRiwayah(key)}
+                    className={`px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-gold-400 text-jade-950 shadow-lg shadow-gold-500/20'
+                        : 'text-jade-100/70 hover:text-white'
+                    }`}
+                    title={RIWAYAT[key].fullName}
+                  >
+                    {RIWAYAT[key].label}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Forgotten Verses Alert (if any exist) */}
             {forgottenVersesCount > 0 && (
               <button
@@ -111,12 +144,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Audio Toggle Button */}
             <button
               onClick={onToggleAudioPlayer}
+              disabled={!audioAvailable}
               className={`p-1.5 sm:p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1 ${
-                isAudioPlaying
-                  ? 'bg-gold-400 text-jade-950 border-gold-400 shadow-lg shadow-gold-500/20 animate-pulse'
-                  : 'bg-white/5 hover:bg-white/10 text-jade-100 border-white/10'
+                !audioAvailable
+                  ? 'bg-white/5 text-jade-100/30 border-white/10 cursor-not-allowed'
+                  : isAudioPlaying
+                    ? 'bg-gold-400 text-jade-950 border-gold-400 shadow-lg shadow-gold-500/20 animate-pulse'
+                    : 'bg-white/5 hover:bg-white/10 text-jade-100 border-white/10'
               }`}
-              title="مشغل تلاوات القراء"
+              title={audioAvailable ? 'مشغل تلاوات القراء' : 'التلاوة الصوتية غير متوفرة لهذه الرواية'}
             >
               <Volume2 className="w-4 h-4" />
               <span className="hidden lg:inline">{isAudioPlaying ? 'قارئ نشط' : 'التلاوة'}</span>

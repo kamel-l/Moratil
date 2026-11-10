@@ -1,9 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, BookOpen, Mic, Volume2, Check, Sparkles, Filter, ArrowRight } from 'lucide-react';
+import {
+  Search,
+  BookOpen,
+  Mic,
+  Volume2,
+  Check,
+  Sparkles,
+  Filter,
+  ArrowRight,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-react';
 import { ALL_SURAHS, SurahMeta } from '../data/quranSurahsList';
-import { getSurahWithAyahs } from '../data/quranData';
-import { Surah, Ayah } from '../types/quran';
+import { getSurahWithAyahsByRiwayah } from '../data/riwayahData';
+import { getAyahPages } from '../data/mushafPages';
+import { RIWAYAT, riwayahFontFamily } from '../data/riwayahConfig';
+import { buildAyahUnits, findUnitIndexForAyah, unitLabel, DisplayUnit } from '../utils/displayUnits';
+import { DisplayUnitControl } from './ui/DisplayUnitControl';
+import { Surah, Ayah, RiwayahKey } from '../types/quran';
 import { TiltCard } from './ui/TiltCard';
 import { staggerContainer, staggerItem } from './ui/Reveal';
 
@@ -12,6 +27,7 @@ interface SurahExplorerProps {
   onPlaySurahAudio: (surahNumber: number) => void;
   onOpenTafsir: (ayah: Ayah) => void;
   completedSurahs: number[];
+  riwayah: RiwayahKey;
 }
 
 export const SurahExplorer: React.FC<SurahExplorerProps> = ({
@@ -19,11 +35,15 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
   onPlaySurahAudio,
   onOpenTafsir,
   completedSurahs,
+  riwayah,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'juz30' | 'makki' | 'madani'>('all');
   const [activeReadingSurah, setActiveReadingSurah] = useState<Surah | null>(null);
   const [loadingSurah, setLoadingSurah] = useState(false);
+  const [unit, setUnit] = useState<DisplayUnit>('page');
+  const [unitIndex, setUnitIndex] = useState(0);
+  const [pages, setPages] = useState<number[] | null>(null);
 
   const filteredSurahs = useMemo(() => {
     return ALL_SURAHS.filter((s) => {
@@ -42,14 +62,66 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
     });
   }, [searchTerm, filterType]);
 
+  // Ayah boundaries differ per riwayah; reload the open surah when it changes.
+  useEffect(() => {
+    if (!activeReadingSurah) return;
+    handleOpenReadingMode(activeReadingSurah.number);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riwayah]);
+
   const handleOpenReadingMode = async (surahNum: number) => {
     setLoadingSurah(true);
     try {
-      const fullSurah = await getSurahWithAyahs(surahNum);
+      const fullSurah = await getSurahWithAyahsByRiwayah(surahNum, riwayah);
       setActiveReadingSurah(fullSurah);
     } finally {
       setLoadingSurah(false);
     }
+  };
+
+  const readingSurahNumber = activeReadingSurah?.number;
+
+  // Mushaf page numbers are only needed for the "full page" display unit.
+  useEffect(() => {
+    if (!readingSurahNumber) return;
+    let isMounted = true;
+    setPages(null);
+    getAyahPages(readingSurahNumber, riwayah)
+      .then((data) => {
+        if (isMounted) setPages(data);
+      })
+      .catch(() => {
+        if (isMounted) setPages(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [readingSurahNumber, riwayah]);
+
+  useEffect(() => {
+    setUnitIndex(0);
+  }, [readingSurahNumber, riwayah]);
+
+  const ayahCount = activeReadingSurah?.ayahs.length ?? 0;
+
+  const units = useMemo(
+    () => buildAyahUnits(ayahCount, unit, pages ?? undefined),
+    [ayahCount, unit, pages],
+  );
+
+  const activeUnit = units[unitIndex];
+  const visibleAyahs = useMemo(
+    () =>
+      activeReadingSurah && activeUnit
+        ? activeReadingSurah.ayahs.slice(activeUnit.startIndex, activeUnit.endIndex + 1)
+        : [],
+    [activeReadingSurah, activeUnit],
+  );
+
+  const handleUnitChange = (nextUnit: DisplayUnit) => {
+    const anchor = units[unitIndex]?.startIndex ?? 0;
+    setUnit(nextUnit);
+    setUnitIndex(findUnitIndexForAyah(buildAyahUnits(ayahCount, nextUnit, pages ?? undefined), anchor));
   };
 
   return (
@@ -91,7 +163,15 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
 
               <button
                 onClick={() => onPlaySurahAudio(activeReadingSurah.number)}
-                className="flex items-center gap-1.5 glass-panel text-white hover:bg-white/10 text-xs font-semibold px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                disabled={!RIWAYAT[riwayah].hasAudio}
+                className={`flex items-center gap-1.5 glass-panel text-xs font-semibold px-3 py-2 rounded-xl transition-colors ${
+                  RIWAYAT[riwayah].hasAudio
+                    ? 'text-white hover:bg-white/10 cursor-pointer'
+                    : 'text-jade-100/30 cursor-not-allowed'
+                }`}
+                title={
+                  RIWAYAT[riwayah].hasAudio ? 'استماع لتلاوة السورة' : 'التلاوة غير متوفرة لهذه الرواية'
+                }
               >
                 <Volume2 className="w-4 h-4 text-gold-300" />
                 <span>استماع</span>
@@ -99,13 +179,51 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
             </div>
           </div>
 
+          {/* Display Unit & Navigation */}
+          {units.length > 0 && (
+            <div className="px-6 flex flex-wrap items-center justify-between gap-3">
+              <DisplayUnitControl value={unit} onChange={handleUnitChange} />
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setUnitIndex((i) => Math.max(0, i - 1))}
+                  disabled={unitIndex <= 0}
+                  className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  title="المقطع السابق"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <span className="min-w-32 text-center text-xs font-semibold text-jade-100/80">
+                  {unitLabel(activeUnit)}
+                  <span className="text-jade-100/45">
+                    {' '}
+                    · {unitIndex + 1}/{units.length}
+                  </span>
+                </span>
+
+                <button
+                  onClick={() => setUnitIndex((i) => Math.min(units.length - 1, i + 1))}
+                  disabled={unitIndex >= units.length - 1}
+                  className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-jade-100 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  title="المقطع التالي"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Verses with Inline Tafsir Al-Muyassar */}
           <div className="p-6 sm:p-10 space-y-8 divide-y divide-white/10">
-            {activeReadingSurah.ayahs.map((ayah) => (
+            {visibleAyahs.map((ayah) => (
               <div key={ayah.numberInSurah} className="pt-6 first:pt-0 space-y-4">
                 {/* Quran Scripture */}
-                <div className="text-right">
-                  <div className="font-quran text-2xl sm:text-3xl text-white leading-loose">
+                <div className="text-right" dir="rtl" lang="ar">
+                  <div
+                    className="font-quran text-2xl sm:text-3xl text-white leading-loose"
+                    style={{ fontFamily: riwayahFontFamily(riwayah) }}
+                  >
                     {ayah.text}
                     <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gold-400/50 text-gold-200 text-sm font-bold mx-2 select-none">
                       {ayah.numberInSurah}
