@@ -10,13 +10,15 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit && eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:generate": "node scripts/generate-reference-seed.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
+    "@supabase/supabase-js": "^2.119.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@vitejs/plugin-react": "^6.1.1",

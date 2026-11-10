@@ -5,10 +5,22 @@ import {
   Badge,
   FriendUser,
   QuranChallenge,
+  MasteryLevel,
+  RiwayahKey,
 } from '../types/quran';
+import { MemorizationStatus } from '../types/database';
+import {
+  getLocalUserId,
+  memorizationProgressRepo,
+  profileRepo,
+  recitationErrorRepo,
+  reviewScheduleRepo,
+} from './databaseService';
 
 const STATS_KEY = 'murattil_user_stats';
-const MASTERY_KEY = 'murattil_verse_mastery';
+// مفتاح النسخة القديمة (ما قبل قاعدة البيانات) — يُقرأ مرة واحدة عند الترحيل.
+const LEGACY_MASTERY_KEY = 'murattil_verse_mastery';
+const LEGACY_MIGRATION_FLAG = 'murattil_verse_mastery_migrated';
 const PLANS_KEY = 'murattil_revision_plans';
 const FRIENDS_KEY = 'murattil_friends';
 const CHALLENGES_KEY = 'murattil_challenges';
@@ -261,92 +273,199 @@ export function addPointsAndVerses(
   return stats;
 }
 
-export function getVerseMasteryMap(): Record<string, VerseMastery> {
-  try {
-    const raw = localStorage.getItem(MASTERY_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (error) {
-    console.warn('Unable to read verse mastery from localStorage', error);
-  }
+// -----------------------------------------------------------------------------
+// نظام التكرار المتباعد — مُخزَّن في جدولي memorization_progress و review_schedule
+// -----------------------------------------------------------------------------
 
-  const initial: Record<string, VerseMastery> = {};
-  saveVerseMasteryMap(initial);
-  return initial;
+/** فترات المراجعة بالأيام: 1 → 3 → 7 → 14 → 30. */
+const SPACED_INTERVALS = [1, 3, 7, 14, 30];
+
+/** يحوّل مستوى المجال إلى حالة قاعدة البيانات (للترحيل من النسخة القديمة). */
+function levelToStatus(level: MasteryLevel): MemorizationStatus {
+  if (level === 'mastered') return 'memorized';
+  if (level === 'review_needed') return 'needs_review';
+  if (level === 'new') return 'not_started';
+  return 'learning';
 }
 
-export function saveVerseMasteryMap(map: Record<string, VerseMastery>) {
-  try {
-    localStorage.setItem(MASTERY_KEY, JSON.stringify(map));
-  } catch (error) {
-    console.warn('Unable to save verse mastery to localStorage', error);
-  }
+/** يحوّل حالة قاعدة البيانات إلى مستوى المجال الذي تستهلكه الواجهات. */
+function statusToLevel(status: MemorizationStatus): MasteryLevel {
+  if (status === 'memorized') return 'mastered';
+  if (status === 'needs_review') return 'review_needed';
+  if (status === 'not_started') return 'new';
+  return 'good';
 }
 
 /**
- * Record recitation result of a verse in Spaced Repetition System
+ * ترحيل لمرة واحدة من الخريطة القديمة (murattil_verse_mastery) إلى الجدولين
+ * الجديدين. البيانات القديمة لا تحمل رواية، فتُنسب إلى الرواية المفضّلة في الملف
+ * الشخصي (الافتراضي: حفص).
+ */
+export function migrateLegacyVerseMasteryIfNeeded(): void {
+  try {
+    if (localStorage.getItem(LEGACY_MIGRATION_FLAG)) return;
+
+    const raw = localStorage.getItem(LEGACY_MASTERY_KEY);
+    const userId = getLocalUserId();
+
+    if (raw) {
+      const legacy = JSON.parse(raw) as Record<string, VerseMastery>;
+      const riwayah = profileRepo.get(userId)?.preferred_riwayah ?? 'hafs';
+      const alreadyTracked = memorizationProgressRepo
+        .listForUser(userId)
+        .some((row) => row.riwayah === riwayah);
+
+      if (!alreadyTracked) {
+        for (const item of Object.values(legacy)) {
+          const status = levelToStatus(item.level);
+          memorizationProgressRepo.upsertByAyah(userId, riwayah, item.surahNumber, item.ayahNumber, {
+            status,
+            mastery_level: Math.min(5, item.consecutiveSuccessCount),
+            consecutive_success_count: item.consecutiveSuccessCount,
+            mistake_count: item.mistakeCount,
+            last_reviewed_at: item.lastReviewedAt,
+            next_review_at: item.nextReviewAt,
+          });
+          reviewScheduleRepo.upsertByAyah(userId, riwayah, item.surahNumber, item.ayahNumber, {
+            due_at: item.nextReviewAt,
+            interval_days: 1,
+            repetitions: item.consecutiveSuccessCount,
+            last_result: status === 'needs_review' ? 'errors' : 'flawless',
+            last_reviewed_at: item.lastReviewedAt,
+          });
+        }
+      }
+    }
+
+    localStorage.setItem(LEGACY_MIGRATION_FLAG, new Date().toISOString());
+  } catch (error) {
+    console.warn('تعذّر ترحيل بيانات الحفظ القديمة', error);
+  }
+}
+
+/** خريطة إتقان الآيات للرواية المطلوبة، بمفاتيح '<سورة>_<آية>'. */
+export function getVerseMasteryMap(riwayah: RiwayahKey): Record<string, VerseMastery> {
+  migrateLegacyVerseMasteryIfNeeded();
+
+  const userId = getLocalUserId();
+  const map: Record<string, VerseMastery> = {};
+
+  for (const row of memorizationProgressRepo.listForUser(userId)) {
+    // الآيات التي لم تُسمَّع بعد لا تظهر في الخريطة.
+    if (row.riwayah !== riwayah || !row.last_reviewed_at) continue;
+
+    map[`${row.surah_number}_${row.ayah_number}`] = {
+      surahNumber: row.surah_number,
+      ayahNumber: row.ayah_number,
+      level: statusToLevel(row.status),
+      consecutiveSuccessCount: row.consecutive_success_count,
+      mistakeCount: row.mistake_count,
+      lastReviewedAt: row.last_reviewed_at,
+      nextReviewAt: row.next_review_at ?? row.last_reviewed_at,
+      recentMistakes: recitationErrorRepo.latestMistakes(
+        userId,
+        riwayah,
+        row.surah_number,
+        row.ayah_number,
+      ),
+    };
+  }
+
+  return map;
+}
+
+/**
+ * تسجيل نتيجة تسميع آية في نظام التكرار المتباعد.
+ * يكتب في memorization_progress و review_schedule وأخطاء الآية في recitation_errors.
  */
 export function recordVerseResult(
   surahNumber: number,
   ayahNumber: number,
   isFlawless: boolean,
-  mistakes: { expectedWord: string; recitedWord: string }[] = [],
+  mistakes: { expectedWord: string; recitedWord: string; wordIndex?: number }[] = [],
+  riwayah: RiwayahKey = 'hafs',
 ): VerseMastery {
-  const map = getVerseMasteryMap();
-  const key = `${surahNumber}_${ayahNumber}`;
+  migrateLegacyVerseMasteryIfNeeded();
+
+  const userId = getLocalUserId();
   const now = new Date();
+  const reviewedAt = now.toISOString();
+  const previous = memorizationProgressRepo.find(userId, riwayah, surahNumber, ayahNumber);
 
-  const current: VerseMastery = map[key] || {
-    surahNumber,
-    ayahNumber,
-    level: 'new',
-    consecutiveSuccessCount: 0,
-    mistakeCount: 0,
-    lastReviewedAt: now.toISOString(),
-    nextReviewAt: now.toISOString(),
-    recentMistakes: [],
-  };
-
-  current.lastReviewedAt = now.toISOString();
+  let consecutiveSuccessCount = previous?.consecutive_success_count ?? 0;
+  let mistakeCount = previous?.mistake_count ?? 0;
+  let masteryLevel = previous?.mastery_level ?? 0;
+  let status: MemorizationStatus;
+  let nextReviewAt: string;
+  let intervalDays: number;
 
   if (isFlawless) {
-    current.consecutiveSuccessCount += 1;
-    // Spaced repetition intervals: 1 day -> 3 days -> 7 days -> 14 days -> 30 days
-    const intervals = [1, 3, 7, 14, 30];
-    const offsetIndex = Math.max(0, current.consecutiveSuccessCount - 1);
-    const daysToAdd = intervals[Math.min(offsetIndex, intervals.length - 1)];
-    const nextDate = new Date(now.getTime() + daysToAdd * 86400000);
-    current.nextReviewAt = nextDate.toISOString();
-
-    if (current.consecutiveSuccessCount >= 3) {
-      current.level = 'mastered';
-    } else {
-      current.level = 'good';
-    }
+    consecutiveSuccessCount += 1;
+    masteryLevel = Math.min(5, consecutiveSuccessCount);
+    status = consecutiveSuccessCount >= 3 ? 'memorized' : 'learning';
+    // فترات متباعدة: 1 → 3 → 7 → 14 → 30 يومًا حسب طول السلسلة الناجحة.
+    intervalDays = SPACED_INTERVALS[Math.min(consecutiveSuccessCount - 1, SPACED_INTERVALS.length - 1)];
+    nextReviewAt = new Date(now.getTime() + intervalDays * 86400000).toISOString();
   } else {
-    current.mistakeCount += 1;
-    current.consecutiveSuccessCount = 0;
-    current.level = 'review_needed';
-    // Review again tomorrow or immediately
-    current.nextReviewAt = new Date(now.getTime() + 86400000).toISOString();
-
-    if (mistakes.length > 0) {
-      current.recentMistakes = [
-        ...mistakes.map((m) => ({ ...m, timestamp: now.toISOString() })),
-        ...current.recentMistakes,
-      ].slice(0, 5);
-    }
+    consecutiveSuccessCount = 0;
+    mistakeCount += 1;
+    masteryLevel = Math.max(0, masteryLevel - 1);
+    status = 'needs_review';
+    intervalDays = 1;
+    nextReviewAt = new Date(now.getTime() + intervalDays * 86400000).toISOString();
   }
 
-  map[key] = current;
-  saveVerseMasteryMap(map);
-  return current;
+  memorizationProgressRepo.upsertByAyah(userId, riwayah, surahNumber, ayahNumber, {
+    is_target: true,
+    status,
+    mastery_level: masteryLevel,
+    consecutive_success_count: consecutiveSuccessCount,
+    mistake_count: mistakeCount,
+    last_reviewed_at: reviewedAt,
+    next_review_at: nextReviewAt,
+  });
+
+  reviewScheduleRepo.upsertByAyah(userId, riwayah, surahNumber, ayahNumber, {
+    due_at: nextReviewAt,
+    interval_days: intervalDays,
+    repetitions: consecutiveSuccessCount,
+    last_result: isFlawless ? 'flawless' : 'errors',
+    last_reviewed_at: reviewedAt,
+  });
+
+  // سجل الأخطاء: تُضاف الحالات الجديدة وتُقرأ أحدث خمس حالات للعرض.
+  const previousMistakes = recitationErrorRepo.latestMistakes(
+    userId,
+    riwayah,
+    surahNumber,
+    ayahNumber,
+  );
+  let recentMistakes = previousMistakes;
+  if (!isFlawless && mistakes.length > 0) {
+    recitationErrorRepo.addForAyah(userId, riwayah, surahNumber, ayahNumber, mistakes);
+    recentMistakes = [
+      ...mistakes.map((mistake) => ({ ...mistake, timestamp: reviewedAt })),
+      ...previousMistakes,
+    ].slice(0, 5);
+  }
+
+  return {
+    surahNumber,
+    ayahNumber,
+    level: statusToLevel(status),
+    consecutiveSuccessCount,
+    mistakeCount,
+    lastReviewedAt: reviewedAt,
+    nextReviewAt,
+    recentMistakes,
+  };
 }
 
 /**
- * Returns all verses that need review or reinforcement due to past mistakes
+ * الآيات التي تحتاج مراجعة أو تثبيتًا بسبب أخطاء سابقة أو حلول موعد مراجعتها.
  */
-export function getVersesNeedingReinforcement(): VerseMastery[] {
-  const map = getVerseMasteryMap();
+export function getVersesNeedingReinforcement(riwayah: RiwayahKey): VerseMastery[] {
+  const map = getVerseMasteryMap(riwayah);
   const now = new Date();
 
   return Object.values(map).filter((item) => {

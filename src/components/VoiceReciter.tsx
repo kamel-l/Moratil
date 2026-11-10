@@ -183,7 +183,13 @@ export const VoiceReciter: React.FC<VoiceReciterProps> = ({
       recitedWord: heard,
     }));
 
-    recordVerseResult(surah.number, currentAyah.numberInSurah, isFlawless, mistakesArray);
+    recordVerseResult(
+      surah.number,
+      currentAyah.numberInSurah,
+      isFlawless,
+      mistakesArray,
+      riwayah,
+    );
 
     // Add points & update stats
     const earnedPoints = isFlawless ? 35 : 20;

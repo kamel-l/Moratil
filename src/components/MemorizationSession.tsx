@@ -300,7 +300,7 @@ export const MemorizationSession: React.FC<MemorizationSessionProps> = ({
         recitedWord: heard,
       }));
 
-      recordVerseResult(surah.number, ayah.numberInSurah, isFlawless, mistakes);
+      recordVerseResult(surah.number, ayah.numberInSurah, isFlawless, mistakes, riwayah);
       addPointsAndVerses(isFlawless ? 35 : 20, 1, 30, isFlawless ? 100 : 85);
       onStatsUpdate();
 
@@ -324,6 +324,7 @@ export const MemorizationSession: React.FC<MemorizationSessionProps> = ({
       rangeAyahs,
       reciteIndex,
       reciteWords,
+      riwayah,
       setIsAyahCompleted,
       stopListening,
       surah,
@@ -522,7 +523,7 @@ export const MemorizationSession: React.FC<MemorizationSessionProps> = ({
 
   const weakAyahs = useMemo(() => {
     if (phase !== 'results') return [];
-    const map = getVerseMasteryMap();
+    const map = getVerseMasteryMap(riwayah);
     return Object.values(map)
       .filter(
         (item) =>
@@ -530,7 +531,7 @@ export const MemorizationSession: React.FC<MemorizationSessionProps> = ({
           (item.level === 'review_needed' || item.mistakeCount > 0),
       )
       .sort((a, b) => a.ayahNumber - b.ayahNumber);
-  }, [phase, surahNumber]);
+  }, [phase, surahNumber, riwayah]);
 
   const quranFont = riwayahFontFamily(riwayah);
   const stepIndex = STEPS.findIndex((s) => s.key === phase);

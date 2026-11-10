@@ -53,9 +53,9 @@ export default function App() {
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(POPULAR_RECITERS[0]);
   const [stats, setStats] = useState<UserStats>(getUserStats());
   const [verseMasteryMap, setVerseMasteryMap] =
-    useState<Record<string, VerseMastery>>(getVerseMasteryMap());
-  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(
-    getVersesNeedingReinforcement(),
+    useState<Record<string, VerseMastery>>(() => getVerseMasteryMap(riwayah));
+  const [forgottenVerses, setForgottenVerses] = useState<VerseMastery[]>(() =>
+    getVersesNeedingReinforcement(riwayah),
   );
   const [plans, setPlans] = useState<RevisionPlan[]>(getRevisionPlans());
   const [friends, setFriends] = useState<FriendUser[]>(getFriends());
@@ -103,12 +103,17 @@ export default function App() {
 
   const refreshAllState = useCallback(() => {
     setStats(getUserStats());
-    setVerseMasteryMap(getVerseMasteryMap());
-    setForgottenVerses(getVersesNeedingReinforcement());
+    setVerseMasteryMap(getVerseMasteryMap(riwayah));
+    setForgottenVerses(getVersesNeedingReinforcement(riwayah));
     setPlans(getRevisionPlans());
     setFriends(getFriends());
     setChallenges(getChallenges());
-  }, []);
+  }, [riwayah]);
+
+  // Re-derive mastery/review state whenever the riwayah changes (ayah sets differ).
+  useEffect(() => {
+    refreshAllState();
+  }, [refreshAllState]);
 
   // Jump directly to practicing a specific forgotten verse
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
