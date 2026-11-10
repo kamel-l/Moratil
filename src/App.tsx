@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Navbar } from './components/Navbar';
 import { Landing } from './components/Landing';
@@ -16,6 +16,9 @@ import { StatsDashboard } from './components/StatsDashboard';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
+import { AccountSync } from './components/AccountSync';
+import { AuthGate } from './components/AuthGate';
+import { Loader2 } from 'lucide-react';
 
 import {
   Surah,
@@ -41,6 +44,15 @@ import {
   getFriends,
   getChallenges,
 } from './services/storageService';
+import {
+  isAuthAvailable,
+  observeAuth,
+  signInWithEmail,
+  signOut,
+  signUpWithEmail,
+  type AuthUser,
+} from './services/authService';
+import { getLastSyncAt, syncNow, type SyncResult } from './services/syncService';
 
 export default function App() {
   const [showLanding, setShowLanding] = useState(true);
@@ -65,6 +77,11 @@ export default function App() {
   const [isRewardsModalOpen, setIsRewardsModalOpen] = useState(false);
   const [isAudioPlayerOpen, setIsAudioPlayerOpen] = useState(false);
   const [audioAyahNumber, setAudioAyahNumber] = useState(1);
+
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(() => getLastSyncAt());
 
   // Load surah when selectedSurahNumber or riwayah changes
   useEffect(() => {
@@ -115,6 +132,54 @@ export default function App() {
     refreshAllState();
   }, [refreshAllState]);
 
+  // Keep a stable reference to the latest refresher for the auth/sync callbacks.
+  const refreshRef = useRef(refreshAllState);
+  useEffect(() => {
+    refreshRef.current = refreshAllState;
+  }, [refreshAllState]);
+
+  /** ينفّذ مزامنة كاملة ثم يحدّث الحالة المشتقّة، ويُعيد النتيجة لعرضها. */
+  const runSync = useCallback(async (): Promise<SyncResult> => {
+    const result = await syncNow();
+    setLastSyncAt(getLastSyncAt());
+    refreshRef.current();
+    return result;
+  }, []);
+
+  // Observe the Supabase session: adopt the user and sync on sign-in.
+  useEffect(() => {
+    return observeAuth((user) => {
+      setAuthUser(user);
+      setAuthChecked(true);
+      if (!user) return;
+      // Defer Supabase calls out of the auth callback to avoid re-entrancy.
+      setTimeout(() => {
+        void runSync();
+      }, 0);
+    });
+  }, [runSync]);
+
+  const handleSignIn = useCallback(
+    async (email: string, password: string) => {
+      setAuthUser(await signInWithEmail(email, password));
+      await runSync();
+    },
+    [runSync],
+  );
+
+  const handleSignUp = useCallback(
+    async (email: string, password: string) => {
+      setAuthUser(await signUpWithEmail(email, password));
+      await runSync();
+    },
+    [runSync],
+  );
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    setAuthUser(null);
+  }, []);
+
   // Jump directly to practicing a specific forgotten verse
   const handleStartPracticingVerse = (surahNum: number, ayahNum: number) => {
     setSelectedSurahNumber(surahNum);
@@ -155,6 +220,25 @@ export default function App() {
     );
   }
 
+  // Require an account before entering when cloud auth is available.
+  const authRequired = isAuthAvailable();
+  if (authRequired && !authChecked) {
+    return (
+      <div className="min-h-screen bg-jade-950 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-gold-300" />
+      </div>
+    );
+  }
+  if (authRequired && !authUser) {
+    return (
+      <AuthGate
+        onSignIn={handleSignIn}
+        onSignUp={handleSignUp}
+        onBackToLanding={() => setShowLanding(true)}
+      />
+    );
+  }
+
   return (
     <motion.div
       key="workspace"
@@ -176,6 +260,8 @@ export default function App() {
         riwayah={riwayah}
         onSelectRiwayah={setRiwayah}
         audioAvailable={RIWAYAT[riwayah].hasAudio}
+        onOpenAccount={() => setIsAccountOpen(true)}
+        accountEmail={authUser?.email ?? null}
       />
 
       {/* Main Container */}
@@ -285,6 +371,20 @@ export default function App() {
       {/* Rewards & Badges Modal */}
       {isRewardsModalOpen && (
         <RewardsModal stats={stats} onClose={() => setIsRewardsModalOpen(false)} />
+      )}
+
+      {/* Account & Cloud Sync Modal */}
+      {isAccountOpen && (
+        <AccountSync
+          user={authUser}
+          authAvailable={isAuthAvailable()}
+          lastSyncAt={lastSyncAt}
+          onSignIn={handleSignIn}
+          onSignUp={handleSignUp}
+          onSignOut={handleSignOut}
+          onSyncNow={runSync}
+          onClose={() => setIsAccountOpen(false)}
+        />
       )}
     </motion.div>
   );

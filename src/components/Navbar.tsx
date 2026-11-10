@@ -12,6 +12,7 @@ import {
   Sparkles,
   Volume2,
   BookMarked,
+  User,
 } from 'lucide-react';
 import { UserStats, RiwayahKey } from '../types/quran';
 import { RIWAYAT, RIWAYAH_ORDER } from '../data/riwayahConfig';
@@ -28,6 +29,8 @@ interface NavbarProps {
   riwayah: RiwayahKey;
   onSelectRiwayah: (riwayah: RiwayahKey) => void;
   audioAvailable: boolean;
+  onOpenAccount: () => void;
+  accountEmail: string | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -42,6 +45,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   riwayah,
   onSelectRiwayah,
   audioAvailable,
+  onOpenAccount,
+  accountEmail,
 }) => {
   const navItems = [
     { id: 'recite', label: 'التسميع والتصحيح', icon: Mic },
@@ -139,6 +144,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Sparkles className="w-4 h-4 text-gold-300" />
               <span>{stats.points.toLocaleString('ar-EG')}</span>
               <span className="text-gold-300 font-normal hidden sm:inline">حسنة</span>
+            </button>
+
+            {/* Account & Cloud Sync */}
+            <button
+              onClick={onOpenAccount}
+              className={`relative p-1.5 sm:p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1 cursor-pointer ${
+                accountEmail
+                  ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30 hover:bg-emerald-500/25'
+                  : 'bg-white/5 hover:bg-white/10 text-jade-100 border-white/10'
+              }`}
+              title={accountEmail ? `الحساب: ${accountEmail}` : 'تسجيل الدخول والمزامنة السحابية'}
+            >
+              <User className="w-4 h-4" />
+              <span className="hidden lg:inline">{accountEmail ? 'متزامن' : 'الحساب'}</span>
+              {accountEmail && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-jade-950" />
+              )}
             </button>
 
             {/* Audio Toggle Button */}

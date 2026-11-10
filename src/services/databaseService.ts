@@ -12,7 +12,7 @@
  *  - لا يُخزَّن نص القرآن هنا؛ الجدولان surahs/ayahs مرجعيان في الحزم المحلية.
  */
 
-import { DatabaseRowMap, NewRow, RowPatch, StoredRow, SyncableTable } from '../types/database';
+import { DatabaseRowMap, NewRow, RowPatch, StoredRow, SyncStamp, SyncableTable } from '../types/database';
 import { VerseMastery } from '../types/quran';
 
 /** سجل خطأ واحد بصيغة العرض (مطابق لعنصر recentMistakes في VerseMastery). */
@@ -68,6 +68,37 @@ export function setLocalUserId(userId: string): void {
   } catch (error) {
     console.warn('تعذّر حفظ مُعرّف المستخدم', error);
   }
+}
+
+/**
+ * يعيد نسب البيانات المحلية من مُعرّف محلي قديم إلى مُعرّف مستخدم مصادَق (auth.uid)
+ * عند أول تسجيل دخول، ويوسم الصفوف المتأثرة بالانتظار لتُرفع في أول مزامنة.
+ * (الملف الشخصي يُعاد مفتاحه لأن معرّفه هو نفسه معرّف المستخدم.)
+ */
+export function claimLocalData(fromUserId: string, toUserId: string): number {
+  if (!fromUserId || fromUserId === toUserId) return 0;
+
+  const pending: SyncStamp = { state: 'pending', lastSyncedAt: null };
+  let claimed = 0;
+
+  for (const table of SYNCABLE_TABLES) {
+    const rows = readTable(table) as unknown as (Record<string, unknown> & { id: string })[];
+    let touched = false;
+
+    const next = rows.map((row) => {
+      const isOwner = table === 'profiles' ? row.id === fromUserId : row.user_id === fromUserId;
+      if (!isOwner) return row;
+      touched = true;
+      claimed += 1;
+      return table === 'profiles'
+        ? { ...row, id: toUserId, _sync: pending }
+        : { ...row, user_id: toUserId, _sync: pending };
+    });
+
+    if (touched) writeTable(table, next as unknown as StoredRow<DatabaseRowMap[SyncableTable]>[]);
+  }
+
+  return claimed;
 }
 
 const tableKey = (table: SyncableTable) => `${KEY_PREFIX}${table}`;

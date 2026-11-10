@@ -11,14 +11,14 @@
     "lint": "tsc --noEmit && eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "test": "vitest run",
-    "seed:generate": "node scripts/generate-reference-seed.mjs"
+    "seed:generate": "node scripts/generate-reference-seed.mjs",
+    "hafs:generate": "node scripts/generate-hafs-text.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
-    "@supabase/supabase-js": "^2.119.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@vitejs/plugin-react": "^6.1.1",
