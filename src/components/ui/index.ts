@@ -7,3 +7,5 @@ export { PageHero, type PageHeroProps } from './PageHero';
 export { ProgressBar, type ProgressBarProps } from './ProgressBar';
 export { SectionCard, type SectionCardProps } from './SectionCard';
 export { StatCard, type StatCardProps, type StatTone } from './StatCard';
+export { TiltCard } from './TiltCard';
+export { Reveal, staggerContainer, staggerItem } from './Reveal';

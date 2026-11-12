@@ -4,11 +4,13 @@
  */
 
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Navbar } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
 import { HomeDashboard } from './components/HomeDashboard';
+import { Landing } from './components/Landing';
 import { TafsirModal } from './components/TafsirModal';
 import { RewardsModal } from './components/RewardsModal';
 
@@ -110,6 +112,7 @@ function getProgressSyncErrorMessage(error: unknown): string {
 }
 
 export default function App() {
+  const [showLanding, setShowLanding] = useState<boolean>(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -146,11 +149,27 @@ export default function App() {
     }
   };
 
+  if (showLanding) {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="landing"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <Landing onEnter={() => setShowLanding(false)} />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   if (!isAuthReady) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-stone-100" dir="rtl">
-        <div className="flex items-center gap-3 text-emerald-900" role="status">
-          <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+      <main className="flex min-h-screen items-center justify-center bg-jade-950 text-white" dir="rtl">
+        <div className="flex items-center gap-3 text-gold-300" role="status">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-gold-400 border-t-transparent" />
           جارٍ التحقق من تسجيل الدخول...
         </div>
       </main>
@@ -158,12 +177,15 @@ export default function App() {
   }
 
   if (!userEmail) {
-    return <LoginScreen authError={authError} />;
+    return <LoginScreen authError={authError} onBackToLanding={() => setShowLanding(true)} />;
   }
 
   if (!userId) {
     return (
-      <LoginScreen authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول." />
+      <LoginScreen
+        authError="تعذر تحديد حساب المستخدم. سجّل الخروج ثم أعد تسجيل الدخول."
+        onBackToLanding={() => setShowLanding(true)}
+      />
     );
   }
 
@@ -179,8 +201,8 @@ export default function App() {
 
 function TabLoadingFallback() {
   return (
-    <div className="flex min-h-64 items-center justify-center gap-3 text-emerald-900" role="status">
-      <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+    <div className="flex min-h-64 items-center justify-center gap-3 text-gold-300" role="status">
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-gold-400 border-t-transparent" />
       جارٍ تحميل الصفحة...
     </div>
   );
@@ -425,11 +447,11 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   return (
     <div
       dir="rtl"
-      className={`bg-stone-100/60 text-stone-900 font-sans selection:bg-emerald-500/20 ${
-        reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'
+      className={`bg-jade-950 text-white font-sans selection:bg-gold-400/25 ${
+        reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen pb-28'
       }`}
       style={{
-        paddingBottom: reciteActive ? undefined : 'var(--audio-player-offset, 0px)',
+        paddingBottom: reciteActive ? undefined : 'calc(var(--audio-player-offset, 0px) + 2rem)',
       }}
     >
       {/* ═══════════ شريط التنقل العلوي ═══════════ */}
