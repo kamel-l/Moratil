@@ -1,5 +1,40 @@
 @import 'tailwindcss';
 
+/*
+  Thème « Émeraude & Or mystique »
+  - Émeraude profond : couleur de marque (sérénité, sacré)
+  - Or : accents premium (récompenses, éléments sacrés)
+  - Fond crème : lisibilité longue durée sur texte arabe
+*/
+@theme {
+  /* Palette Or */
+  --color-gold-50: #fdfaef;
+  --color-gold-100: #faf1d4;
+  --color-gold-200: #f4e1a4;
+  --color-gold-300: #eccb6c;
+  --color-gold-400: #e0b544;
+  --color-gold-500: #cfa12f;
+  --color-gold-600: #b3821f;
+  --color-gold-700: #8f631c;
+  --color-gold-800: #764f1d;
+  --color-gold-900: #65421d;
+
+  /* Efflorescence : émeraude profond « nuit sacrée » */
+  --color-jade-50: #eefbf5;
+  --color-jade-100: #d5f5e6;
+  --color-jade-200: #aeead0;
+  --color-jade-300: #78d8b4;
+  --color-jade-400: #43bf93;
+  --color-jade-500: #1fa477;
+  --color-jade-600: #12855f;
+  --color-jade-700: #0d6a4e;
+  --color-jade-800: #0b5340;
+  --color-jade-900: #093f32;
+  --color-jade-950: #04231d;
+
+  --font-display: 'Reem Kufi', 'Amiri', serif;
+}
+
 @layer base {
   body {
     font-family:
@@ -10,6 +45,18 @@
       'Segoe UI',
       Roboto,
       sans-serif;
+  }
+
+  /* Respect du réglage système « réduire les animations » */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -44,6 +91,10 @@
   font-family: 'Scheherazade New', 'Amiri', serif;
 }
 
+.font-display {
+  font-family: 'Reem Kufi', 'Amiri', serif;
+}
+
 /* Islamic arabesque subtle pattern backgrounds */
 .bg-islamic-pattern {
   background-color: #062f27;
@@ -59,6 +110,50 @@
 .bg-pattern-subtle {
   background-image: radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/* Dégradé émeraude profond → or : signature visuelle de la marque */
+.bg-brand-gradient {
+  background-image: linear-gradient(135deg, #04231d 0%, #0b5340 45%, #0d6a4e 100%);
+}
+
+.text-gold-gradient {
+  background-image: linear-gradient(120deg, #f4e1a4 0%, #e0b544 45%, #cfa12f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Verre dépoli pour panneaux flottants (dark glassmorphism) */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Contexte 3D pour les cartes à inclinaison */
+.perspective-1200 {
+  perspective: 1200px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* Halo lumineux animé (or) */
+@keyframes float-orb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -24px, 0) scale(1.06);
+  }
+}
+
+.animate-float-orb {
+  animation: float-orb 9s ease-in-out infinite;
 }
 
 @layer utilities {
@@ -90,17 +185,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
 }
 
@@ -137,4 +221,124 @@
 
 .animate-pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* صفحة مصحف مزخرفة (تبويب الحفظ) — إطار ذهبي حول صفحة داكنة */
+.mushaf-page {
+  position: relative;
+  padding: 10px;
+  border-radius: 1.5rem;
+  background-image: linear-gradient(
+    140deg,
+    rgba(224, 181, 68, 0.55),
+    rgba(224, 181, 68, 0.1) 42%,
+    rgba(31, 164, 119, 0.4)
+  );
+  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.8);
+}
+
+.mushaf-page-inner {
+  position: relative;
+  border-radius: 1.15rem;
+  background-color: #04231d;
+  background-image:
+    radial-gradient(circle at 50% -10%, rgba(224, 181, 68, 0.08), transparent 55%),
+    radial-gradient(rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+  background-size:
+    auto,
+    24px 24px;
+  padding: 2rem 1.5rem 1.25rem;
+  box-shadow: inset 0 0 0 1px rgba(224, 181, 68, 0.2);
+}
+
+/* شريط اسم السورة داخل الصفحة */
+.mushaf-surah-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 auto 1.25rem;
+  padding: 0.55rem 1.25rem;
+  border: 1px solid rgba(224, 181, 68, 0.5);
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    rgba(224, 181, 68, 0.04),
+    rgba(224, 181, 68, 0.18),
+    rgba(224, 181, 68, 0.04)
+  );
+  color: #f4e1a4;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-weight: 700;
+}
+.mushaf-surah-band::before {
+  content: '﴿';
+  color: rgba(224, 181, 68, 0.7);
+}
+.mushaf-surah-band::after {
+  content: '﴾';
+  color: rgba(224, 181, 68, 0.7);
+}
+
+/* البسملة أعلى السورة */
+.mushaf-bismillah {
+  text-align: center;
+  color: #eccb6c;
+  margin-bottom: 1.5rem;
+  font-size: clamp(1.15rem, 3.5vw, 1.5rem);
+  line-height: 2;
+}
+
+/* نصّ الآيات المتّصل كما في المصحف */
+.mushaf-text {
+  text-align: justify;
+  text-align-last: center;
+  color: #f5efe1;
+  font-size: clamp(1.35rem, 4.5vw, 1.9rem);
+  line-height: 2.5;
+  word-spacing: 0.06em;
+}
+
+/* زخرفة رقم الآية */
+.mushaf-ayah-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  margin: 0 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(224, 181, 68, 0.55);
+  background: radial-gradient(circle at 50% 35%, rgba(224, 181, 68, 0.28), rgba(224, 181, 68, 0.04));
+  color: #f4e1a4;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+button.mushaf-ayah-num {
+  cursor: pointer;
+}
+button.mushaf-ayah-num:hover {
+  transform: scale(1.12);
+  background: rgba(224, 181, 68, 0.4);
+  color: #04231d;
+}
+
+/* رقم الصفحة في أسفل الصفحة */
+.mushaf-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 1.5rem;
+  color: #eccb6c;
+  font-family: 'Reem Kufi', 'Amiri', serif;
+  font-size: 0.95rem;
 }

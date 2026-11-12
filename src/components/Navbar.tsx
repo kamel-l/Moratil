@@ -75,28 +75,28 @@ export const Navbar: React.FC<NavbarProps> = ({
     syncStatus === 'syncing' ? Loader2 : syncStatus === 'error' ? CloudOff : Cloud;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-stone-200 bg-white/95 shadow-xs backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-jade-950/85 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-xl text-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-2 sm:h-20 sm:gap-4">
           <button
             type="button"
-            className="flex items-center gap-2 text-right sm:gap-3"
+            className="flex items-center gap-2 rounded-xl text-right focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-400 sm:gap-3 cursor-pointer"
             onClick={() => onSelectTab('home')}
             aria-label="العودة إلى الرئيسية"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-700 font-serif text-xl font-bold text-amber-300 shadow-inner sm:h-11 sm:w-11 sm:text-2xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gold-400 font-display text-xl font-bold text-jade-950 shadow-lg shadow-gold-500/20 sm:h-11 sm:w-11 sm:text-2xl">
               مُ
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-serif text-lg font-bold tracking-tight text-stone-900 sm:text-xl">
+                <span className="font-display text-lg font-bold tracking-tight text-white sm:text-xl">
                   مُرتِّل
                 </span>
-                <span className="hidden rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 sm:inline-flex">
+                <span className="hidden rounded-full border border-gold-400/30 bg-white/5 px-2.5 py-0.5 text-[11px] font-semibold text-gold-200 sm:inline-flex">
                   القرآن الذكي
                 </span>
               </div>
-              <p className="hidden text-[11px] text-stone-500 sm:block">
+              <p className="hidden text-[11px] text-jade-100/60 sm:block">
                 تحفيظ ومراجعة القرآن الكريم بالتصحيح الصوتي اللحظي
               </p>
             </div>
@@ -113,10 +113,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : SYNC_LABELS[syncStatus]
               }
               className={cn(
-                'hidden items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors md:flex',
+                'hidden items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 md:flex',
                 syncStatus === 'error'
-                  ? 'cursor-pointer border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100'
-                  : 'border-stone-200 bg-stone-50 text-stone-500',
+                  ? 'cursor-pointer border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25'
+                  : 'border-white/10 bg-white/5 text-jade-100/70',
               )}
             >
               <SyncIcon
@@ -129,39 +129,39 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={onOpenForgottenVerses}
-                className="group flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-1.5 py-1.5 text-xs font-medium text-amber-900 transition-all hover:bg-amber-100 sm:gap-1.5 sm:px-2.5"
+                className="group flex items-center gap-1 rounded-xl border border-amber-400/30 bg-amber-500/15 px-1.5 py-1.5 text-xs font-medium text-amber-200 transition-all hover:border-amber-400/60 hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 sm:gap-1.5 sm:px-2.5 cursor-pointer"
                 title="تنبيه: آيات تحتاج لمراجعة وتثبيت"
               >
-                <AlertTriangle className="h-4 w-4 text-amber-600 transition-transform group-hover:scale-110" />
+                <AlertTriangle className="h-4 w-4 text-amber-300 transition-transform group-hover:scale-110" />
                 <span className="hidden md:inline">آيات تحتاج تثبيت:</span>
-                <span className="rounded-full bg-amber-600 px-1.5 py-0.5 text-[11px] font-bold text-white">
+                <span className="rounded-full bg-amber-500/30 px-1.5 py-0.5 text-[11px] font-bold text-amber-100 border border-amber-400/40">
                   {forgottenVersesCount.toLocaleString('ar-EG')}
                 </span>
               </button>
             )}
 
             <div
-              className="flex items-center gap-1 rounded-lg bg-stone-100/90 px-2 py-1.5 text-xs font-semibold text-stone-800 sm:gap-1.5 sm:px-3"
+              className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs font-semibold text-white sm:gap-1.5 sm:px-3"
               title="أيام الالتزام المتتالية بالحفظ والمراجعة"
             >
-              <Flame className="h-4 w-4 fill-amber-500 text-amber-500" />
+              <Flame className="h-4 w-4 fill-amber-400 text-amber-400" />
               <span>{stats.streakDays.toLocaleString('ar-EG')}</span>
-              <span className="hidden font-normal text-stone-500 sm:inline">أيام</span>
+              <span className="hidden font-normal text-jade-100/60 sm:inline">أيام</span>
             </div>
 
             <button
               type="button"
               onClick={onOpenRewards}
-              className="flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-900 transition-colors hover:bg-emerald-100/80 sm:gap-1.5 sm:px-3"
+              className="flex cursor-pointer items-center gap-1 rounded-xl border border-gold-400/30 bg-gold-400/10 px-2 py-1.5 text-xs font-semibold text-gold-200 transition-colors hover:border-gold-400/60 hover:bg-gold-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 sm:gap-1.5 sm:px-3"
               title="رصيد الحسنات ونقاط الإتقان - انقر لعرض الأوسمة"
             >
-              <Sparkles className="h-4 w-4 text-emerald-600" />
+              <Sparkles className="h-4 w-4 text-gold-300" />
               <span>{stats.points.toLocaleString('ar-EG')}</span>
-              <span className="hidden font-normal text-emerald-700 sm:inline">حسنة</span>
+              <span className="hidden font-normal text-gold-200/80 sm:inline">حسنة</span>
             </button>
 
             <div
-              className="flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5"
+              className="flex items-center rounded-xl border border-white/10 bg-white/5 p-0.5"
               title="اختيار الرواية: حفص عن عاصم أو ورش عن نافع"
               role="group"
               aria-label="اختيار الرواية"
@@ -171,10 +171,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => onRiwayaChange('hafs')}
                 aria-pressed={riwaya === 'hafs'}
                 className={cn(
-                  'rounded-md px-2 py-1 text-xs font-bold transition-colors',
+                  'rounded-lg px-2 py-1 text-xs font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-400 cursor-pointer',
                   riwaya === 'hafs'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-stone-500 hover:text-stone-800',
+                    ? 'bg-gold-400 text-jade-950 shadow-xs'
+                    : 'text-jade-100/60 hover:text-white',
                 )}
               >
                 حفص
@@ -184,10 +184,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => onRiwayaChange('warsh')}
                 aria-pressed={riwaya === 'warsh'}
                 className={cn(
-                  'rounded-md px-2 py-1 text-xs font-bold transition-colors',
+                  'rounded-lg px-2 py-1 text-xs font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-400 cursor-pointer',
                   riwaya === 'warsh'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-stone-500 hover:text-stone-800',
+                    ? 'bg-gold-400 text-jade-950 shadow-xs'
+                    : 'text-jade-100/60 hover:text-white',
                 )}
               >
                 ورش
@@ -198,10 +198,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onToggleAudioPlayer}
               className={cn(
-                'flex items-center gap-1 rounded-lg border p-1.5 text-xs font-medium transition-all sm:p-2',
+                'flex items-center gap-1 rounded-xl border p-1.5 text-xs font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 sm:p-2 cursor-pointer',
                 isAudioPlaying
-                  ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
-                  : 'border-stone-200 bg-stone-100 text-stone-700 hover:bg-stone-200',
+                  ? 'border-gold-400 bg-gold-400 text-jade-950 font-bold shadow-sm'
+                  : 'border-white/10 bg-white/5 text-jade-100 hover:border-gold-400/40 hover:bg-white/10',
               )}
               title="مشغل تلاوات القراء"
               aria-pressed={isAudioPlaying}
@@ -213,7 +213,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               type="button"
               onClick={onSignOut}
-              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-medium text-stone-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs font-medium text-jade-100/70 transition hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 cursor-pointer"
               title={`تسجيل الخروج من ${userEmail}`}
               aria-label="تسجيل الخروج"
             >
@@ -223,7 +223,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        <nav className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-stone-100 py-2">
+        <nav
+          aria-label="التنقل الرئيسي"
+          className="no-scrollbar flex snap-x snap-mandatory items-center gap-1 overflow-x-auto border-t border-white/10 py-2"
+        >
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -234,13 +237,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => onSelectTab(item.id)}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm',
+                  'relative flex snap-start items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 sm:px-4 sm:text-sm cursor-pointer',
                   isActive
-                    ? 'bg-emerald-800 text-white shadow-xs'
-                    : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
+                    ? 'bg-gold-400 text-jade-950 font-bold shadow-sm shadow-gold-500/20 after:absolute after:bottom-1 after:left-1/2 after:h-0.5 after:w-5 after:-translate-x-1/2 after:rounded-full after:bg-jade-950'
+                    : 'text-jade-100/75 hover:bg-white/10 hover:text-white',
                 )}
               >
-                <Icon className={cn('h-4 w-4', isActive ? 'text-amber-300' : 'text-stone-500')} />
+                <Icon className={cn('h-4 w-4', isActive ? 'text-jade-950' : 'text-jade-200/70')} />
                 <span>{item.label}</span>
               </button>
             );
