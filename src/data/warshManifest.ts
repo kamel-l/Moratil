@@ -7,6 +7,9 @@
 
 export const WARSH_TOTAL_AYAHS = 6214;
 
+/** SHA-256 of the canonical text, so the seed builder can re-check the asset. */
+export const WARSH_TEXT_SHA256 = "801482fb3a84c4b9abf0661b65de1e56a85819dde468ba4e54138ac9f5955694";
+
 export const WARSH_BASMALAH = "بِسْمِ ࡴ۬للَّهِ ࡴ۬لرَّحْمَٰنِ ࡴ۬لرَّحِيمِ";
 
 export interface WarshSurahInfo {
@@ -944,6 +947,7 @@ export const WARSH_PROVENANCE = {
   "basmalahCounted": false,
   "mushafFile": "data/mushaf/warsh.json",
   "mushafSha256": "2ad99415cf4ba9e06b5fba670244d98c3a66e9ba182f14d9e5c189d53175b6ed",
+  "textSha256": "801482fb3a84c4b9abf0661b65de1e56a85819dde468ba4e54138ac9f5955694",
   "ayahMapSha256": "b4ea59b14c629ae5a95ca7e1cebca71227d25aa4d92ae4698a79db8caf21eea9",
   "textPackage": "UthmanicWarsh-v-3.0.zip",
   "textPackageSha256": "68e2f1c7a504a8dde797346fd63054c744e073917380f9c56360306b28907e37",

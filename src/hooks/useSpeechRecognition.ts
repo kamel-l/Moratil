@@ -222,13 +222,13 @@ export function useSpeechRecognition({
     };
 
     recognition.onend = () => {
-      if (!enabledRef.current || !shouldListenRef.current()) {
+      if (!enabledRef.current || !(shouldListenRef.current?.() ?? true)) {
         setIsListening(false);
         return;
       }
 
       setTimeout(() => {
-        if (!enabledRef.current || !shouldListenRef.current()) return;
+        if (!enabledRef.current || !(shouldListenRef.current?.() ?? true)) return;
         try {
           recognition.start();
           setIsListening(true);
@@ -286,13 +286,13 @@ export function useSpeechRecognition({
           const confidence = result[alt].confidence ?? 0.5;
           if (!transcript) continue;
 
-          const beforeIdx = getCurrentWordIndexRef.current();
-          const nextState = onTranscriptRef.current(transcript, confidence);
+          const beforeIdx = getCurrentWordIndexRef.current?.() ?? -1;
+          const nextState = onTranscriptRef.current?.(transcript, confidence);
           if (nextState?.completed) {
-            onCompleteRef.current(nextState.isFlawless);
+            onCompleteRef.current?.(nextState.isFlawless);
             return;
           }
-          if (getCurrentWordIndexRef.current() > beforeIdx) {
+          if ((getCurrentWordIndexRef.current?.() ?? beforeIdx) > beforeIdx) {
             progressed = true;
             break;
           }
@@ -329,10 +329,10 @@ export function useSpeechRecognition({
           (data: { status: 'started' | 'stopped' }) => {
             if (cancelled) return;
             if (data.status !== 'stopped') return;
-            if (!nativeActiveRef.current || !shouldListenRef.current()) return;
+            if (!nativeActiveRef.current || !(shouldListenRef.current?.() ?? true)) return;
 
             setTimeout(() => {
-              if (nativeActiveRef.current && shouldListenRef.current()) {
+              if (nativeActiveRef.current && (shouldListenRef.current?.() ?? true)) {
                 void listenWithNativeRecognition();
               }
             }, NATIVE_RESTART_DELAY_MS);

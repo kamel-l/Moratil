@@ -303,7 +303,9 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
     try {
       await stopSpeechService();
-    } catch {}
+    } catch {
+      // Stopping is best-effort: the UI still has to leave the recording state.
+    }
 
     if (isFinishingRef.current) {
       isFinishingRef.current = false;

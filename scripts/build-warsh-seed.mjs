@@ -12,10 +12,10 @@
  */
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { assertCanonicalSurahs, buildSeedSql, sha256Hex } from './import-quran.mjs';
+import { assertCanonicalSurahs, buildSeedSql } from './import-quran.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -66,20 +66,29 @@ async function main() {
   if (!provenance) throw new Error('Warsh metadata is missing its provenance record.');
 
   const raw = await readFile(textPath, 'utf8');
-  const actualSha = sha256Hex(raw);
-  if (actualSha !== provenance.mushafSha256) {
-    throw new Error(
-      `public/quran/warsh.json SHA-256 mismatch.\nExpected: ${provenance.mushafSha256}\n` +
-        `Actual:   ${actualSha}\nRefusing to seed unverified Quranic text.`,
-    );
-  }
-
   const document = JSON.parse(raw);
   if (document.riwaya !== RIWAYAH) {
     throw new Error(`warsh.json declares riwaya "${document.riwaya}", expected "${RIWAYAH}".`);
   }
   if (!Array.isArray(document.surahs) || document.surahs.length !== TOTAL_SURAHS) {
     throw new Error(`warsh.json must contain ${TOTAL_SURAHS} surahs.`);
+  }
+
+  // Hash the text itself, not the JSON formatting: the committed asset is only
+  // trusted while its verses match the checksum generated from the verified
+  // quran.ws package.
+  const textHash = createHash('sha256');
+  for (const surah of document.surahs) {
+    surah.ayahs.forEach((text, index) => {
+      textHash.update(`${surah.number}:${index + 1}\u0000${text}\n`);
+    });
+  }
+  const actualTextSha = textHash.digest('hex');
+  if (actualTextSha !== WARSH_TEXT_SHA256) {
+    throw new Error(
+      `public/quran/warsh.json text SHA-256 mismatch.\nExpected: ${WARSH_TEXT_SHA256}\n` +
+        `Actual:   ${actualTextSha}\nRefusing to seed unverified Quranic text.`,
+    );
   }
 
   const ayahs = [];

@@ -453,7 +453,6 @@ export function buildSeedSql({
   if (!/^[a-z][a-z0-9_-]{2,31}$/.test(riwayah)) {
     throw new Error(`Invalid riwayah code: ${riwayah}`);
   }
-  assertCanonicalSurahs(surahs, totalAyahs);
 
   const groups = new Map();
   for (const ayah of ayahs) {
