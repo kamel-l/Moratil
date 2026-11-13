@@ -18,6 +18,7 @@ const migrations = [
   'supabase/migrations/20261029090000_normalized_quran_schema.sql',
   'supabase/migrations/20261029100000_drop_legacy_progress.sql',
   'supabase/migrations/20261029110000_cap_review_schedule.sql',
+  'supabase/migrations/20261104090000_riwayat.sql',
 ];
 
 const checks = [];
@@ -207,6 +208,8 @@ try {
   `);
 
   await applyMigration(3);
+  await applyMigration(4);
+  check('the riwayat migration applies cleanly', true);
 
   const cappedRows = await db.query(`
     select user_id, interval_days, ease_factor::text as ease_factor, status,
@@ -414,6 +417,49 @@ try {
     update public.profiles set display_name = 'A' where id = '${userA}' returning updated_at
   `);
   check('updated_at triggers touch rows', updated.rows.length === 1);
+
+  const riwayat = await db.query(
+    `select code, total_ayahs from public.riwayat order by code`,
+  );
+  check(
+    'both riwayat are registered with their canonical totals',
+    riwayat.rows.length === 2 &&
+      riwayat.rows.some((row) => row.code === 'hafs' && row.total_ayahs === 6236) &&
+      riwayat.rows.some((row) => row.code === 'warsh' && row.total_ayahs === 6214),
+    `${riwayat.rows.length} riwayat`,
+  );
+
+  const hafsCount = await db.query(`
+    select ayah_count from public.surah_ayah_counts
+     where riwayah_code = 'hafs' and surah_number = 1
+  `);
+  check(
+    'per-riwayah surah counts are seeded from the canonical surahs',
+    hafsCount.rows[0]?.ayah_count === 7,
+  );
+
+  const defaults = await db.query(`
+    select
+      (select riwayah_code from public.quran_editions where id = 'quran-uthmani') as edition,
+      (select riwayah_code from public.profiles where id = '${userA}') as profile
+  `);
+  check(
+    'existing editions and profiles default to Hafs',
+    defaults.rows[0].edition === 'hafs' && defaults.rows[0].profile === 'hafs',
+  );
+
+  await db.exec(`
+    insert into public.ayahs (surah_number, ayah_number, riwayah_code)
+    values (1, 1, 'warsh');
+  `);
+  check('the same ayah number can exist in two riwayat', true);
+
+  await expectError(
+    'the same ayah number cannot repeat inside one riwayah',
+    `insert into public.ayahs (surah_number, ayah_number, riwayah_code)
+     values (1, 1, 'hafs')`,
+    'duplicate key',
+  );
 } catch (error) {
   console.error('\nUNEXPECTED FAILURE');
   console.error(error);
