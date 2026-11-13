@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import {
   getRevisionReminderSettings,
+  getRiwaya,
   getVerseMasteryMap,
   getVersesDueForReview,
 } from './storageService';
@@ -46,7 +47,7 @@ export async function scheduleDueReviewReminder(
   if (dueVerses.length > 0) {
     schedule = { on: { hour, minute }, every: 'day' };
   } else {
-    const nextReviewTime = Object.values(getVerseMasteryMap())
+    const nextReviewTime = Object.values(getVerseMasteryMap(getRiwaya()))
       .map((mastery) => Date.parse(mastery.nextReviewAt))
       .filter((time) => Number.isFinite(time) && time > now.getTime())
       .sort((a, b) => a - b)[0];

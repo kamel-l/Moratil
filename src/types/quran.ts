@@ -1,3 +1,5 @@
+export type Riwaya = 'hafs' | 'warsh';
+
 export interface Ayah {
   numberInSurah: number;
   text: string; // Full Uthmani / Tashkeel text
@@ -7,6 +9,12 @@ export interface Ayah {
   tafsir?: string; // التفسير الميسر
   words?: string[]; // Array of words for word-by-word tracking
   audioUrl?: string; // Optional direct audio
+  /**
+   * Verse number to use for the audio collection. Warsh verses are played with
+   * the Hafs recording that covers them, because the published Warsh folders
+   * (everyayah.com) are numbered with the Hafs 6,236 identity.
+   */
+  audioAyahNumber?: number;
   keyWordsMeaning?: { word: string; meaning: string }[];
 }
 
@@ -18,6 +26,8 @@ export interface Surah {
   numberOfAyahs: number;
   juzStart: number;
   pageStart: number;
+  /** Standalone basmalah printed above the ayahs (Warsh); absent for Hafs. */
+  basmalah?: string;
   ayahs: Ayah[];
 }
 
@@ -29,6 +39,7 @@ export interface Reciter {
   bitrate: string;
   avatarUrl?: string;
   hasTeacherStyle?: boolean;
+  riwaya?: Riwaya; // ✅ جديد — الافتراضي حفص
 }
 
 export type MasteryLevel = 'new' | 'learning' | 'review_needed' | 'good' | 'mastered';
@@ -36,6 +47,8 @@ export type MasteryLevel = 'new' | 'learning' | 'review_needed' | 'good' | 'mast
 export interface VerseMastery {
   surahNumber: number;
   ayahNumber: number;
+  /** Riwayah whose numbering this verse belongs to. Missing means Hafs. */
+  riwaya?: Riwaya;
   level: MasteryLevel;
   consecutiveSuccessCount: number;
   mistakeCount: number;
@@ -106,10 +119,19 @@ export interface QuranChallenge {
   surahNumber: number;
   ayahStart: number;
   ayahEnd: number;
+  /** Riwayah whose numbering the verse range uses. Missing means Hafs. */
+  riwaya?: Riwaya;
   rewardPoints: number;
   difficulty: 'سهل' | 'متوسط' | 'تحدي قوي';
   expiresInHours: number;
   completed: boolean;
+
+  // ── حقول النتيجة ──
+  createdAt?: number;           // Date.now() عند الإنشاء
+  completedAt?: number | null;  // عند أول نجاح ≥ 60%
+  bestScore?: number | null;    // 0..100 — أفضل نسبة دقة
+  bestAyahsPerfect?: number;    // أفضل عدد آيات كاملة
+  attempts?: number;            // عدد المحاولات
 }
 
 export interface WordMatchStatus {
@@ -118,3 +140,12 @@ export interface WordMatchStatus {
   status: 'correct' | 'wrong' | 'current' | 'pending';
   heardWord?: string;
 }
+
+export type AppTab =
+  | 'home'
+  | 'memorize'
+  | 'recite'
+  | 'revision'
+  | 'explorer'
+  | 'competition'
+  | 'stats';

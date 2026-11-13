@@ -1,0 +1,14 @@
+{
+  "editionId": "quran-uthmani",
+  "kind": "quran",
+  "nameAr": "الرسم العثماني",
+  "sourceName": "Tanzil Project",
+  "sourceUrl": "https://tanzil.net/",
+  "sourceVersion": "1.1",
+  "sourceSha256": "298ecad45a577a1451be31e7a9fbf061e1eebb06ecca6584246920eacad354ce",
+  "totalSurahs": 114,
+  "totalAyahs": 6236,
+  "sqlFile": "quran-uthmani.sql",
+  "sqlSha256": "45ed564ffde68274b2ca03d20dc795073ba00db4b6c7c693f3bbfba9014e03fa",
+  "generatedBy": "scripts/import-quran.mjs"
+}

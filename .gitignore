@@ -11,3 +11,9 @@ android/.idea/
 lintreport.json
 *.jpg
 *.txt
+
+supabase/.temp/
+!supabase/seed/sources/*.txt
+
+.cache/
+

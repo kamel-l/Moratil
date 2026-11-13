@@ -1,40 +1,46 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-  BarChart3,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  Flame,
-  Sparkles,
-  Award,
-  ShieldCheck,
   BookMarked,
   BrainCircuit,
+  Clock,
   Mic,
+  ShieldCheck,
 } from 'lucide-react';
-import { UserStats, VerseMastery } from '../types/quran';
-import { formatTime } from '../utils/arabicUtils';
-import {
-  getDailyRecitationActivity,
-  getVersesNeedingReinforcement,
-} from '../services/storageService';
+import type { UserStats, VerseMastery } from '../types/quran';
+import { getDailyRecitationActivity } from '../services/storageService';
+import { ProgressBar, SectionCard, StatCard } from './ui';
 
 interface StatsDashboardProps {
   stats: UserStats;
   verseMasteryMap: Record<string, VerseMastery>;
 }
 
-export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMasteryMap }) => {
-  const masteryValues = Object.values(verseMasteryMap);
-  const masteredCount = masteryValues.filter((v) => v.level === 'mastered').length;
-  const goodCount = masteryValues.filter((v) => v.level === 'good').length;
-  const reviewNeededCount = masteryValues.filter((v) => v.level === 'review_needed').length;
-  const totalTracked = masteryValues.length || 1;
+/**
+ * Stable reference time for due-review counting. Reading the clock at module
+ * scope keeps the render pure while still giving a sensible "now" per session.
+ */
+const REVIEW_REFERENCE_TIME = Date.now();
 
-  const masteredPercent = Math.round((masteredCount / totalTracked) * 100);
-  const reviewPercent = Math.round((reviewNeededCount / totalTracked) * 100);
+export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMasteryMap }) => {
+  const { masteredCount, goodCount, reviewNeededCount, totalTracked, dueReviewCount } =
+    useMemo(() => {
+      const values = Object.values(verseMasteryMap);
+      return {
+        masteredCount: values.filter((v) => v.level === 'mastered').length,
+        goodCount: values.filter((v) => v.level === 'good').length,
+        reviewNeededCount: values.filter((v) => v.level === 'review_needed').length,
+        totalTracked: values.length || 1,
+        dueReviewCount: values.filter(
+          (v) =>
+            v.level === 'review_needed' ||
+            v.mistakeCount > 0 ||
+            Date.parse(v.nextReviewAt) <= REVIEW_REFERENCE_TIME,
+        ).length,
+      };
+    }, [verseMasteryMap]);
 
   const dailyActivity = getDailyRecitationActivity(7).map((item) => ({
+    key: item.date,
     day: new Date(`${item.date}T12:00:00`).toLocaleDateString('ar-EG', { weekday: 'short' }),
     verses: item.verses,
     sessions: item.sessions,
@@ -42,29 +48,34 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMast
   const maxDaily = Math.max(...dailyActivity.map((day) => day.verses), 1);
   const weeklyVerses = dailyActivity.reduce((total, day) => total + day.verses, 0);
   const weeklySessions = dailyActivity.reduce((total, day) => total + day.sessions, 0);
-  const dueReviewCount = getVersesNeedingReinforcement().length;
-  const recurringMistakes = masteryValues
-    .flatMap((mastery) => mastery.recentMistakes)
-    .reduce<{ word: string; count: number }[]>((mistakes, mistake) => {
-      const existing = mistakes.find((item) => item.word === mistake.expectedWord);
-      if (existing) existing.count += 1;
-      else mistakes.push({ word: mistake.expectedWord, count: 1 });
-      return mistakes;
-    }, [])
-    .filter((mistake) => mistake.count > 1)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
+
+  const recurringMistakes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const mastery of Object.values(verseMasteryMap)) {
+      for (const mistake of mastery.recentMistakes) {
+        counts.set(mistake.expectedWord, (counts.get(mistake.expectedWord) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+  }, [verseMasteryMap]);
+
+  const masteredPercent = Math.round((masteredCount / totalTracked) * 100);
+  const goodPercent = Math.round((goodCount / totalTracked) * 100);
+  const reviewPercent = Math.round((reviewNeededCount / totalTracked) * 100);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      {/* Hero Header */}
-      <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="mx-auto max-w-5xl space-y-6 sm:space-y-8">
+      <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-xs sm:p-8">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div className="space-y-1">
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-100">
+            <span className="rounded-md border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
               تقرير الإتقان والمواظبة
             </span>
-            <h1 className="text-2xl font-bold text-stone-900 font-serif">
+            <h1 className="font-serif text-2xl font-bold text-stone-900">
               إحصائيات الأداء اليومي والتثبيت
             </h1>
             <p className="text-xs text-stone-500">
@@ -72,214 +83,148 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMast
             </p>
           </div>
 
-          <div className="bg-stone-50 border border-stone-200 rounded-2xl px-5 py-3 text-center">
-            <span className="text-xs text-stone-500 block">المستوى الحالي</span>
-            <span className="text-base font-bold text-emerald-800 font-serif">{stats.level}</span>
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-3 text-center">
+            <span className="block text-xs text-stone-500">المستوى الحالي</span>
+            <span className="font-serif text-base font-bold text-emerald-800">{stats.level}</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 4 Metric Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {/* Total Verses */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-500">إجمالي الآيات</span>
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700">
-              <BookMarked className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-stone-900">
-            {stats.totalVersesRecited.toLocaleString('ar-EG')}
-          </div>
-          <p className="text-[11px] text-emerald-700 font-medium">آية تمت تلاوتها ومراجعتها</p>
-        </div>
-
-        {/* Recitation Accuracy */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-500">تطابق الكلمات آليًا</span>
-            <div className="p-2 rounded-lg bg-teal-50 text-teal-700">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-teal-800">
-            {stats.totalVersesRecited > 0 ? `${stats.accuracyRate}%` : '—'}
-          </div>
-          <p className="text-[11px] leading-relaxed text-stone-500">
-            تقدير آلي للنص المتعرّف عليه؛ لا يقيس النطق أو أحكام التجويد
-          </p>
-        </div>
-
-        {/* Time Spent */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-500">وقت التلاوة والمراجعة</span>
-            <div className="p-2 rounded-lg bg-amber-50 text-amber-700">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-stone-900">
-            {Math.round(stats.totalRecitedSeconds / 60)} دقيقة
-          </div>
-          <p className="text-[11px] text-stone-500">جلسات تعاهد القرآن</p>
-        </div>
-
-        {/* Fixed Mistakes */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-500">مواضع تثبيت مسجلة</span>
-            <div className="p-2 rounded-lg bg-rose-50 text-rose-700">
-              <BrainCircuit className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-stone-900">{stats.mistakesFixedCount}</div>
-          <p className="text-[11px] text-stone-500">اختلافات نصية أُعيدت مراجعتها</p>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-500">جلسات هذا الأسبوع</span>
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700">
-              <Mic className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-stone-900">
-            {weeklySessions.toLocaleString('ar-EG')}
-          </div>
-          <p className="text-[11px] text-stone-500">جلسات تسميع بدأت خلال آخر 7 أيام</p>
-        </div>
+        <StatCard
+          label="إجمالي الآيات"
+          value={stats.totalVersesRecited.toLocaleString('ar-EG')}
+          hint="آية تمت تلاوتها ومراجعتها"
+          icon={<BookMarked className="h-4 w-4" />}
+          tone="emerald"
+        />
+        <StatCard
+          label="تطابق الكلمات آليًا"
+          value={stats.totalVersesRecited > 0 ? `${stats.accuracyRate}%` : '—'}
+          hint="تقدير آلي للنص المتعرّف عليه؛ لا يقيس النطق أو أحكام التجويد"
+          icon={<ShieldCheck className="h-4 w-4" />}
+          tone="teal"
+        />
+        <StatCard
+          label="وقت التلاوة والمراجعة"
+          value={`${Math.round(stats.totalRecitedSeconds / 60)} دقيقة`}
+          hint="جلسات تعاهد القرآن"
+          icon={<Clock className="h-4 w-4" />}
+          tone="amber"
+        />
+        <StatCard
+          label="مواضع تثبيت مسجلة"
+          value={stats.mistakesFixedCount.toLocaleString('ar-EG')}
+          hint="اختلافات نصية أُعيدت مراجعتها"
+          icon={<BrainCircuit className="h-4 w-4" />}
+          tone="rose"
+        />
+        <StatCard
+          label="جلسات هذا الأسبوع"
+          value={weeklySessions.toLocaleString('ar-EG')}
+          hint="جلسات تسميع بدأت خلال آخر 7 أيام"
+          icon={<Mic className="h-4 w-4" />}
+          tone="stone"
+        />
       </div>
 
-      {/* 7-Day Activity Chart & Mastery Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Activity Bar Chart (2 columns) */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-6 shadow-xs space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <h2 className="font-bold text-stone-900 text-base">
-                نشاط التلاوة والمراجعة خلال الأسبوع
-              </h2>
-              <p className="text-xs text-stone-500">
-                الآيات المسجلة في التسميع والمراجعة خلال آخر 7 أيام
-              </p>
-            </div>
-
-            <span className="text-xs text-emerald-800 font-semibold bg-emerald-50 px-2 py-1 rounded-md">
-              {weeklyVerses.toLocaleString('ar-EG')} آية هذا الأسبوع
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <SectionCard
+          title="نشاط التلاوة والمراجعة خلال الأسبوع"
+          description="الآيات المسجلة في التسميع والمراجعة خلال آخر 7 أيام"
+          className="lg:col-span-2"
+          action={
+            <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
+              {weeklyVerses.toLocaleString('ar-EG')} آية
             </span>
-          </div>
-
-          {/* Bar Chart Visualization */}
-          <div className="pt-6 pb-2">
-            <div className="flex items-end justify-between gap-2 h-44 border-b border-stone-200 px-2">
-              {dailyActivity.map((item, idx) => {
+          }
+        >
+          <div className="pb-2 pt-6">
+            <div className="flex h-44 items-end justify-between gap-2 border-b border-stone-200 px-2">
+              {dailyActivity.map((item, index) => {
                 const heightPercent = Math.round((item.verses / maxDaily) * 100);
-                const isToday = idx === dailyActivity.length - 1;
+                const isToday = index === dailyActivity.length - 1;
 
                 return (
-                  <div key={item.day} className="flex-1 flex flex-col items-center gap-2 group">
-                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-emerald-700 transition-colors">
-                      {item.verses}
+                  <div
+                    key={item.key}
+                    className="group flex flex-1 flex-col items-center gap-2"
+                    title={`${item.day}: ${item.verses} آية`}
+                  >
+                    <span className="text-[11px] font-bold text-stone-600 transition-colors group-hover:text-emerald-700">
+                      {item.verses.toLocaleString('ar-EG')}
                     </span>
-                    <div className="w-full max-w-[36px] bg-stone-100 rounded-t-lg h-36 flex items-end overflow-hidden">
+                    <div className="flex h-36 w-full max-w-9 items-end overflow-hidden rounded-t-lg bg-stone-100">
                       <div
-                        className={`w-full rounded-t-lg transition-all duration-500 ${
+                        className={
                           isToday
-                            ? 'bg-gradient-to-t from-emerald-700 to-emerald-500 shadow-xs'
-                            : 'bg-emerald-600/70 group-hover:bg-emerald-600'
-                        }`}
+                            ? 'w-full rounded-t-lg bg-gradient-to-t from-emerald-700 to-emerald-500 shadow-xs transition-all duration-500'
+                            : 'w-full rounded-t-lg bg-emerald-600/70 transition-all duration-500 group-hover:bg-emerald-600'
+                        }
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
-                    <span className="text-[11px] text-stone-500 font-medium">{item.day}</span>
+                    <span className="text-[11px] font-medium text-stone-500">{item.day}</span>
                   </div>
                 );
               })}
             </div>
           </div>
+        </SectionCard>
 
-        </div>
-
-        {/* Mastery Distribution Card (1 column) */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 shadow-xs space-y-5">
-          <div className="space-y-0.5">
-            <h2 className="font-bold text-stone-900 text-base">توزيع جودة الحفظ</h2>
-            <p className="text-xs text-stone-500">وفق مقياس التكرار المتباعد</p>
-          </div>
-
+        <SectionCard
+          title="توزيع جودة الحفظ"
+          description="وفق مقياس التكرار المتباعد"
+        >
           <div className="space-y-4 pt-2">
-            {/* Mastered */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-stone-700 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                <span className="flex items-center gap-1.5 font-medium text-stone-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
                   آيات متقنة (3+ تسميع ناجح)
                 </span>
                 <span className="font-bold text-stone-900">{masteredCount} آيات</span>
               </div>
-              <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-emerald-600 h-full rounded-full"
-                  style={{ width: `${masteredPercent}%` }}
-                />
-              </div>
+              <ProgressBar value={masteredPercent} label="نسبة الآيات المتقنة" tone="emerald" />
             </div>
 
-            {/* In Progress / Good */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-stone-700 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
+                <span className="flex items-center gap-1.5 font-medium text-stone-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
                   آيات في طور التثبيت
                 </span>
                 <span className="font-bold text-stone-900">{goodCount} آيات</span>
               </div>
-              <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-teal-500 h-full rounded-full"
-                  style={{ width: `${Math.round((goodCount / totalTracked) * 100)}%` }}
-                />
-              </div>
+              <ProgressBar value={goodPercent} label="نسبة الآيات في طور التثبيت" tone="teal" />
             </div>
 
-            {/* Needs Review */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-stone-700 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <span className="flex items-center gap-1.5 font-medium text-stone-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                   تحتاج مراجعة وتكرار
                 </span>
                 <span className="font-bold text-stone-900">{reviewNeededCount} آيات</span>
               </div>
-              <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-amber-500 h-full rounded-full"
-                  style={{ width: `${reviewPercent}%` }}
-                />
-              </div>
+              <ProgressBar value={reviewPercent} label="نسبة الآيات التي تحتاج مراجعة" tone="amber" />
             </div>
           </div>
 
-          <div className="p-3 bg-stone-50 rounded-xl text-[11px] text-stone-600 border border-stone-100">
+          <p className="mt-4 rounded-xl border border-stone-100 bg-stone-50 p-3 text-[11px] text-stone-600">
             تعتمد درجة الإتقان هنا على تكرار مطابقة الكلمات آليًا، ولا تثبت صحة النطق أو التجويد.
-          </div>
-        </div>
+          </p>
+        </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-bold text-stone-900">مواضع تكرر فيها اختلاف النص</h2>
-              <p className="mt-1 text-xs text-stone-500">
-                إشارات آلية للمراجعة، وليست حكمًا مؤكدًا على التلاوة
-              </p>
-            </div>
-            <BrainCircuit className="h-5 w-5 shrink-0 text-amber-700" />
-          </div>
+        <SectionCard
+          title="مواضع تكرر فيها اختلاف النص"
+          description="إشارات آلية للمراجعة، وليست حكمًا مؤكدًا على التلاوة"
+          action={<BrainCircuit className="h-5 w-5 shrink-0 text-amber-700" />}
+        >
           {recurringMistakes.length > 0 ? (
-            <ul className="mt-4 space-y-2">
+            <ul className="space-y-2">
               {recurringMistakes.map((mistake) => (
                 <li
                   key={mistake.word}
@@ -293,11 +238,11 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, verseMast
               ))}
             </ul>
           ) : (
-            <p className="mt-4 rounded-xl bg-stone-50 px-3 py-3 text-sm text-stone-600">
+            <p className="rounded-xl bg-stone-50 px-3 py-3 text-sm text-stone-600">
               لا توجد مواضع متكررة مسجلة حتى الآن.
             </p>
           )}
-        </section>
+        </SectionCard>
 
         <section className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <div>
