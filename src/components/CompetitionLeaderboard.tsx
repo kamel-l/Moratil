@@ -63,7 +63,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-bold text-stone-900">إنشاء تحدٍ</h2>
+        <h2 className="text-lg font-bold text-white">إنشاء تحدٍ</h2>
         <form
           onSubmit={handleCreateChallenge}
           className="grid grid-cols-1 gap-4 rounded-2xl border border-stone-200 bg-white p-5 sm:grid-cols-2"
@@ -147,7 +147,7 @@ export const CompetitionLeaderboard: React.FC<CompetitionLeaderboardProps> = ({
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Target className="h-5 w-5 text-emerald-700" aria-hidden="true" />
-          <h2 className="text-lg font-bold text-stone-900">التحديات المتاحة</h2>
+          <h2 className="text-lg font-bold text-white">التحديات المتاحة</h2>
         </div>
 
         {challenges.length === 0 ? (

@@ -727,10 +727,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold text-stone-900">
+                <h2 className="font-bold text-white">
                   {isPageMode ? 'صفحات المصحف' : 'وحدات الحفظ'}
                 </h2>
-                <p className="mt-1 text-xs text-stone-500">
+                <p className="mt-1 text-xs text-jade-100/70">
                   {isPageMode
                     ? 'عرض الصفحات كما في المصحف المطبوع — اضغط رقم الآية للكشف أو الإخفاء'
                     : displayMode === 'cards'

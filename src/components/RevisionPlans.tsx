@@ -507,7 +507,7 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
-            <h2 className="font-bold text-stone-900">آيات تحتاج إلى تثبيت</h2>
+            <h2 className="font-bold text-white">آيات تحتاج إلى تثبيت</h2>
           </div>
           <Badge tone="amber">{forgottenVerses.length} آية</Badge>
         </header>
@@ -605,11 +605,11 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
       <section className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 font-bold text-stone-900">
-              <CalendarClock className="h-5 w-5 text-emerald-700" aria-hidden="true" />
+            <h2 className="flex items-center gap-2 font-bold text-white">
+              <CalendarClock className="h-5 w-5 text-gold-300" aria-hidden="true" />
               محطات المسار
             </h2>
-            <p className="mt-0.5 text-xs text-stone-500">
+            <p className="mt-0.5 text-xs text-jade-100/70">
               كل بطاقة محطة على رحلتك — تابع التقدم، اختر سورة، وأكمل وردك اليومي.
             </p>
           </div>
