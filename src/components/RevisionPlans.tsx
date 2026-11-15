@@ -1,35 +1,23 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import React, { useMemo, useState } from 'react';
 import {
-  AlertTriangle,
   CalendarClock,
+  AlertTriangle,
   CheckCircle,
+  Plus,
+  ArrowLeft,
+  Play,
+  Volume2,
   Clock,
   Flame,
-  Play,
-  Plus,
-  RotateCcw,
   ShieldAlert,
   Sparkles,
-  Target,
-  TrendingUp,
+  BookOpen,
+  ChevronDown,
 } from 'lucide-react';
 import { RevisionPlan, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
-import {
-  addPointsAndVerses,
-  getRevisionReminderSettings,
-  resetRevisionData,
-  saveRevisionReminderSettings,
-  saveRevisionPlans,
-  type RevisionReminderSettings,
-} from '../services/storageService';
-import { scheduleDueReviewReminder } from '../services/revisionReminderService';
-import { Badge, Button, EmptyState, Modal } from './ui';
+import { saveRevisionPlans, addPointsAndVerses } from '../services/storageService';
 
-// ═══════════════════════════════════════════════════════════════
-// الأنواع
-// ═══════════════════════════════════════════════════════════════
 interface RevisionPlansProps {
   plans: RevisionPlan[];
   forgottenVerses: VerseMastery[];
@@ -37,918 +25,450 @@ interface RevisionPlansProps {
   onRefreshPlans: () => void;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  spaced_repetition: 'تكرار متباعد',
-  daily_wird: 'ورد يومي',
-  juz_amma: 'جزء عمّ',
-  surah_fix: 'تثبيت سورة',
-  custom: 'خطة مخصصة',
-};
-
-function getCategoryLabel(category: string): string {
-  return CATEGORY_LABELS[category] ?? 'تثبيت سورة';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// حلقة تقدّم دائرية (SVG)
-// ═══════════════════════════════════════════════════════════════
-interface ProgressRingProps {
-  percent: number;
-  size?: number;
-  stroke?: number;
-  tone?: 'emerald' | 'amber' | 'light';
-  children?: React.ReactNode;
-  ariaLabel?: string;
-}
-
-const ProgressRing: React.FC<ProgressRingProps> = ({
-  percent,
-  size = 88,
-  stroke = 7,
-  tone = 'emerald',
-  children,
-  ariaLabel,
-}) => {
-  const clamped = Math.max(0, Math.min(100, percent));
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clamped / 100);
-
-  const trackColor = tone === 'light' ? 'rgba(255,255,255,0.18)' : '#e7e5e4';
-  const progressColor =
-    tone === 'amber' ? '#f59e0b' : tone === 'light' ? '#fbbf24' : '#059669';
-
-  return (
-    <div
-      className="relative"
-      style={{ width: size, height: size }}
-      role="img"
-      aria-label={ariaLabel ?? `التقدم ${clamped}%`}
-    >
-      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={trackColor}
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={progressColor}
-          strokeWidth={stroke}
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 900ms cubic-bezier(0.4, 0, 0.2, 1)' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center leading-tight">
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════
-// شرائح الأيام
-// ═══════════════════════════════════════════════════════════════
-interface DaySegmentsProps {
-  durationDays: number;
-  currentDay: number;
-}
-
-const DaySegments: React.FC<DaySegmentsProps> = ({ durationDays, currentDay }) => {
-  const segments = Math.min(durationDays, 30);
-  const daysPerSegment = durationDays / segments;
-
-  return (
-    <div
-      className="flex gap-[2px]"
-      role="progressbar"
-      aria-valuemin={1}
-      aria-valuemax={durationDays}
-      aria-valuenow={currentDay}
-      aria-label={`اليوم ${currentDay} من ${durationDays}`}
-    >
-      {Array.from({ length: segments }).map((_, index) => {
-        const dayThreshold = (index + 1) * daysPerSegment;
-        const isCompleted = currentDay - 1 >= dayThreshold;
-        const isCurrent = !isCompleted && currentDay >= index * daysPerSegment;
-
-        return (
-          <span
-            key={index}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              isCompleted
-                ? 'bg-emerald-500'
-                : isCurrent
-                ? 'animate-pulse bg-amber-400'
-                : 'bg-stone-200'
-            }`}
-          />
-        );
-      })}
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════
-// مسار السور
-// ═══════════════════════════════════════════════════════════════
-interface SurahPathProps {
-  surahNumbers: number[];
-  surahNameByNumber: Map<number, string>;
-  forgottenSurahSet: Set<number>;
-  onPickSurah: (surahNumber: number) => void;
-}
-
-const SurahPath: React.FC<SurahPathProps> = ({
-  surahNumbers,
-  surahNameByNumber,
-  forgottenSurahSet,
-  onPickSurah,
-}) => {
-  if (surahNumbers.length === 0) return null;
-
-  const getSurahName = (n: number) => surahNameByNumber.get(n) ?? `سورة ${n}`;
-
-  return (
-    <div className="relative pt-2 pb-1">
-      <div
-        className="absolute inset-x-2 top-4 h-0.5 bg-gradient-to-l from-emerald-200 via-stone-200 to-emerald-200"
-        aria-hidden="true"
-      />
-      <div className="relative flex justify-between gap-1 overflow-x-auto pb-1">
-        {surahNumbers.map((surahNumber) => {
-          const hasDue = forgottenSurahSet.has(surahNumber);
-          return (
-            <button
-              key={surahNumber}
-              type="button"
-              onClick={() => onPickSurah(surahNumber)}
-              title={`بدء مراجعة سورة ${getSurahName(surahNumber)}`}
-              className="group flex min-w-12 shrink-0 flex-col items-center gap-1 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-            >
-              <span
-                className={`relative flex h-4 w-4 items-center justify-center rounded-full border-2 transition-all group-hover:scale-125 ${
-                  hasDue ? 'border-amber-500 bg-amber-100' : 'border-emerald-500 bg-emerald-100'
-                }`}
-              >
-                {hasDue && (
-                  <span className="absolute inset-0 animate-ping rounded-full border-2 border-amber-400 opacity-60" />
-                )}
-              </span>
-              <span
-                className={`max-w-[64px] truncate text-[10px] font-medium transition-colors ${
-                  hasDue ? 'text-amber-800' : 'text-stone-600 group-hover:text-emerald-800'
-                }`}
-              >
-                {getSurahName(surahNumber)}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════
-// المكوّن الرئيسي
-// ═══════════════════════════════════════════════════════════════
 export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   plans,
   forgottenVerses,
   onStartPracticingVerse,
   onRefreshPlans,
 }) => {
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState('');
   const [selectedSurahNums, setSelectedSurahNums] = useState<number[]>([1, 112, 113, 114]);
   const [dailyTarget, setDailyTarget] = useState(15);
   const [durationDays, setDurationDays] = useState(14);
-  const [reminderSettings, setReminderSettings] =
-    useState<RevisionReminderSettings>(getRevisionReminderSettings);
-  const [reminderNotice, setReminderNotice] = useState('');
-  const [reminderError, setReminderError] = useState('');
-  const [isSavingReminder, setIsSavingReminder] = useState(false);
+  const [expandedSurahs, setExpandedSurahs] = useState<number[]>([]);
 
-  const surahNameByNumber = useMemo(
-    () => new Map(ALL_SURAHS.map((surah) => [surah.number, surah.name])),
-    [],
-  );
+  const getSurahName = (num: number) => {
+    return ALL_SURAHS.find((s) => s.number === num)?.name || `سورة ${num}`;
+  };
 
-  const getSurahName = useCallback(
-    (number: number) => surahNameByNumber.get(number) ?? `سورة ${number}`,
-    [surahNameByNumber],
-  );
+  const groupedForgottenVerses = useMemo(() => {
+    const groups = new Map<number, VerseMastery[]>();
+    forgottenVerses.forEach((item) => {
+      const list = groups.get(item.surahNumber);
+      if (list) list.push(item);
+      else groups.set(item.surahNumber, [item]);
+    });
 
-  const forgottenSurahSet = useMemo(
-    () => new Set(forgottenVerses.map((v) => v.surahNumber)),
-    [forgottenVerses],
-  );
-
-  // ✅ تجميع الآيات المستحقة حسب السورة — إطار واحد لكل سورة
-  const forgottenBySurah = useMemo(() => {
-    const map = new Map<number, VerseMastery[]>();
-    for (const item of forgottenVerses) {
-      if (!map.has(item.surahNumber)) map.set(item.surahNumber, []);
-      map.get(item.surahNumber)!.push(item);
-    }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
+    return Array.from(groups.entries())
       .map(([surahNumber, verses]) => ({
         surahNumber,
         verses: [...verses].sort((a, b) => a.ayahNumber - b.ayahNumber),
-      }));
+        totalMistakes: verses.reduce((sum, verse) => sum + verse.mistakeCount, 0),
+      }))
+      .sort((a, b) => a.surahNumber - b.surahNumber);
   }, [forgottenVerses]);
 
-  const aggregate = useMemo(() => {
-    const active = plans.filter((p) => p.currentDay < p.durationDays);
-    const completed = plans.filter((p) => p.currentDay >= p.durationDays);
-    const avgPercent =
-      plans.length > 0
-        ? Math.round(
-            plans.reduce(
-              (sum, p) => sum + Math.min(100, (p.currentDay / p.durationDays) * 100),
-              0,
-            ) / plans.length,
-          )
-        : 0;
-    const todayTarget = active.reduce((sum, p) => sum + p.dailyTargetAyahs, 0);
-
-    return {
-      activeCount: active.length,
-      completedCount: completed.length,
-      avgPercent,
-      todayTarget,
-    };
-  }, [plans]);
-
-  const isNativePlatform = Capacitor.isNativePlatform();
+  const toggleSurahGroup = (surahNumber: number) => {
+    setExpandedSurahs((prev) =>
+      prev.includes(surahNumber) ? prev.filter((num) => num !== surahNumber) : [...prev, surahNumber],
+    );
+  };
 
   const handleCompleteDay = (planId: string) => {
-    const updated = plans.map((plan) => {
-      if (plan.id !== planId) return plan;
-      const nextDay = plan.currentDay + 1;
-      return {
-        ...plan,
-        currentDay: nextDay,
-        isCompleted: nextDay >= plan.durationDays,
-      };
+    const updated = plans.map((p) => {
+      if (p.id === planId) {
+        const nextDay = p.currentDay + 1;
+        const isDone = nextDay >= p.durationDays;
+        return {
+          ...p,
+          currentDay: nextDay,
+          isCompleted: isDone,
+        };
+      }
+      return p;
     });
 
     saveRevisionPlans(updated);
-    addPointsAndVerses(50, 15, 600);
+    addPointsAndVerses(50, 15, 600, 98);
     onRefreshPlans();
   };
 
-  const handleCreatePlan = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!newPlanTitle.trim() || selectedSurahNums.length === 0) return;
+  const handleCreatePlan = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlanTitle.trim()) return;
 
     const newPlan: RevisionPlan = {
       id: `plan_${Date.now()}`,
       title: newPlanTitle.trim(),
       description: `خطة مراجعة مخصصة تشمل ${selectedSurahNums.length} سور بمعدل ${dailyTarget} آية يومياً`,
       category: 'custom',
-      targetSurahs: [...selectedSurahNums].sort((a, b) => a - b),
+      targetSurahs: selectedSurahNums,
       dailyTargetAyahs: dailyTarget,
-      durationDays,
+      durationDays: durationDays,
       currentDay: 1,
       isCompleted: false,
       startDate: new Date().toISOString(),
     };
 
-    saveRevisionPlans([newPlan, ...plans]);
-    setIsCreateModalOpen(false);
+    const updated = [newPlan, ...plans];
+    saveRevisionPlans(updated);
+    setShowCreateModal(false);
     setNewPlanTitle('');
     onRefreshPlans();
   };
 
-  const handleResetRevision = () => {
-    const confirmed = window.confirm(
-      'سيتم حذف جميع خطط المراجعة وسجلات إتقان الآيات، بما فيها البيانات الافتراضية. لن تتأثر نقاطك أو إحصائياتك العامة. هل تريد المتابعة؟',
-    );
-    if (!confirmed) return;
-
-    resetRevisionData();
-    onRefreshPlans();
-  };
-
-  const updateReminderSettings = async (nextSettings: RevisionReminderSettings) => {
-    setReminderError('');
-    setReminderNotice('');
-    try {
-      saveRevisionReminderSettings(nextSettings);
-      setReminderSettings(nextSettings);
-      setIsSavingReminder(true);
-      const result = await scheduleDueReviewReminder(nextSettings.enabled);
-      if (result === 'permission-denied') {
-        setReminderError('لم يُسمح بالإشعارات. فعّلها من إعدادات النظام ثم أعد المحاولة.');
-      } else if (result === 'no-upcoming-reviews') {
-        setReminderNotice('سيُجدول التذكير عند وجود آيات مستحقة أو لها موعد مراجعة قادم.');
-      } else if (result === 'disabled') {
-        setReminderNotice('تم إيقاف تذكير المراجعة.');
-      } else if (result === 'scheduled') {
-        setReminderNotice(`تم ضبط التذكير اليومي على ${nextSettings.time}.`);
-      } else {
-        setReminderError('التنبيهات المحلية متاحة في تطبيق Android أو iOS فقط.');
-      }
-    } catch (error) {
-      console.error('Unable to update revision reminder:', error);
-      setReminderError(
-        error instanceof Error ? error.message : 'تعذر ضبط تذكير المراجعة. حاول مجددًا.',
-      );
-    } finally {
-      setIsSavingReminder(false);
-    }
-  };
-
   return (
-    <div className="mx-auto max-w-6xl space-y-8 pb-16" dir="rtl">
-      {/* ═══════════ لوحة Hero ═══════════ */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-950 p-6 text-white shadow-lg sm:p-8">
-        <div
-          className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-amber-400/10 blur-3xl"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-16 -right-16 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl"
-          aria-hidden="true"
-        />
-
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="max-w-xl space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-300">
-              <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>رحلة الحفظ</span>
-            </div>
-            <h1 className="font-serif text-2xl font-bold tracking-tight sm:text-3xl">
-              خطط المراجعة وتثبيت الحفظ
-            </h1>
-            <p className="text-xs leading-relaxed text-emerald-100/90 sm:text-sm">
-              مسارٌ متكامل يعتني بما حفظت، ويلتفت إلى ما كاد يتفلّت، بخطوات يومية واضحة.
-            </p>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleResetRevision}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-white/20"
-              >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                تصفير المراجعة
-              </button>
-            </div>
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Hero Header */}
+      <div className="bg-brand-gradient text-white rounded-3xl p-6 sm:p-8 relative overflow-hidden">
+        <div className="relative z-10 max-w-2xl space-y-3">
+          <div className="inline-flex items-center gap-2 bg-white/5 border border-gold-400/30 px-3 py-1 rounded-full text-xs text-gold-200 font-medium">
+            <CalendarClock className="w-3.5 h-3.5" />
+            <span>نظام التكرار المتباعد (Spaced Repetition)</span>
           </div>
-
-          <div className="flex shrink-0 items-center justify-center">
-            <ProgressRing
-              percent={aggregate.avgPercent}
-              size={128}
-              stroke={9}
-              tone="light"
-              ariaLabel={`متوسط التقدم في الخطط ${aggregate.avgPercent}%`}
-            >
-              <span className="text-3xl font-bold text-white">{aggregate.avgPercent}%</span>
-              <span className="text-[10px] text-emerald-200">متوسط التقدم</span>
-            </ProgressRing>
-          </div>
-        </div>
-
-        <div className="relative mt-6 grid grid-cols-3 gap-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-200">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              خطط نشطة
-            </div>
-            <p className="mt-1 text-2xl font-bold text-white">
-              {aggregate.activeCount.toLocaleString('ar-EG')}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-200">
-              <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
-              مكتملة
-            </div>
-            <p className="mt-1 text-2xl font-bold text-white">
-              {aggregate.completedCount.toLocaleString('ar-EG')}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-200">
-              <Target className="h-3.5 w-3.5" aria-hidden="true" />
-              هدف اليوم
-            </div>
-            <p className="mt-1 text-2xl font-bold text-white">
-              {aggregate.todayTarget.toLocaleString('ar-EG')}
-              <span className="mr-1 text-[10px] font-normal text-emerald-200">آية</span>
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════ تذكير المراجعة المختصر ═══════════ */}
-      <section className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
-          <Clock className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-          تذكير المراجعة اليومي
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs font-medium text-stone-700">
-            <input
-              type="checkbox"
-              checked={reminderSettings.enabled}
-              disabled={!isNativePlatform || isSavingReminder}
-              onChange={(event) =>
-                void updateReminderSettings({
-                  ...reminderSettings,
-                  enabled: event.target.checked,
-                })
-              }
-              className="h-4 w-4 accent-emerald-700"
-            />
-            تفعيل
-          </label>
-          <label className="flex items-center gap-2 text-xs font-medium text-stone-700">
-            الساعة
-            <input
-              type="time"
-              value={reminderSettings.time}
-              disabled={!isNativePlatform || isSavingReminder}
-              onChange={(event) =>
-                void updateReminderSettings({ ...reminderSettings, time: event.target.value })
-              }
-              className="rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-xs text-stone-900 disabled:opacity-50"
-            />
-          </label>
-          {!isNativePlatform && (
-            <span className="text-[11px] text-stone-500">(متاح على Android/iOS)</span>
-          )}
-        </div>
-        {(reminderNotice || reminderError) && (
-          <p
-            className={`text-xs ${reminderError ? 'text-rose-800' : 'text-emerald-800'}`}
-            role={reminderError ? 'alert' : 'status'}
-          >
-            {reminderError || reminderNotice}
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-display text-white">
+            خطط المراجعة وتنبيهات تثبيت الحفظ
+          </h1>
+          <p className="text-xs sm:text-sm text-jade-100/80 leading-relaxed">
+            القرآن أشد تفلتاً من الإبل في عقلها. خطط المراجعة الدورية الذكية تتابع أدائك وتنبّهك
+            للآيات التي قاربت على النسيان أو تعثرت بها سابقاً لضمان رسوخ الحفظ في صدرك.
           </p>
-        )}
-      </section>
+        </div>
+      </div>
 
-      {/* ═══════════ المراجعات المستحقة — إطار واحد لكل سورة ═══════════ */}
-      <section className="space-y-3">
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
-            <h2 className="font-bold text-stone-900">آيات تحتاج إلى تثبيت</h2>
+      {/* SECTION 1: Forgotten Verses / Verses Needing Reinforcement Alerts */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-gold-400/15 text-gold-300">
+              <AlertTriangle className="w-5 h-5 text-gold-300" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">
+                تنبيه: آيات تحتاج لتثبيت وتكرار عاجل
+              </h2>
+              <p className="text-xs text-jade-100/60">
+                آيات أظهرت خوارزمية التعرف الصوتي تعثراً في حفظها أو حان موعد مراجعتها المتباعدة
+              </p>
+            </div>
           </div>
-          <Badge tone="amber">{forgottenVerses.length} آية</Badge>
-        </header>
 
-        {forgottenBySurah.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 text-center">
-            <CheckCircle className="h-8 w-8 text-emerald-600" aria-hidden="true" />
-            <p className="text-sm font-bold text-emerald-900">لا توجد مراجعات مستحقة حاليًا</p>
-            <p className="max-w-md text-xs leading-relaxed text-emerald-900/70">
-              واصل المراجعة المنتظمة، وتذكّر أن مطابقة النص آليًا لا تقيّم النطق أو التجويد.
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gold-400/15 text-gold-200 border border-gold-400/30">
+            {forgottenVerses.length} آيات
+          </span>
+        </div>
+
+        {forgottenVerses.length === 0 ? (
+          <div className="glass-panel rounded-2xl p-8 text-center space-y-2">
+            <CheckCircle className="w-10 h-10 text-jade-300 mx-auto" />
+            <h3 className="font-bold text-white text-base">ما شاء الله! جميع محفوظاتك متقنة</h3>
+            <p className="text-xs text-jade-100/60 max-w-md mx-auto">
+              لا توجد آيات متعثرة حالياً. واصل المراجعة اليومية المنتظمة لتحافظ على هذا المستوى
+              الممتاز.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {forgottenBySurah.map(({ surahNumber, verses }) => (
-              <article
-                key={surahNumber}
-                className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-xs transition-shadow hover:shadow-md"
-              >
-                {/* رأس الإطار: اسم السورة + عدد الآيات */}
-                <header className="flex items-center justify-between gap-2 border-b border-amber-100 bg-gradient-to-l from-amber-50 to-white px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-[11px] font-bold text-amber-800"
-                      aria-hidden="true"
-                    >
-                      {verses.length.toLocaleString('ar-EG')}
-                    </span>
-                    <h3 className="text-sm font-bold text-stone-900">
-                      سورة {getSurahName(surahNumber)}
-                    </h3>
-                  </div>
-                  <span className="rounded-md bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                    {verses.length === 1 ? 'آية واحدة' : `${verses.length.toLocaleString('ar-EG')} آيات`}
-                  </span>
-                </header>
-
-                {/* قائمة الآيات داخل الإطار */}
-                <ul className="divide-y divide-stone-100">
-                  {verses.map((verse) => {
-                    const lastMistake = verse.recentMistakes[0];
-                    return (
-                      <li
-                        key={verse.ayahNumber}
-                        className="flex items-start justify-between gap-3 px-4 py-2.5"
-                      >
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs font-bold text-stone-900">
-                              الآية {verse.ayahNumber.toLocaleString('ar-EG')}
-                            </span>
-                            <span className="text-[10px] text-amber-800">
-                              · {verse.mistakeCount} اختلاف
-                            </span>
-                          </div>
-                          {lastMistake && (
-                            <p className="truncate text-[10px] text-stone-500">
-                              النظام سمع:{' '}
-                              <span className="font-bold text-amber-800">
-                                «{lastMistake.recitedWord}»
-                              </span>{' '}
-                              · في المصحف:{' '}
-                              <span className="font-quran font-bold text-emerald-700">
-                                «{lastMistake.expectedWord}»
-                              </span>
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          icon={<Play className="h-3.5 w-3.5" />}
-                          onClick={() =>
-                            onStartPracticingVerse(surahNumber, verse.ayahNumber)
-                          }
-                          aria-label={`تسميع الآية ${verse.ayahNumber} من سورة ${getSurahName(surahNumber)}`}
-                        >
-                          تسميع
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                {/* تذييل خفيف بالتنبيه */}
-                <footer className="border-t border-stone-100 bg-stone-50/60 px-4 py-1.5 text-[10px] text-stone-500">
-                  قد يكون الاختلاف من التعرّف الصوتي لا من التلاوة.
-                </footer>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ═══════════ مسار الخطط ═══════════ */}
-      <section className="space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 font-bold text-stone-900">
-              <CalendarClock className="h-5 w-5 text-emerald-700" aria-hidden="true" />
-              محطات المسار
-            </h2>
-            <p className="mt-0.5 text-xs text-stone-500">
-              كل بطاقة محطة على رحلتك — تابع التقدم، اختر سورة، وأكمل وردك اليومي.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Plus className="h-4 w-4 text-emerald-600" />}
-            onClick={() => setIsCreateModalOpen(true)}
-          >
-            محطة جديدة
-          </Button>
-        </header>
-
-        {plans.length === 0 ? (
-          <EmptyState
-            icon={<CalendarClock className="h-5 w-5" />}
-            title="لم تبدأ رحلتك بعد"
-            description="أضف أول محطة مراجعة لتوزيع الحفظ على أيام محددة ومعدل يومي يناسبك."
-            action={
-              <Button
-                size="sm"
-                icon={<Plus className="h-4 w-4" />}
-                onClick={() => setIsCreateModalOpen(true)}
-              >
-                ابدأ رحلتك
-              </Button>
-            }
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {plans.map((plan, index) => {
-              const progressPercent = Math.min(
-                100,
-                Math.round((plan.currentDay / plan.durationDays) * 100),
-              );
-              const isFinished = plan.currentDay >= plan.durationDays;
-              const isExpanded = expandedPlanId === plan.id;
-              const hasDueInPlan = plan.targetSurahs.some((n) => forgottenSurahSet.has(n));
+          <div className="space-y-3">
+            {groupedForgottenVerses.map((group) => {
+              const surahName = getSurahName(group.surahNumber);
+              const isExpanded = expandedSurahs.includes(group.surahNumber);
 
               return (
-                <article
-                  key={plan.id}
-                  className={`group relative flex flex-col gap-3 overflow-hidden rounded-2xl border bg-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                    isFinished
-                      ? 'border-emerald-300'
-                      : hasDueInPlan
-                      ? 'border-amber-300'
-                      : 'border-stone-200'
-                  }`}
-                >
-                  <div
-                    className={`h-1 w-full ${
-                      isFinished
-                        ? 'bg-gradient-to-l from-emerald-500 to-teal-500'
-                        : hasDueInPlan
-                        ? 'bg-gradient-to-l from-amber-400 to-orange-500'
-                        : 'bg-gradient-to-l from-emerald-400 to-emerald-600'
-                    }`}
-                    aria-hidden="true"
-                  />
-
-                  <div className="space-y-3 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
-                            isFinished
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : hasDueInPlan
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-emerald-50 text-emerald-700'
-                          }`}
-                          aria-hidden="true"
-                        >
-                          #{index + 1}
-                        </span>
-                        <Badge tone={isFinished ? 'emerald' : 'stone'}>
-                          {getCategoryLabel(plan.category)}
-                        </Badge>
-                      </div>
-                      {isFinished && (
-                        <CheckCircle
-                          className="h-4 w-4 text-emerald-600"
-                          aria-label="خطة مكتملة"
-                        />
-                      )}
-                    </div>
-
-                    <h3 className="text-sm font-bold leading-snug text-stone-900">
-                      {plan.title}
-                    </h3>
-
-                    <div className="flex items-center gap-3 rounded-xl bg-stone-50/70 p-3">
-                      <ProgressRing
-                        percent={progressPercent}
-                        size={64}
-                        stroke={6}
-                        tone={isFinished ? 'emerald' : hasDueInPlan ? 'amber' : 'emerald'}
-                        ariaLabel={`تقدم الخطة ${progressPercent}%`}
-                      >
-                        <span className="text-sm font-bold text-stone-900">
-                          {progressPercent}%
-                        </span>
-                      </ProgressRing>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-baseline justify-between text-[11px] text-stone-600">
-                          <span>اليوم</span>
-                          <span className="font-bold text-stone-900">
-                            {plan.currentDay.toLocaleString('ar-EG')} /{' '}
-                            {plan.durationDays.toLocaleString('ar-EG')}
-                          </span>
-                        </div>
-                        <div className="flex items-baseline justify-between text-[11px] text-stone-600">
-                          <span>الهدف اليومي</span>
-                          <span className="font-bold text-stone-900">
-                            {plan.dailyTargetAyahs.toLocaleString('ar-EG')} آية
-                          </span>
+                <div key={group.surahNumber} className="glass-panel rounded-2xl overflow-hidden">
+                  {/* Surah Group Header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleSurahGroup(group.surahNumber)}
+                    aria-expanded={isExpanded}
+                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-xl bg-gold-400/15 border border-gold-400/30 text-gold-300 font-bold text-xs flex items-center justify-center font-display shrink-0">
+                        {group.surahNumber}
+                      </span>
+                      <div className="text-right">
+                        <div className="font-bold text-white text-sm">سورة {surahName}</div>
+                        <div className="text-[11px] text-jade-100/60">
+                          {group.verses.length} آية تحتاج تثبيتاً · {group.totalMistakes} خطأ سابق
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <DaySegments
-                        durationDays={plan.durationDays}
-                        currentDay={plan.currentDay}
-                      />
-                      <div className="flex justify-between text-[10px] text-stone-500">
-                        <span>بداية</span>
-                        <span>{plan.targetSurahs.length.toLocaleString('ar-EG')} سور</span>
-                        <span>اكتمال</span>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-stone-100 pt-2">
-                      <p className="mb-1 text-[10px] font-semibold text-stone-500">
-                        محطات السور
-                      </p>
-                      <SurahPath
-                        surahNumbers={plan.targetSurahs}
-                        surahNameByNumber={surahNameByNumber}
-                        forgottenSurahSet={forgottenSurahSet}
-                        onPickSurah={(n) => onStartPracticingVerse(n, 1)}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gold-400/15 text-gold-200 border border-gold-400/30">
+                        {group.verses.length}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-jade-100/60 transition-transform ${
+                          isExpanded ? 'rotate-180' : ''
+                        }`}
                       />
                     </div>
+                  </button>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        aria-expanded={isExpanded}
-                        onClick={() =>
-                          setExpandedPlanId((current) =>
-                            current === plan.id ? null : plan.id,
-                          )
-                        }
-                        className="flex-1 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50"
-                      >
-                        {isExpanded ? 'إخفاء' : 'تفاصيل'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isFinished}
-                        onClick={() => handleCompleteDay(plan.id)}
-                        title="تأكيد إتمام ورد اليوم (+50 حسنة)"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"
-                      >
-                        <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                        إتمام اليوم
-                      </button>
-                    </div>
+                  {isExpanded && (
+                    <div className="border-t border-white/10 divide-y divide-white/10">
+                      {group.verses.map((item) => {
+                        const lastMistake = item.recentMistakes[0];
 
-                    {isExpanded && (
-                      <div className="mt-1 space-y-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-[11px] text-emerald-900">
-                        <p className="font-semibold">سور هذه الخطة:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {plan.targetSurahs.map((surahNumber) => {
-                            const hasDue = forgottenSurahSet.has(surahNumber);
-                            return (
+                        return (
+                          <div
+                            key={`${item.surahNumber}_${item.ayahNumber}`}
+                            className="p-4 space-y-3 hover:bg-white/5 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-white">
+                                الآية {item.ayahNumber}
+                              </span>
+
+                              <span className="text-[11px] font-medium text-gold-300 bg-gold-400/15 border border-gold-400/30 px-2 py-0.5 rounded-md">
+                                أخطاء سابقة: {item.mistakeCount}
+                              </span>
+                            </div>
+
+                            {/* Previous Mistake Details */}
+                            {lastMistake && (
+                              <div className="bg-white/5 rounded-xl p-3 text-xs text-jade-100/70 border border-white/10 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-jade-100/60">موضع التعثر السابق:</span>
+                                  <span className="text-rose-300 font-bold">
+                                    "{lastMistake.recitedWord}"
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-jade-100/60">
+                                    الكلمة الصحيحة في المصحف:
+                                  </span>
+                                  <span className="text-gold-300 font-bold font-quran text-sm">
+                                    "{lastMistake.expectedWord}"
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-jade-100/60">
+                                التكرار المتباعد: يحتاج جلسة تسميع
+                              </span>
+
                               <button
-                                key={surahNumber}
-                                type="button"
-                                onClick={() => onStartPracticingVerse(surahNumber, 1)}
-                                className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
-                                  hasDue
-                                    ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
-                                    : 'border-emerald-200 bg-white text-emerald-900 hover:bg-emerald-100'
-                                }`}
+                                onClick={() =>
+                                  onStartPracticingVerse(item.surahNumber, item.ayahNumber)
+                                }
+                                className="flex items-center gap-1.5 bg-gold-400 hover:bg-gold-300 text-jade-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-lg shadow-gold-500/20"
                               >
-                                {getSurahName(surahNumber)}
-                                {hasDue && ' ⚠'}
+                                <Play className="w-3.5 h-3.5" />
+                                <span>تسميع وتثبيت</span>
                               </button>
-                            );
-                          })}
-                        </div>
-                        <p className="pt-1 text-[10px] text-emerald-900/70">
-                          💡 السور المعلّمة بـ ⚠ تحتوي على آيات تحتاج تثبيتًا.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </article>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
         )}
-      </section>
+      </div>
 
-      {/* ═══════════ شرح التكرار المتباعد ═══════════ */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs">
-        <h2 className="mb-3 flex items-center gap-2 font-bold text-stone-900">
-          <Sparkles className="h-5 w-5 text-emerald-700" aria-hidden="true" />
-          كيف يعمل التكرار المتباعد؟
-        </h2>
-        <div className="grid gap-3 text-xs text-stone-600 sm:grid-cols-3">
-          <div className="rounded-xl bg-stone-50 p-4">
-            <Flame className="mb-2 h-4 w-4 text-amber-600" aria-hidden="true" />
-            <p className="font-bold text-stone-800">مراجعة قصيرة متكرّرة</p>
-            <p className="mt-1 leading-relaxed">
-              الآيات المتعثرة تعود إليك أسرع من الآيات المتقنة.
-            </p>
+      {/* SECTION 2: Active Periodic Revision Plans */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-white/5 text-gold-300">
+              <CalendarClock className="w-5 h-5 text-gold-300" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">خطط المراجعة الدورية النشطة</h2>
+              <p className="text-xs text-jade-100/60">
+                برامج مجدولة لمراجعة السور والأجزاء وفق خطة زمنية ومعدل يومي
+              </p>
+            </div>
           </div>
-          <div className="rounded-xl bg-stone-50 p-4">
-            <ShieldAlert className="mb-2 h-4 w-4 text-rose-600" aria-hidden="true" />
-            <p className="font-bold text-stone-800">إشارات دقيقة</p>
-            <p className="mt-1 leading-relaxed">
-              نسجّل الاختلافات بين التلاوة والنص لتوجيه المراجعة.
-            </p>
-          </div>
-          <div className="rounded-xl bg-stone-50 p-4">
-            <CheckCircle className="mb-2 h-4 w-4 text-emerald-600" aria-hidden="true" />
-            <p className="font-bold text-stone-800">تقدّم واضح</p>
-            <p className="mt-1 leading-relaxed">
-              تابع نسبة الإنجاز اليومية واحصل على الحسنات عند الإتمام.
-            </p>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-1.5 glass-panel text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition-all hover:border-gold-400/30 hover:bg-white/10"
+          >
+            <Plus className="w-4 h-4 text-gold-300" />
+            <span>خطة مراجعة جديدة</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {plans.map((plan) => {
+            const progressPercent = Math.min(
+              100,
+              Math.round((plan.currentDay / plan.durationDays) * 100),
+            );
+            const isFinished = plan.currentDay >= plan.durationDays;
+
+            return (
+              <div
+                key={plan.id}
+                className="glass-panel rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-gold-400/30 transition-colors"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gold-200 bg-white/5 px-2 py-0.5 rounded-md border border-gold-400/30">
+                      {plan.category === 'spaced_repetition'
+                        ? 'تكرار متباعد'
+                        : plan.category === 'daily_wird'
+                          ? 'ورد يومي'
+                          : 'تثبيت سورة'}
+                    </span>
+                    <span className="text-xs text-jade-100/60">
+                      اليوم {plan.currentDay} من {plan.durationDays}
+                    </span>
+                  </div>
+
+                  <h3 className="font-bold text-white text-base leading-snug">{plan.title}</h3>
+                  <p className="text-xs text-jade-100/60 line-clamp-2">{plan.description}</p>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs text-jade-100/70">
+                    <span>نسبة الإنجاز</span>
+                    <span className="font-bold text-gold-300">{progressPercent}%</span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gold-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+
+                  <div className="text-[11px] text-jade-100/60 flex items-center justify-between pt-1">
+                    <span>الهدف: {plan.dailyTargetAyahs} آية / يوم</span>
+                    <span>{plan.targetSurahs.length} سور مدرجة</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (plan.targetSurahs.length > 0) {
+                        onStartPracticingVerse(plan.targetSurahs[0], 1);
+                      }
+                    }}
+                    className="flex-1 glass-panel text-white text-xs font-semibold py-2 rounded-xl text-center transition-colors hover:bg-white/10"
+                  >
+                    ابدأ مراجعة اليوم
+                  </button>
+
+                  <button
+                    onClick={() => handleCompleteDay(plan.id)}
+                    disabled={isFinished}
+                    className="p-2 bg-jade-500/15 hover:bg-jade-500/25 text-jade-300 rounded-xl transition-colors disabled:opacity-40"
+                    title="تأكيد إتمام ورد اليوم (+50 حسنة)"
+                  >
+                    <CheckCircle className="w-5 h-5 text-jade-300" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Modal: Create Custom Plan */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-jade-900 border border-white/10 text-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="font-bold text-white text-lg">إنشاء خطة مراجعة دورية مخصصة</h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-jade-100/60 hover:text-white text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePlan} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-semibold text-jade-100/80">اسم الخطة أو الهدف:</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: مراجعة سورة الكهف أسبوعياً، تثبيت جزء تبارك..."
+                  value={newPlanTitle}
+                  onChange={(e) => setNewPlanTitle(e.target.value)}
+                  className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-jade-100/80">الهدف اليومي (عدد الآيات):</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={dailyTarget}
+                    onChange={(e) => setDailyTarget(Number(e.target.value))}
+                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-jade-100/80">مدة الخطة (بالأيام):</label>
+                  <input
+                    type="number"
+                    min={3}
+                    max={90}
+                    value={durationDays}
+                    onChange={(e) => setDurationDays(Number(e.target.value))}
+                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-jade-100/80">اختر السور المستهدفة:</label>
+                <div className="max-h-40 overflow-y-auto border border-white/10 rounded-xl p-2.5 grid grid-cols-2 gap-2 bg-white/5">
+                  {ALL_SURAHS.slice(0, 30).map((s) => {
+                    const isChecked = selectedSurahNums.includes(s.number);
+                    return (
+                      <label
+                        key={s.number}
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSurahNums([...selectedSurahNums, s.number]);
+                            } else {
+                              setSelectedSurahNums(selectedSurahNums.filter((n) => n !== s.number));
+                            }
+                          }}
+                          className="accent-gold-400 rounded"
+                        />
+                        <span className="text-[11px] text-jade-100/80">
+                          {s.number}. {s.name}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-xl text-jade-100/70 hover:bg-white/5 font-semibold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 text-jade-950 font-bold shadow-lg shadow-gold-500/20 cursor-pointer"
+                >
+                  إنشاء الخطة والبدء
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </section>
-
-      {/* ═══════════ نافذة إنشاء خطة ═══════════ */}
-      <Modal
-        open={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="محطة مراجعة جديدة"
-        description="اختر اسماً ومدة وهدفاً يومياً ثم حدّد السور المستهدفة."
-        icon={<CalendarClock className="h-5 w-5" />}
-        size="md"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
-              إلغاء
-            </Button>
-            <Button type="submit" form="create-revision-plan" disabled={!newPlanTitle.trim()}>
-              إنشاء المحطة والبدء
-            </Button>
-          </>
-        }
-      >
-        <form id="create-revision-plan" onSubmit={handleCreatePlan} className="space-y-4 text-xs">
-          <div className="space-y-1.5">
-            <label htmlFor="plan-title" className="font-semibold text-stone-800">
-              اسم الخطة أو الهدف
-            </label>
-            <input
-              id="plan-title"
-              type="text"
-              required
-              placeholder="مثال: مراجعة سورة الكهف أسبوعياً، تثبيت جزء تبارك..."
-              value={newPlanTitle}
-              onChange={(event) => setNewPlanTitle(event.target.value)}
-              className="w-full rounded-xl border border-stone-300 bg-stone-50 p-3 text-xs text-stone-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-600/25"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor="plan-daily-target" className="font-semibold text-stone-800">
-                الهدف اليومي (آيات)
-              </label>
-              <input
-                id="plan-daily-target"
-                type="number"
-                min={1}
-                max={100}
-                value={dailyTarget}
-                onChange={(event) => setDailyTarget(Number(event.target.value))}
-                className="w-full rounded-xl border border-stone-300 bg-stone-50 p-3 text-xs text-stone-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-600/25"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="plan-duration" className="font-semibold text-stone-800">
-                المدة (بالأيام)
-              </label>
-              <input
-                id="plan-duration"
-                type="number"
-                min={3}
-                max={90}
-                value={durationDays}
-                onChange={(event) => setDurationDays(Number(event.target.value))}
-                className="w-full rounded-xl border border-stone-300 bg-stone-50 p-3 text-xs text-stone-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-600/25"
-              />
-            </div>
-          </div>
-
-          <fieldset className="space-y-1.5">
-            <legend className="font-semibold text-stone-800">
-              اختر السور المستهدفة ({selectedSurahNums.length})
-            </legend>
-            <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 p-2.5">
-              {ALL_SURAHS.map((surah) => (
-                <label
-                  key={surah.number}
-                  className="flex cursor-pointer select-none items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-white"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSurahNums.includes(surah.number)}
-                    onChange={(event) => {
-                      setSelectedSurahNums((current) =>
-                        event.target.checked
-                          ? [...current, surah.number]
-                          : current.filter((number) => number !== surah.number),
-                      );
-                    }}
-                    className="accent-emerald-600"
-                  />
-                  <span className="text-[11px] text-stone-700">
-                    {surah.number}. {surah.name}
-                  </span>
-                </label>
-              ))}
-            </div>
-            {selectedSurahNums.length === 0 && (
-              <p className="text-[11px] text-rose-700" role="alert">
-                اختر سورة واحدة على الأقل.
-              </p>
-            )}
-          </fieldset>
-        </form>
-      </Modal>
+      )}
     </div>
   );
 };
