@@ -90,7 +90,14 @@ function getProgressSyncErrorMessage(error: unknown): string {
     ((message.includes('relation') || message.includes('table')) &&
       (message.includes('not found') || message.includes('does not exist')))
   ) {
-    return 'جداول المزامنة غير موجودة في Supabase. نفّذ ملف supabase/migrations/20261015200000_progress_sync.sql في SQL Editor.';
+    return 'مخطط المزامنة غير مكتمل في Supabase. نفّذ جميع ملفات الترحيل في مجلد supabase/migrations بالترتيب ثم أعد المحاولة.';
+  }
+  if (
+    code === 'PGRST204' ||
+    (message.includes('riwayah_code') &&
+      (message.includes('column') || message.includes('schema cache')))
+  ) {
+    return 'قاعدة البيانات تفتقد دعم الروايات المطلوب للمزامنة. نفّذ supabase/migrations/20261104090000_riwayat.sql ثم أعد المحاولة.';
   }
   if (
     code === '42501' ||
