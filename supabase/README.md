@@ -1,6 +1,6 @@
 # Base de données Supabase
 
-Le dossier `supabase/` contient quatre migrations, appliquées dans l'ordre des
+Le dossier `supabase/` contient cinq migrations, appliquées dans l'ordre des
 noms :
 
 | Ordre | Migration                                                                                             | Rôle                                                                                            |
@@ -9,6 +9,7 @@ noms :
 | 2     | [`20261029090000_normalized_quran_schema.sql`](migrations/20261029090000_normalized_quran_schema.sql) | Modèle normalisé : profil, statistiques, texte coranique, progression, sessions et erreurs.     |
 | 3     | [`20261029100000_drop_legacy_progress.sql`](migrations/20261029100000_drop_legacy_progress.sql)       | Bascule finale : reprend les JSON historiques puis supprime `user_progress` et `verse_mastery`. |
 | 4     | [`20261029110000_cap_review_schedule.sql`](migrations/20261029110000_cap_review_schedule.sql)         | Réparation des échéances SM-2 aberrantes : intervalle ≤ 365 j, facilité ≤ 3,00.                 |
+| 5     | [`20261104090000_riwayat.sql`](migrations/20261104090000_riwayat.sql)                                 | Ajoute la prise en charge de Hafs et Warsh, notamment `ayahs.riwayah_code` requis par la synchronisation. |
 
 La migration 3 est la seule qui supprime des tables. Elle recopie d'abord le
 contenu de `user_progress` et `verse_mastery` dans le modèle normalisé, puis
@@ -232,7 +233,8 @@ dans l'ordre des noms :
 2. `20261029090000_normalized_quran_schema.sql`
 3. `20261029100000_drop_legacy_progress.sql`
 4. `20261029110000_cap_review_schedule.sql`
-5. `supabase/seed/quran-uthmani.sql`
+5. `20261104090000_riwayat.sql`
+6. `supabase/seed/quran-uthmani.sql`
 
 > **Ordre de déploiement.** La migration 3 supprime les tables historiques. Le
 > client qui ne lit ni n'écrit plus ces tables doit donc être déployé **avant**
