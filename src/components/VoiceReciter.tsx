@@ -170,6 +170,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
   const [isSurahRecitationMode, setIsSurahRecitationMode] = useState(false);
   const [showSimulatedInput, setShowSimulatedInput] = useState(false);
   const [hideUnrecitedWords, setHideUnrecitedWords] = useState(true);
+  const [audioError, setAudioError] = useState(false);
   const [surahRecitationResult, setSurahRecitationResult] = useState<{
     completedAyahs: number;
     accuratelyMatchedAyahs: number;
@@ -301,8 +302,8 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     isSurahRecitationModeRef.current = isSurahRecitationMode;
   }, [isSurahRecitationMode]);
 
-  const startListening = async () => {
-    if (isListening) return;
+  const startListening = async (force = false) => {
+    if (isListening && !force) return;
 
     if (ayahCompletionHandledRef.current) {
       resetRecitationState();
@@ -340,11 +341,14 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
     else await startListening();
   };
 
-  const playAyahAudio = () => {
-    if (isPlayingAudio) {
+  const playAyahAudio = (onEnded?: () => void) => {
+    if (isPlayingAudio && !onEnded) {
       stopAudio();
       return;
     }
+
+    if (isPlayingAudio) stopAudio();
+    setAudioError(false);
 
     const targetReciter =
       riwayaMismatch && fallbackReciter ? fallbackReciter : selectedReciter;
@@ -360,8 +364,28 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
       `[Audio] riwaya=${effectiveRiwaya}, reciter=${targetReciter.name}, folder=${targetReciter.folder}`,
     );
 
-    playAudio(url, () => {
-      if (mode === 'listen_repeat') void toggleListening();
+    playAudio(
+      url,
+      onEnded ?? (() => {
+        if (mode === 'listen_repeat') void toggleListening();
+      }),
+      1,
+      () => setAudioError(true),
+    );
+  };
+
+  const toggleListenRepeat = () => {
+    if (mode === 'listen_repeat') {
+      setMode('karaoke');
+      stopAudio();
+      if (isListening) void stopListening();
+      return;
+    }
+
+    setMode('listen_repeat');
+    if (isListening) void stopListening();
+    playAyahAudio(() => {
+      void startListening(true);
     });
   };
 
@@ -434,7 +458,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
 
               <button
                 type="button"
-                onClick={() => setMode(mode === 'listen_repeat' ? 'karaoke' : 'listen_repeat')}
+                onClick={toggleListenRepeat}
                 className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors shrink-0 ${
                   mode === 'listen_repeat'
                     ? 'bg-amber-300 text-emerald-900 border-amber-300'
@@ -442,10 +466,16 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
                 }`}
               >
                 <Headphones className="w-3.5 h-3.5" />
-                <span>استمع ثم ردّد</span>
+                <span>{mode === 'listen_repeat' ? 'إيقاف الاستماع والترديد' : 'استمع ثم ردّد'}</span>
               </button>
             </div>
           </div>
+
+          {audioError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
+              تعذّر تشغيل تلاوة الآية. تحقق من اتصال الإنترنت ثم حاول مجددًا.
+            </div>
+          )}
 
           {riwayaMismatch && (
             <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
@@ -590,7 +620,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={playAyahAudio}
+                          onClick={() => playAyahAudio()}
                           className="flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded font-semibold shrink-0"
                         >
                           <Volume2 className="w-3 h-3" />
@@ -731,7 +761,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={playAyahAudio}
+                onClick={() => playAyahAudio()}
                 className={`p-2 rounded-xl border transition-colors ${
                   isPlayingAudio
                     ? 'bg-emerald-100 border-emerald-300 text-emerald-800 animate-pulse'

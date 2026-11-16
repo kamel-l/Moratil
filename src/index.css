@@ -32,6 +32,67 @@
   --color-jade-900: #093f32;
   --color-jade-950: #04231d;
 
+  /* Brand the shared light surfaces used throughout the app. */
+  --color-white: var(--color-gold-50);
+  --color-stone-50: var(--color-jade-50);
+  --color-stone-100: var(--color-jade-100);
+  --color-stone-200: var(--color-jade-200);
+
+  /* Keep existing utility classes on the app's jade-and-gold brand palette. */
+  --color-emerald-50: var(--color-jade-50);
+  --color-emerald-100: var(--color-jade-100);
+  --color-emerald-200: var(--color-jade-200);
+  --color-emerald-300: var(--color-jade-300);
+  --color-emerald-400: var(--color-jade-400);
+  --color-emerald-500: var(--color-jade-500);
+  --color-emerald-600: var(--color-jade-600);
+  --color-emerald-700: var(--color-jade-700);
+  --color-emerald-800: var(--color-jade-800);
+  --color-emerald-900: var(--color-jade-900);
+  --color-emerald-950: var(--color-jade-950);
+  --color-teal-50: var(--color-jade-50);
+  --color-teal-100: var(--color-jade-100);
+  --color-teal-200: var(--color-jade-200);
+  --color-teal-300: var(--color-jade-300);
+  --color-teal-400: var(--color-jade-400);
+  --color-teal-500: var(--color-jade-500);
+  --color-teal-600: var(--color-jade-600);
+  --color-teal-700: var(--color-jade-700);
+  --color-teal-800: var(--color-jade-800);
+  --color-teal-900: var(--color-jade-900);
+  --color-teal-950: var(--color-jade-950);
+  --color-purple-50: var(--color-jade-50);
+  --color-purple-100: var(--color-jade-100);
+  --color-purple-200: var(--color-jade-200);
+  --color-purple-300: var(--color-jade-300);
+  --color-purple-400: var(--color-jade-400);
+  --color-purple-500: var(--color-jade-500);
+  --color-purple-600: var(--color-jade-600);
+  --color-purple-700: var(--color-jade-700);
+  --color-purple-800: var(--color-jade-800);
+  --color-purple-900: var(--color-jade-900);
+  --color-purple-950: var(--color-jade-950);
+  --color-amber-50: var(--color-gold-50);
+  --color-amber-100: var(--color-gold-100);
+  --color-amber-200: var(--color-gold-200);
+  --color-amber-300: var(--color-gold-300);
+  --color-amber-400: var(--color-gold-400);
+  --color-amber-500: var(--color-gold-500);
+  --color-amber-600: var(--color-gold-600);
+  --color-amber-700: var(--color-gold-700);
+  --color-amber-800: var(--color-gold-800);
+  --color-amber-900: var(--color-gold-900);
+  --color-orange-50: var(--color-gold-50);
+  --color-orange-100: var(--color-gold-100);
+  --color-orange-200: var(--color-gold-200);
+  --color-orange-300: var(--color-gold-300);
+  --color-orange-400: var(--color-gold-400);
+  --color-orange-500: var(--color-gold-500);
+  --color-orange-600: var(--color-gold-600);
+  --color-orange-700: var(--color-gold-700);
+  --color-orange-800: var(--color-gold-800);
+  --color-orange-900: var(--color-gold-900);
+
   --font-display: 'Reem Kufi', 'Amiri', serif;
 }
 
@@ -97,10 +158,10 @@
 
 /* Islamic arabesque subtle pattern backgrounds */
 .bg-islamic-pattern {
-  background-color: #062f27;
+  background-color: var(--color-jade-950);
   background-image:
-    radial-gradient(#10b981 0.75px, transparent 0.75px),
-    radial-gradient(#059669 0.75px, #062f27 0.75px);
+    radial-gradient(var(--color-jade-500) 0.75px, transparent 0.75px),
+    radial-gradient(var(--color-jade-600) 0.75px, var(--color-jade-950) 0.75px);
   background-size: 30px 30px;
   background-position:
     0 0,
@@ -108,7 +169,10 @@
 }
 
 .bg-pattern-subtle {
-  background-image: radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--color-jade-500) 8%, transparent) 1px,
+    transparent 1px
+  );
   background-size: 24px 24px;
 }
 
@@ -197,11 +261,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(16, 185, 129, 0.25);
+  background: color-mix(in srgb, var(--color-jade-500) 25%, transparent);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.45);
+  background: color-mix(in srgb, var(--color-jade-500) 45%, transparent);
 }
 
 @keyframes pulse-ring {
@@ -230,9 +294,9 @@
   border-radius: 1.5rem;
   background-image: linear-gradient(
     140deg,
-    rgba(224, 181, 68, 0.55),
-    rgba(224, 181, 68, 0.1) 42%,
-    rgba(31, 164, 119, 0.4)
+    color-mix(in srgb, var(--color-gold-400) 55%, transparent),
+    color-mix(in srgb, var(--color-gold-400) 10%, transparent) 42%,
+    color-mix(in srgb, var(--color-jade-500) 40%, transparent)
   );
   box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.8);
 }
@@ -240,15 +304,22 @@
 .mushaf-page-inner {
   position: relative;
   border-radius: 1.15rem;
-  background-color: #04231d;
+  background-color: var(--color-jade-950);
   background-image:
-    radial-gradient(circle at 50% -10%, rgba(224, 181, 68, 0.08), transparent 55%),
-    radial-gradient(rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+    radial-gradient(
+      circle at 50% -10%,
+      color-mix(in srgb, var(--color-gold-400) 8%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      color-mix(in srgb, var(--color-jade-500) 5%, transparent) 1px,
+      transparent 1px
+    );
   background-size:
     auto,
     24px 24px;
   padding: 2rem 1.5rem 1.25rem;
-  box-shadow: inset 0 0 0 1px rgba(224, 181, 68, 0.2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold-400) 20%, transparent);
 }
 
 /* شريط اسم السورة داخل الصفحة */
@@ -259,31 +330,31 @@
   gap: 0.5rem;
   margin: 0 auto 1.25rem;
   padding: 0.55rem 1.25rem;
-  border: 1px solid rgba(224, 181, 68, 0.5);
+  border: 1px solid color-mix(in srgb, var(--color-gold-400) 50%, transparent);
   border-radius: 0.75rem;
   background: linear-gradient(
     90deg,
-    rgba(224, 181, 68, 0.04),
-    rgba(224, 181, 68, 0.18),
-    rgba(224, 181, 68, 0.04)
+    color-mix(in srgb, var(--color-gold-400) 4%, transparent),
+    color-mix(in srgb, var(--color-gold-400) 18%, transparent),
+    color-mix(in srgb, var(--color-gold-400) 4%, transparent)
   );
-  color: #f4e1a4;
+  color: var(--color-gold-200);
   font-family: 'Reem Kufi', 'Amiri', serif;
   font-weight: 700;
 }
 .mushaf-surah-band::before {
   content: '﴿';
-  color: rgba(224, 181, 68, 0.7);
+  color: color-mix(in srgb, var(--color-gold-400) 70%, transparent);
 }
 .mushaf-surah-band::after {
   content: '﴾';
-  color: rgba(224, 181, 68, 0.7);
+  color: color-mix(in srgb, var(--color-gold-400) 70%, transparent);
 }
 
 /* البسملة أعلى السورة */
 .mushaf-bismillah {
   text-align: center;
-  color: #eccb6c;
+  color: var(--color-gold-300);
   margin-bottom: 1.5rem;
   font-size: clamp(1.15rem, 3.5vw, 1.5rem);
   line-height: 2;
@@ -308,9 +379,13 @@
   height: 1.9rem;
   margin: 0 0.4rem;
   border-radius: 9999px;
-  border: 1px solid rgba(224, 181, 68, 0.55);
-  background: radial-gradient(circle at 50% 35%, rgba(224, 181, 68, 0.28), rgba(224, 181, 68, 0.04));
-  color: #f4e1a4;
+  border: 1px solid color-mix(in srgb, var(--color-gold-400) 55%, transparent);
+  background: radial-gradient(
+    circle at 50% 35%,
+    color-mix(in srgb, var(--color-gold-400) 28%, transparent),
+    color-mix(in srgb, var(--color-gold-400) 4%, transparent)
+  );
+  color: var(--color-gold-200);
   font-family: 'Reem Kufi', 'Amiri', serif;
   font-size: 0.8rem;
   font-weight: 700;
@@ -327,8 +402,8 @@ button.mushaf-ayah-num {
 }
 button.mushaf-ayah-num:hover {
   transform: scale(1.12);
-  background: rgba(224, 181, 68, 0.4);
-  color: #04231d;
+  background: color-mix(in srgb, var(--color-gold-400) 40%, transparent);
+  color: var(--color-jade-950);
 }
 
 /* رقم الصفحة في أسفل الصفحة */
@@ -338,7 +413,7 @@ button.mushaf-ayah-num:hover {
   justify-content: center;
   gap: 0.35rem;
   margin-top: 1.5rem;
-  color: #eccb6c;
+  color: var(--color-gold-300);
   font-family: 'Reem Kufi', 'Amiri', serif;
   font-size: 0.95rem;
 }

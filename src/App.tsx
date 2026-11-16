@@ -550,6 +550,7 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
               <RevisionPlans
                 plans={plans}
                 forgottenVerses={forgottenVerses}
+                riwaya={riwaya}
                 onStartPracticingVerse={handleStartPracticingVerse}
                 onRefreshPlans={refreshAllState}
               />

@@ -110,12 +110,12 @@ const MushafPage: React.FC<MushafPageProps> = ({
         <span>سورة {surahName}</span>
       </div>
 
-      <div className="rounded-sm bg-[#8b6f3a] p-[3px] shadow-lg">
-        <div className="rounded-sm bg-[#f5e6c8] p-[3px]">
-          <div className="rounded-sm border border-[#a08750] bg-[#fdfaf0] px-4 py-5 sm:px-7 sm:py-6">
+      <div className="rounded-sm bg-gold-700 p-[3px] shadow-lg">
+        <div className="rounded-sm bg-gold-200 p-[3px]">
+          <div className="rounded-sm border border-gold-700 bg-gold-50 px-4 py-5 sm:px-7 sm:py-6">
             {startsSurah && (
               <div className="mb-3 flex items-center justify-center">
-                <div className="inline-flex items-center gap-2 rounded-sm bg-[#8b6f3a] px-4 py-1 text-[#fdfaf0] shadow-sm">
+                <div className="inline-flex items-center gap-2 rounded-sm bg-gold-700 px-4 py-1 text-gold-50 shadow-sm">
                   <span className="text-sm">۞</span>
                   <span className="font-serif text-sm font-bold sm:text-base">
                     سورة {surahName}
@@ -126,7 +126,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
             )}
 
             {showBasmalah && (
-              <div className="mb-3 text-center font-quran text-lg text-[#5a4a25] sm:text-xl">
+              <div className="mb-3 text-center font-quran text-lg text-gold-900 sm:text-xl">
                 {basmalah}
               </div>
             )}
@@ -162,12 +162,12 @@ const MushafPage: React.FC<MushafPageProps> = ({
                       className="mx-0.5 inline-flex items-center justify-center rounded-full align-middle transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       <span
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-[#6b5025] ${
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-gold-900 ${
                           masked
-                            ? 'border-[#a08750] bg-[#fbe5b8]'
-                            : 'border-[#a08750] bg-[#fdfaf0]'
+                            ? 'border-gold-700 bg-gold-200'
+                            : 'border-gold-700 bg-gold-50'
                         }`}
-                        style={{ boxShadow: 'inset 0 0 0 1px #a08750' }}
+                        style={{ boxShadow: 'inset 0 0 0 1px var(--color-gold-700)' }}
                       >
                         {arabicDigits(ayah.numberInSurah)}
                       </span>
@@ -177,7 +177,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
               })}
             </div>
 
-            <div className="mt-5 flex items-center justify-center gap-1.5 font-serif text-sm text-[#8b6f3a]">
+            <div className="mt-5 flex items-center justify-center gap-1.5 font-serif text-sm text-gold-700">
               <span className="text-base">﴿</span>
               <span className="font-bold">{arabicDigits(pageNumber)}</span>
               <span className="text-base">﴾</span>
@@ -221,7 +221,7 @@ const MushafPassage: React.FC<MushafPassageProps> = ({
 
   return (
     <div
-      className={`relative rounded-xl border-[3px] border-double border-amber-700/60 bg-[#fdf8e7] shadow-inner ${
+      className={`relative rounded-xl border-[3px] border-double border-gold-700/60 bg-gold-50 shadow-inner ${
         compact ? 'px-3 py-3' : 'px-4 py-5 sm:px-6 sm:py-6'
       }`}
     >
