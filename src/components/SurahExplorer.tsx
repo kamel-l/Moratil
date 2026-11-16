@@ -22,6 +22,7 @@ import {
   SectionCard,
 } from './ui';
 import { cn } from '../utils/cn';
+import { removeOpeningBasmalah } from '../utils/arabicUtils';
 
 interface SurahExplorerProps {
   onSelectSurahForRecitation: (surahNumber: number) => void;
@@ -83,7 +84,16 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
       setLoadError(null);
       try {
         const fullSurah = await getSurahWithAyahs(surahNumber, riwaya);
-        setActiveReadingSurah(fullSurah);
+        const displayedSurah =
+          fullSurah.number === 1
+            ? fullSurah
+            : {
+                ...fullSurah,
+                ayahs: fullSurah.ayahs.map((ayah, index) =>
+                  index === 0 ? { ...ayah, text: removeOpeningBasmalah(ayah.text) } : ayah,
+                ),
+              };
+        setActiveReadingSurah(displayedSurah);
       } catch (error) {
         console.error('Unable to load surah:', error);
         setLoadError('تعذّر تحميل السورة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.');
@@ -141,7 +151,7 @@ export const SurahExplorer: React.FC<SurahExplorerProps> = ({
           </div>
 
           <div className="space-y-8 divide-y divide-stone-100 p-6 sm:p-10">
-            {activeReadingSurah.basmalah && (
+            {activeReadingSurah.number === 1 && activeReadingSurah.basmalah && (
               <p className="pb-2 text-center font-quran text-xl leading-loose text-emerald-900 sm:text-2xl">
                 {activeReadingSurah.basmalah}
               </p>

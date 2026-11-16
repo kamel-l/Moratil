@@ -563,7 +563,7 @@ const VoiceReciterInner: React.FC<VoiceReciterProps> = ({
             </div>
 
             <div className="px-4 py-5 min-h-[140px]">
-              {currentAyah.numberInSurah === 1 && surah.basmalah && (
+              {surah.number === 1 && currentAyah.numberInSurah === 1 && surah.basmalah && (
                 <p className="mb-3 text-center font-quran text-lg text-emerald-900 sm:text-xl">
                   {surah.basmalah}
                 </p>

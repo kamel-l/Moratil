@@ -97,7 +97,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
   onToggleAyah,
 }) => {
   const startsSurah = ayahs.some((a) => a.numberInSurah === 1);
-  const showBasmalah = startsSurah && basmalah !== null;
+  const showBasmalah = startsSurah && surahNumber === 1 && basmalah !== null;
 
   const isMasked = (ayah: Ayah): boolean =>
     isFullRecitation && !revealedAyahs.has(ayah.numberInSurah);
