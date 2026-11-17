@@ -1,7 +1,11 @@
+import { wordSimilarity } from '../utils/arabicUtils';
+
 export interface RecitationAttempt {
   matched: Set<number>;
   extraWords: string[];
   revealed: boolean;
+  /** Expected-word indices that were matched approximately rather than exactly. */
+  closeWords?: Set<number>;
 }
 
 export interface RecitationResultSummary {
@@ -13,32 +17,70 @@ export interface RecitationResultSummary {
   accuracy: number;
 }
 
+export interface AlignmentOptions {
+  /**
+   * Minimum similarity (0..1) for two different words to count as a match.
+   * The default of 1 preserves the historical exact-match behaviour.
+   */
+  minSimilarity?: number;
+}
+
+export interface WordAlignment {
+  matchedExpected: Set<number>;
+  matchedRecognized: Set<number>;
+  closeExpected: Set<number>;
+}
+
+/**
+ * Aligns two word sequences in order.
+ *
+ * The dynamic program maximises the total similarity of matched pairs, so a
+ * near-identical word (a typical speech-recognition artefact) can still count
+ * as correct without allowing matches out of order. With the default options
+ * this is the classic LCS over exact tokens.
+ */
 export function alignRecitationWords(
   expected: string[],
   recognized: string[],
-): { matchedExpected: Set<number>; matchedRecognized: Set<number> } {
+  options: AlignmentOptions = {},
+): WordAlignment {
+  const minSimilarity = Math.min(1, Math.max(0, options.minSimilarity ?? 1));
   const rows = expected.length + 1;
   const columns = recognized.length + 1;
   const scores = Array.from({ length: rows }, () => new Array<number>(columns).fill(0));
+  const matchScores = new Map<string, number>();
 
   for (let i = 1; i < rows; i += 1) {
     for (let j = 1; j < columns; j += 1) {
-      scores[i][j] =
-        expected[i - 1] === recognized[j - 1]
-          ? scores[i - 1][j - 1] + 1
-          : Math.max(scores[i - 1][j], scores[i][j - 1]);
+      let matchScore = expected[i - 1] === recognized[j - 1] ? 1 : 0;
+      if (matchScore === 0 && minSimilarity < 1) {
+        const similarity = wordSimilarity(expected[i - 1], recognized[j - 1]);
+        if (similarity >= minSimilarity) matchScore = similarity;
+      }
+      if (matchScore > 0) matchScores.set(`${i - 1}:${j - 1}`, matchScore);
+      scores[i][j] = Math.max(
+        scores[i - 1][j],
+        scores[i][j - 1],
+        scores[i - 1][j - 1] + matchScore,
+      );
     }
   }
 
   const matchedExpected = new Set<number>();
   const matchedRecognized = new Set<number>();
+  const closeExpected = new Set<number>();
   let i = expected.length;
   let j = recognized.length;
 
   while (i > 0 && j > 0) {
-    if (expected[i - 1] === recognized[j - 1]) {
+    const matchScore = matchScores.get(`${i - 1}:${j - 1}`) ?? 0;
+    if (
+      matchScore > 0 &&
+      Math.abs(scores[i][j] - (scores[i - 1][j - 1] + matchScore)) < 1e-9
+    ) {
       matchedExpected.add(i - 1);
       matchedRecognized.add(j - 1);
+      if (matchScore < 1) closeExpected.add(i - 1);
       i -= 1;
       j -= 1;
     } else if (scores[i - 1][j] >= scores[i][j - 1]) {
@@ -48,7 +90,7 @@ export function alignRecitationWords(
     }
   }
 
-  return { matchedExpected, matchedRecognized };
+  return { matchedExpected, matchedRecognized, closeExpected };
 }
 
 export function buildRecitationMistakes(

@@ -5,16 +5,25 @@ import {
   BookOpen, Target, Square, Radio,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
-import { Surah, Reciter, Riwaya, Ayah, QuranChallenge } from '../types/quran';
+import { Surah, Reciter, Riwaya, QuranChallenge } from '../types/quran';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
-import { extractWords, normalizeArabicText } from '../utils/arabicUtils';
+import { normalizeArabicText } from '../utils/arabicUtils';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
 import {
   alignRecitationWords,
   buildRecitationMistakes,
-  summarizeRecitation,
   type RecitationResultSummary,
 } from '../services/recitationAssessment';
+import {
+  buildQuestions,
+  computeCumulativeAccuracy,
+  createAttemptFromTranscript,
+  isPerfectAttempt,
+  summarizeQuestions,
+  RECITATION_MIN_SIMILARITY,
+  type AttemptDraft,
+  type TestQuestion,
+} from '../services/memorizationTestLogic';
 
 interface MemorizationTestProps {
   surah: Surah;
@@ -28,20 +37,6 @@ interface MemorizationTestProps {
 type Stage = 'idle' | 'running' | 'finished';
 type HintMode = 'none' | 'first_word' | 'full';
 type RecordingState = 'idle' | 'listening' | 'processing';
-
-interface Question {
-  ayah: Ayah;
-  words: string[];
-  normalized: string[];
-}
-
-interface AyahAttempt {
-  transcript: string;
-  matched: Set<number>;
-  extraWords: string[];
-  accuracy: number;
-  revealed: boolean;
-}
 
 const RIWAYA_LABELS: Record<Riwaya, string> = {
   hafs: 'حفص عن عاصم',
@@ -71,12 +66,14 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const [hintMode, setHintMode] = useState<HintMode>('none');
   // ✅ جديد — التسميع المتواصل (افتراضي مفعّل)
   const [continuousMode, setContinuousMode] = useState(true);
+  // تجاهل البسملة في أول آية من السور غير الفاتحة
+  const [skipBasmalah, setSkipBasmalah] = useState(false);
 
   // ── حالة الجلسة ──
   const [stage, setStage] = useState<Stage>('idle');
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [attempts, setAttempts] = useState<Record<number, AyahAttempt>>({});
+  const [attempts, setAttempts] = useState<Record<number, AttemptDraft>>({});
   const [results, setResults] = useState<RecitationResultSummary | null>(null);
 
   // ── حالة التسجيل ──
@@ -124,7 +121,9 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
           const words = segmentTranscriptRef.current
             .trim().split(/\s+/).map(normalizeArabicText).filter(Boolean);
           if (words.length >= q.normalized.length) {
-            const { matchedExpected } = alignRecitationWords(q.normalized, words);
+            const { matchedExpected } = alignRecitationWords(q.normalized, words, {
+              minSimilarity: RECITATION_MIN_SIMILARITY,
+            });
             if (matchedExpected.size >= q.normalized.length) {
               advanceContinuousAyah();
             }
@@ -185,6 +184,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
     setRecordingState('idle');
     setLiveTranscript('');
     setError(null);
+    activeAyahRef.current = 0;
     segmentTranscriptRef.current = '';
     interimTextRef.current = '';
     cleanupRecording();
@@ -197,26 +197,11 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   // ══════════════════════════════════════════════════════════
 
   /** استخراج محاولة من النص المتراكم للآية الحالية */
-  const buildAttemptFromCurrentSegment = (ayahIdx: number): AyahAttempt | null => {
+  const buildAttemptFromCurrentSegment = (ayahIdx: number): AttemptDraft | null => {
     const q = questions[ayahIdx];
     if (!q) return null;
     const transcript = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
-    if (!transcript) return null;
-
-    const recognizedTokens = transcript
-      .split(/\s+/)
-      .map((original) => ({ original, normalized: normalizeArabicText(original) }))
-      .filter(({ normalized }) => normalized);
-    const recognized = recognizedTokens.map(({ normalized }) => normalized);
-    const { matchedExpected, matchedRecognized } = alignRecitationWords(q.normalized, recognized);
-    const extraWords = recognizedTokens
-      .filter((_, index) => !matchedRecognized.has(index))
-      .map(({ original }) => original);
-    const totalWords = q.normalized.length + extraWords.length;
-    const accuracy =
-      totalWords > 0 ? Math.round((matchedExpected.size / totalWords) * 100) : 0;
-
-    return { transcript, matched: matchedExpected, extraWords, accuracy, revealed: false };
+    return createAttemptFromTranscript(transcript, q, RECITATION_MIN_SIMILARITY);
   };
 
   /** يحفظ الآية الحالية في attempts ويعيد للآية التالية (يبقي الاستماع نشطًا) */
@@ -410,23 +395,25 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
   const startTest = () => {
     if (endAyah < startAyah) return;
-    const qs = surah.ayahs
-      .filter(a => a.numberInSurah >= startAyah && a.numberInSurah <= endAyah)
-      .map(ayah => {
-        const words = extractWords(ayah.text).map(w => w.original);
-        return { ayah, words, normalized: words.map(normalizeArabicText) };
-      });
+    const qs = buildQuestions(surah, startAyah, endAyah, {
+      skipOpeningBasmalah: skipBasmalah,
+    });
+    if (qs.length === 0) {
+      setError('لا توجد آيات في النطاق المحدد.');
+      return;
+    }
     setQuestions(qs);
     setCurrentIndex(0);
     setAttempts({});
     setResults(null);
     setStage('running');
     setError(null);
+    activeAyahRef.current = 0;
     segmentTranscriptRef.current = '';
     interimTextRef.current = '';
   };
 
-  const finishTest = (override?: Record<number, AyahAttempt>) => {
+  const finishTest = (override?: Record<number, AttemptDraft>) => {
     // إذا كنا نستمع، خذ لقطة من النص الحالي
     let data = override ?? attempts;
     if (recordingState === 'listening') {
@@ -451,14 +438,14 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
         recordVerseResult(
           surah.number,
           q.ayah.numberInSurah,
-          a.matched.size === q.normalized.length && a.extraWords.length === 0,
+          isPerfectAttempt(q, a),
           buildRecitationMistakes(q.words, a),
           effectiveRiwaya,
         );
       }
     });
 
-    const computed = summarizeRecitation(questions, data);
+    const computed = summarizeQuestions(questions, data);
     setAttempts(data);
     setResults(computed);
 
@@ -492,6 +479,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
     setStage('idle');
     setQuestions([]); setCurrentIndex(0); setAttempts({}); setResults(null);
     setRecordingState('idle'); setLiveTranscript(''); setError(null);
+    activeAyahRef.current = 0;
     segmentTranscriptRef.current = '';
     interimTextRef.current = '';
   };
@@ -502,16 +490,10 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const maxAyah = surah.ayahs.length;
   const answeredCount = Object.keys(attempts).length;
 
-  const cumulative = useMemo(() => {
-    let m = 0, t = 0;
-    questions.forEach((q, i) => {
-      const a = attempts[i];
-      if (!a || a.revealed) return;
-      m += a.matched.size;
-      t += q.normalized.length + a.extraWords.length;
-    });
-    return t > 0 ? Math.round((m / t) * 100) : 0;
-  }, [attempts, questions]);
+  const cumulative = useMemo(
+    () => computeCumulativeAccuracy(questions, attempts),
+    [attempts, questions],
+  );
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -619,6 +601,25 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                   </span>
                   <span className="text-[10px] text-stone-500 leading-5 block">
                     استمع مرة واحدة فقط. ينتقل التطبيق تلقائيًا بين الآيات عند إتمام كل آية (مطابقة كاملة أو صمت قصير) دون الحاجة لضغط الميكروفون مجددًا.
+                  </span>
+                </div>
+              </label>
+
+              {/* تجاهل البسملة في أول السورة */}
+              <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-stone-200 bg-stone-50/60 p-3 hover:bg-stone-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={skipBasmalah}
+                  onChange={e => setSkipBasmalah(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-emerald-700 shrink-0"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-700" />
+                    تجاهل البسملة في أول السورة
+                  </span>
+                  <span className="text-[10px] text-stone-500 leading-5 block">
+                    لا تُحتسب البسملة في أول آية من السور غير الفاتحة؛ البسملة في الفاتحة جزء من التسميع دائمًا.
                   </span>
                 </div>
               </label>
@@ -772,12 +773,15 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       <div dir="rtl" className="font-quran text-2xl sm:text-3xl leading-[2.2] text-center flex flex-wrap gap-x-2 gap-y-2 justify-center">
                         {currentQ.words.map((w, idx) => {
                           const matched = currentAttempt.matched.has(idx);
+                          const close = currentAttempt.closeWords?.has(idx);
                           if (currentAttempt.revealed) {
                             return <span key={idx} className="text-stone-800">{w}</span>;
                           }
                           return (
                             <span key={idx} className={matched
-                              ? 'text-emerald-700'
+                              ? close
+                                ? 'text-amber-700'
+                                : 'text-emerald-700'
                               : 'text-rose-600 underline decoration-rose-400 decoration-2 underline-offset-4'}>
                               {w}
                             </span>
@@ -792,6 +796,18 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                             <span className="font-quran text-base text-rose-700">
                               {currentQ.words
                                 .filter((_, index) => !currentAttempt.matched.has(index))
+                                .join(' ')}
+                            </span>
+                          </div>
+                        )}
+
+                      {!currentAttempt.revealed &&
+                        (currentAttempt.closeWords?.size ?? 0) > 0 && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs">
+                            <span className="font-semibold text-amber-800">كلمات قريبة من الصحة (راجع تلفظها): </span>
+                            <span className="font-quran text-base text-amber-700">
+                              {currentQ.words
+                                .filter((_, index) => currentAttempt.closeWords?.has(index))
                                 .join(' ')}
                             </span>
                           </div>
@@ -1009,8 +1025,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     const a = attempts[i];
                     const total = q.normalized.length;
                     const matched = a?.matched.size ?? 0;
-                    const perfect =
-                      !!a && !a.revealed && matched === total && a.extraWords.length === 0;
+                    const perfect = isPerfectAttempt(q, a);
                     return (
                       <button
                         key={i}
