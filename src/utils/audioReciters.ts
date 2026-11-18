@@ -22,12 +22,13 @@ export const HAFS_RECITERS: Reciter[] = [
     riwaya: 'hafs',
   },
   {
+    // الـ id يُبقى كما هو حتى لا يفقد المستخدمون المفضّل المحفوظ، لكن الصوت
+    // أصبح من سلسلة المرتَّل: صوت الشيخ وحده بلا ترديد الطفل المرافق.
     id: 'minshawy_teacher',
     name: 'الشيخ محمد صديق المنشاوي',
-    description: 'المصحف المعلم بخشوع وتأثر',
-    folder: 'Minshawy_Teacher_128kbps',
+    description: 'المصحف المرتل بخشوع وتأثر — صوت الشيخ وحده',
+    folder: 'Minshawy_Murattal_128kbps',
     bitrate: '128kbps',
-    hasTeacherStyle: true,
     riwaya: 'hafs',
   },
   {
