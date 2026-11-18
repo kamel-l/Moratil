@@ -209,7 +209,7 @@ export default function App() {
 
 function TabLoadingFallback() {
   return (
-    <div className="flex min-h-64 items-center justify-center gap-3 text-gold-300" role="status">
+    <div className="flex flex-1 min-h-0 items-center justify-center gap-3 text-gold-300" role="status">
       <span className="h-5 w-5 animate-spin rounded-full border-2 border-gold-400 border-t-transparent" />
       جارٍ تحميل الصفحة...
     </div>
@@ -469,12 +469,9 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
   return (
     <div
       dir="rtl"
-      className={`bg-jade-950 text-white font-sans selection:bg-gold-400/25 ${
+      className={`bg-jade-950 text-white font-sans selection:bg-gold-400/25 h-[100dvh] flex flex-col overflow-hidden ${
         riwaya === 'warsh' ? 'riwaya-warsh' : ''
-      } ${reciteActive ? 'h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen pb-28'}`}
-      style={{
-        paddingBottom: reciteActive ? undefined : 'calc(var(--audio-player-offset, 0px) + 2rem)',
-      }}
+      }`}
     >
       <div className="shrink-0">
         <Navbar
@@ -523,7 +520,10 @@ function AuthenticatedApp({ userId, userEmail, onSignOut }: AuthenticatedAppProp
             />
           </div>
         ) : (
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full">
+          <main
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 w-full"
+            style={{ paddingBottom: 'calc(var(--audio-player-offset, 0px) + 2rem)' }}
+          >
             {currentTab === 'home' && (
               <HomeDashboard
                 stats={stats}
