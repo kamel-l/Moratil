@@ -1,11 +1,13 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
   AlertTriangle,
+  BookOpen,
   CalendarClock,
   CheckCircle,
   Clock,
   Flame,
+  Loader2,
   Play,
   Plus,
   RotateCcw,
@@ -14,8 +16,9 @@ import {
   Target,
   TrendingUp,
 } from 'lucide-react';
-import { RevisionPlan, VerseMastery } from '../types/quran';
+import { RevisionPlan, Riwaya, Surah, VerseMastery } from '../types/quran';
 import { ALL_SURAHS } from '../data/quranSurahsList';
+import { getSurahWithAyahs } from '../data/quranData';
 import {
   addPointsAndVerses,
   getRevisionReminderSettings,
@@ -33,6 +36,7 @@ import { Badge, Button, EmptyState, Modal } from './ui';
 interface RevisionPlansProps {
   plans: RevisionPlan[];
   forgottenVerses: VerseMastery[];
+  riwaya: Riwaya;
   onStartPracticingVerse: (surahNumber: number, ayahNumber: number) => void;
   onRefreshPlans: () => void;
 }
@@ -74,9 +78,13 @@ const ProgressRing: React.FC<ProgressRingProps> = ({
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - clamped / 100);
 
-  const trackColor = tone === 'light' ? 'rgba(255,255,255,0.18)' : '#e7e5e4';
+  const trackColor = tone === 'light' ? 'rgba(255,255,255,0.18)' : 'var(--color-stone-200)';
   const progressColor =
-    tone === 'amber' ? '#f59e0b' : tone === 'light' ? '#fbbf24' : '#059669';
+    tone === 'amber'
+      ? 'var(--color-gold-500)'
+      : tone === 'light'
+        ? 'var(--color-gold-400)'
+        : 'var(--color-jade-600)';
 
   return (
     <div
@@ -224,6 +232,7 @@ const SurahPath: React.FC<SurahPathProps> = ({
 export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   plans,
   forgottenVerses,
+  riwaya,
   onStartPracticingVerse,
   onRefreshPlans,
 }) => {
@@ -238,6 +247,9 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
   const [reminderNotice, setReminderNotice] = useState('');
   const [reminderError, setReminderError] = useState('');
   const [isSavingReminder, setIsSavingReminder] = useState(false);
+  const [surahTexts, setSurahTexts] = useState<Record<number, Surah>>({});
+  const [isLoadingSurahTexts, setIsLoadingSurahTexts] = useState(false);
+  const [surahTextError, setSurahTextError] = useState('');
 
   const surahNameByNumber = useMemo(
     () => new Map(ALL_SURAHS.map((surah) => [surah.number, surah.name])),
@@ -268,6 +280,45 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         verses: [...verses].sort((a, b) => a.ayahNumber - b.ayahNumber),
       }));
   }, [forgottenVerses]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (forgottenBySurah.length === 0) {
+      setSurahTexts({});
+      setSurahTextError('');
+      setIsLoadingSurahTexts(false);
+      return;
+    }
+
+    setSurahTexts({});
+    setSurahTextError('');
+    setIsLoadingSurahTexts(true);
+
+    void Promise.all(
+      forgottenBySurah.map(async ({ surahNumber }) => [
+        surahNumber,
+        await getSurahWithAyahs(surahNumber, riwaya),
+      ] as const),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setSurahTexts(Object.fromEntries(entries));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setSurahTextError(
+          error instanceof Error ? error.message : 'تعذر تحميل نصوص الآيات المستحقة.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingSurahTexts(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [forgottenBySurah, riwaya]);
 
   const aggregate = useMemo(() => {
     const active = plans.filter((p) => p.currentDay < p.durationDays);
@@ -507,10 +558,19 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
-            <h2 className="font-bold text-stone-900">آيات تحتاج إلى تثبيت</h2>
+            <h2 className="font-bold text-white">آيات تحتاج إلى تثبيت</h2>
           </div>
           <Badge tone="amber">{forgottenVerses.length} آية</Badge>
         </header>
+
+        {surahTextError && (
+          <p
+            className="rounded-xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-xs leading-6 text-rose-100"
+            role="alert"
+          >
+            تعذر عرض نصوص الآيات: {surahTextError}
+          </p>
+        )}
 
         {forgottenBySurah.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 text-center">
@@ -525,74 +585,112 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
             {forgottenBySurah.map(({ surahNumber, verses }) => (
               <article
                 key={surahNumber}
-                className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-xs transition-shadow hover:shadow-md"
+                className="overflow-hidden rounded-2xl border border-gold-300/70 bg-jade-950 shadow-lg shadow-black/10 transition-shadow hover:shadow-xl"
               >
-                {/* رأس الإطار: اسم السورة + عدد الآيات */}
-                <header className="flex items-center justify-between gap-2 border-b border-amber-100 bg-gradient-to-l from-amber-50 to-white px-4 py-2.5">
+                <header className="flex items-center justify-between gap-3 border-b border-gold-300/20 bg-gradient-to-l from-jade-800 to-jade-900 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-[11px] font-bold text-amber-800"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-gold-300/30 bg-gold-400/10 text-xs font-bold text-gold-200"
                       aria-hidden="true"
                     >
                       {verses.length.toLocaleString('ar-EG')}
                     </span>
-                    <h3 className="text-sm font-bold text-stone-900">
+                    <h3 className="text-sm font-bold text-white">
                       سورة {getSurahName(surahNumber)}
                     </h3>
                   </div>
-                  <span className="rounded-md bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                    {verses.length === 1 ? 'آية واحدة' : `${verses.length.toLocaleString('ar-EG')} آيات`}
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-jade-100">
+                    {verses.length === 1
+                      ? 'آية واحدة للتثبيت'
+                      : `${verses.length.toLocaleString('ar-EG')} آيات للتثبيت`}
                   </span>
                 </header>
 
-                {/* قائمة الآيات داخل الإطار */}
-                <ul className="divide-y divide-stone-100">
+                <ul className="space-y-3 p-3 sm:p-4">
                   {verses.map((verse) => {
                     const lastMistake = verse.recentMistakes[0];
+                    const ayahText = surahTexts[surahNumber]?.ayahs.find(
+                      (ayah) => ayah.numberInSurah === verse.ayahNumber,
+                    )?.text;
+
                     return (
-                      <li
-                        key={verse.ayahNumber}
-                        className="flex items-start justify-between gap-3 px-4 py-2.5"
-                      >
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs font-bold text-stone-900">
+                      <li key={verse.ayahNumber}>
+                        <article className="overflow-hidden rounded-xl border border-gold-200 bg-gold-50 shadow-sm">
+                          <header className="flex items-center justify-between gap-2 border-b border-gold-200/80 bg-gradient-to-l from-gold-100/80 to-gold-50 px-3 py-2">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-jade-900">
+                              <BookOpen className="h-3.5 w-3.5 text-jade-700" aria-hidden="true" />
                               الآية {verse.ayahNumber.toLocaleString('ar-EG')}
                             </span>
-                            <span className="text-[10px] text-amber-800">
-                              · {verse.mistakeCount} اختلاف
+                            <span className="rounded-full bg-gold-200/70 px-2 py-0.5 text-[10px] font-semibold text-gold-900">
+                              {verse.mistakeCount.toLocaleString('ar-EG')} اختلاف
                             </span>
+                          </header>
+
+                          <div className="px-4 py-4 sm:px-5">
+                            {ayahText ? (
+                              <p
+                                dir="rtl"
+                                className="text-center font-quran text-2xl leading-[2.2] text-jade-950 sm:text-3xl"
+                              >
+                                {ayahText}
+                              </p>
+                            ) : isLoadingSurahTexts ? (
+                              <div
+                                className="flex min-h-16 items-center justify-center gap-2 text-xs text-stone-500"
+                                role="status"
+                              >
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                جارٍ تحميل نص الآية...
+                              </div>
+                            ) : (
+                              <p className="py-3 text-center text-xs text-stone-500">
+                                نص الآية غير متاح حاليًا.
+                              </p>
+                            )}
                           </div>
+
                           {lastMistake && (
-                            <p className="truncate text-[10px] text-stone-500">
-                              النظام سمع:{' '}
-                              <span className="font-bold text-amber-800">
-                                «{lastMistake.recitedWord}»
-                              </span>{' '}
-                              · في المصحف:{' '}
-                              <span className="font-quran font-bold text-emerald-700">
-                                «{lastMistake.expectedWord}»
-                              </span>
-                            </p>
+                            <div className="mx-3 mb-3 rounded-lg border border-gold-200 bg-white/70 px-3 py-2 text-[10px] leading-5 text-stone-600">
+                              <span className="font-semibold text-stone-700">موضع المراجعة</span>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                <span>
+                                  سُمِع:{' '}
+                                  <span className="font-bold text-rose-700">
+                                    {lastMistake.recitedWord || 'لم تُسمع'}
+                                  </span>
+                                </span>
+                                <span>
+                                  الصحيح:{' '}
+                                  <span className="font-quran text-sm font-bold text-jade-800">
+                                    {lastMistake.expectedWord || 'كلمة زائدة'}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
                           )}
-                        </div>
-                        <Button
-                          size="sm"
-                          icon={<Play className="h-3.5 w-3.5" />}
-                          onClick={() =>
-                            onStartPracticingVerse(surahNumber, verse.ayahNumber)
-                          }
-                          aria-label={`تسميع الآية ${verse.ayahNumber} من سورة ${getSurahName(surahNumber)}`}
-                        >
-                          تسميع
-                        </Button>
+
+                          <footer className="flex items-center justify-between gap-3 border-t border-gold-200/80 px-3 py-2">
+                            <span className="text-[10px] text-stone-500">
+                              راجع الآية ثم أعد تسميعها
+                            </span>
+                            <Button
+                              size="sm"
+                              icon={<Play className="h-3.5 w-3.5" />}
+                              onClick={() =>
+                                onStartPracticingVerse(surahNumber, verse.ayahNumber)
+                              }
+                              aria-label={`تسميع الآية ${verse.ayahNumber} من سورة ${getSurahName(surahNumber)}`}
+                            >
+                              ثبّت الآية
+                            </Button>
+                          </footer>
+                        </article>
                       </li>
                     );
                   })}
                 </ul>
 
-                {/* تذييل خفيف بالتنبيه */}
-                <footer className="border-t border-stone-100 bg-stone-50/60 px-4 py-1.5 text-[10px] text-stone-500">
+                <footer className="border-t border-gold-300/15 px-4 py-2 text-[10px] text-jade-100/60">
                   قد يكون الاختلاف من التعرّف الصوتي لا من التلاوة.
                 </footer>
               </article>
@@ -605,11 +703,11 @@ export const RevisionPlans: React.FC<RevisionPlansProps> = ({
       <section className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 font-bold text-stone-900">
-              <CalendarClock className="h-5 w-5 text-emerald-700" aria-hidden="true" />
+            <h2 className="flex items-center gap-2 font-bold text-white">
+              <CalendarClock className="h-5 w-5 text-gold-300" aria-hidden="true" />
               محطات المسار
             </h2>
-            <p className="mt-0.5 text-xs text-stone-500">
+            <p className="mt-0.5 text-xs text-jade-100/70">
               كل بطاقة محطة على رحلتك — تابع التقدم، اختر سورة، وأكمل وردك اليومي.
             </p>
           </div>

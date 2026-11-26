@@ -13,7 +13,7 @@ export function useAyahAudio() {
   }, []);
 
   const playAudio = useCallback(
-    (url: string, onEnded?: () => void, repeatCount = 1) => {
+    (url: string, onEnded?: () => void, repeatCount = 1, onError?: () => void) => {
       const existingAudio = audioRef.current;
       if (existingAudio && existingAudio.src !== url) {
         existingAudio.pause();
@@ -42,9 +42,10 @@ export function useAyahAudio() {
       audio.onerror = () => {
         setIsPlayingAudio(false);
         audio.onended = null;
+        onError?.();
       };
 
-      if (isPlayingAudio && audioRef.current?.src === url) {
+      if (!audio.paused && audio.src === url) {
         audio.pause();
         setIsPlayingAudio(false);
         return;
@@ -57,9 +58,10 @@ export function useAyahAudio() {
         })
         .catch(() => {
           setIsPlayingAudio(false);
+          onError?.();
         });
     },
-    [isPlayingAudio],
+    [],
   );
 
   useEffect(() => {

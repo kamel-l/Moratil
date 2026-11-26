@@ -15,7 +15,7 @@ import {
 import { Ayah, Reciter, Riwaya, Surah } from '../types/quran';
 import { getAyahPageNumber, getSurahWithAyahs } from '../data/quranData';
 import { SurahMeta } from '../data/quranSurahsList';
-import { getAyahAudioUrl, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
+import { getAyahAudioUrl, getAudioAyahNumber, getRecitersByRiwaya, POPULAR_RECITERS } from '../utils/audioReciters';
 import { removeOpeningBasmalah } from '../utils/arabicUtils';
 import { Button, PageHero } from './ui';
 
@@ -26,7 +26,7 @@ type UnitSize = number | 'page';
 type DisplayMode = 'cards' | 'mushaf';
 
 interface MemorizationModeProps {
-  allSurahs: SurahMeta[];
+  allSurahs: readonly SurahMeta[];
   selectedReciter: Reciter;
   onSelectReciter: (reciter: Reciter) => void;
   riwaya: Riwaya; // ✅ الرواية الحالية لتحميل النص الصحيح
@@ -77,22 +77,27 @@ interface MushafPageProps {
   pageNumber: number;
   surahNumber: number;
   surahName: string;
+  /** Standalone basmalah printed above the page, when the page starts a surah. */
+  basmalah: string | null;
   isFullRecitation: boolean;
   revealedAyahs: Set<number>;
   onToggleAyah: (ayahNumber: number) => void;
 }
+
+const HAFS_BASMALAH = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
 const MushafPage: React.FC<MushafPageProps> = ({
   ayahs,
   pageNumber,
   surahNumber,
   surahName,
+  basmalah,
   isFullRecitation,
   revealedAyahs,
   onToggleAyah,
 }) => {
   const startsSurah = ayahs.some((a) => a.numberInSurah === 1);
-  const showBasmalah = startsSurah && surahNumber !== 1 && surahNumber !== 9;
+  const showBasmalah = startsSurah && surahNumber === 1 && basmalah !== null;
 
   const isMasked = (ayah: Ayah): boolean =>
     isFullRecitation && !revealedAyahs.has(ayah.numberInSurah);
@@ -105,12 +110,12 @@ const MushafPage: React.FC<MushafPageProps> = ({
         <span>سورة {surahName}</span>
       </div>
 
-      <div className="rounded-sm bg-[#8b6f3a] p-[3px] shadow-lg">
-        <div className="rounded-sm bg-[#f5e6c8] p-[3px]">
-          <div className="rounded-sm border border-[#a08750] bg-[#fdfaf0] px-4 py-5 sm:px-7 sm:py-6">
+      <div className="rounded-sm bg-gold-700 p-[3px] shadow-lg">
+        <div className="rounded-sm bg-gold-200 p-[3px]">
+          <div className="rounded-sm border border-gold-700 bg-gold-50 px-4 py-5 sm:px-7 sm:py-6">
             {startsSurah && (
               <div className="mb-3 flex items-center justify-center">
-                <div className="inline-flex items-center gap-2 rounded-sm bg-[#8b6f3a] px-4 py-1 text-[#fdfaf0] shadow-sm">
+                <div className="inline-flex items-center gap-2 rounded-sm bg-gold-700 px-4 py-1 text-gold-50 shadow-sm">
                   <span className="text-sm">۞</span>
                   <span className="font-serif text-sm font-bold sm:text-base">
                     سورة {surahName}
@@ -121,8 +126,8 @@ const MushafPage: React.FC<MushafPageProps> = ({
             )}
 
             {showBasmalah && (
-              <div className="mb-3 text-center font-quran text-lg text-[#5a4a25] sm:text-xl">
-                بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+              <div className="mb-3 text-center font-quran text-lg text-gold-900 sm:text-xl">
+                {basmalah}
               </div>
             )}
 
@@ -157,10 +162,12 @@ const MushafPage: React.FC<MushafPageProps> = ({
                       className="mx-0.5 inline-flex items-center justify-center rounded-full align-middle transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       <span
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-[#6b5025] ${
-                          masked ? 'border-[#a08750] bg-[#fbe5b8]' : 'border-[#a08750] bg-[#fdfaf0]'
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-gold-900 ${
+                          masked
+                            ? 'border-gold-700 bg-gold-200'
+                            : 'border-gold-700 bg-gold-50'
                         }`}
-                        style={{ boxShadow: 'inset 0 0 0 1px #a08750' }}
+                        style={{ boxShadow: 'inset 0 0 0 1px var(--color-gold-700)' }}
                       >
                         {arabicDigits(ayah.numberInSurah)}
                       </span>
@@ -170,7 +177,7 @@ const MushafPage: React.FC<MushafPageProps> = ({
               })}
             </div>
 
-            <div className="mt-5 flex items-center justify-center gap-1.5 font-serif text-sm text-[#8b6f3a]">
+            <div className="mt-5 flex items-center justify-center gap-1.5 font-serif text-sm text-gold-700">
               <span className="text-base">﴿</span>
               <span className="font-bold">{arabicDigits(pageNumber)}</span>
               <span className="text-base">﴾</span>
@@ -214,7 +221,7 @@ const MushafPassage: React.FC<MushafPassageProps> = ({
 
   return (
     <div
-      className={`relative rounded-xl border-[3px] border-double border-amber-700/60 bg-[#fdf8e7] shadow-inner ${
+      className={`relative rounded-xl border-[3px] border-double border-gold-700/60 bg-gold-50 shadow-inner ${
         compact ? 'px-3 py-3' : 'px-4 py-5 sm:px-6 sm:py-6'
       }`}
     >
@@ -408,7 +415,13 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     if (!audio) return;
 
     const ayahNumber = playbackSession.ayahNumbers[playbackSession.ayahIndex];
-    audio.src = getAyahAudioUrl(selectedReciter.id, surah.number, ayahNumber);
+    const ayah = surah.ayahs[ayahNumber - 1];
+    audio.src = getAyahAudioUrl(
+      selectedReciter.id,
+      surah.number,
+      getAudioAyahNumber(ayah ?? { numberInSurah: ayahNumber }, riwaya),
+      riwaya,
+    );
     audio.onended = () => {
       if (playbackSession.ayahIndex + 1 < playbackSession.ayahNumbers.length) {
         setPlaybackSession({ ...playbackSession, ayahIndex: playbackSession.ayahIndex + 1 });
@@ -760,10 +773,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold text-stone-900">
+                <h2 className="font-bold text-white">
                   {isPageMode ? 'صفحات المصحف' : 'وحدات الحفظ'}
                 </h2>
-                <p className="mt-1 text-xs text-stone-500">
+                <p className="mt-1 text-xs text-jade-100/70">
                   {isPageMode
                     ? 'عرض الصفحات كما في المصحف المطبوع — اضغط رقم الآية للكشف أو الإخفاء'
                     : displayMode === 'cards'
@@ -886,19 +899,22 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                           </Button>
                         </div>
 
-                        <MushafPage
-                          ayahs={pageAyahs}
-                          pageNumber={pageNumber}
-                          surahNumber={surah.number}
-                          surahName={surah.name}
-                          isFullRecitation={isFullRecitation}
-                          revealedAyahs={revealedAyahs}
-                          onToggleAyah={toggleRevealedAyah}
-                        />
-                      </article>
-                    );
-                  })
-                )}
+                      <MushafPage
+                        ayahs={pageAyahs}
+                        pageNumber={pageNumber}
+                        surahNumber={surah.number}
+                        surahName={surah.name}
+                        basmalah={
+                          surah.basmalah ??
+                          (surah.number !== 1 && surah.number !== 9 ? HAFS_BASMALAH : null)
+                        }
+                        isFullRecitation={isFullRecitation}
+                        revealedAyahs={revealedAyahs}
+                        onToggleAyah={toggleRevealedAyah}
+                      />
+                    </article>
+                  );
+                })}
               </div>
             ) : isFullRecitation && displayMode === 'mushaf' ? (
               <article className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:p-5">

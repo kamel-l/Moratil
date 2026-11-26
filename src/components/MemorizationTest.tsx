@@ -1,34 +1,37 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Mic,
-  Trophy,
-  RotateCcw,
-  CheckCircle2,
-  XCircle,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
-  Settings,
-  Play,
-  Flag,
-  Eye,
-  Loader2,
-  AlertTriangle,
-  Keyboard,
-  BookOpen,
-  Target,
-  Square,
+  Mic, Trophy, RotateCcw, CheckCircle2, XCircle, ChevronLeft, ChevronRight,
+  Settings, Play, Flag, Eye, Loader2, AlertTriangle, Keyboard,
+  BookOpen, Target, Square, Radio,
 } from 'lucide-react';
-import { Surah, Reciter, Riwaya, Ayah } from '../types/quran';
-import { extractWords } from '../utils/arabicUtils';
-import { createNextAyahOptions } from '../utils/nextAyahQuiz';
+import { Capacitor } from '@capacitor/core';
+import { Surah, Reciter, Riwaya, QuranChallenge } from '../types/quran';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { normalizeArabicText } from '../utils/arabicUtils';
 import { recordVerseResult, addPointsAndVerses } from '../services/storageService';
+import {
+  alignRecitationWords,
+  buildRecitationMistakes,
+  type RecitationResultSummary,
+} from '../services/recitationAssessment';
+import {
+  buildQuestions,
+  computeCumulativeAccuracy,
+  createAttemptFromTranscript,
+  isPerfectAttempt,
+  summarizeQuestions,
+  RECITATION_MIN_SIMILARITY,
+  type AttemptDraft,
+  type TestQuestion,
+} from '../services/memorizationTestLogic';
 
 interface MemorizationTestProps {
   surah: Surah;
   selectedReciter: Reciter;
   onStatsUpdate: () => void;
   riwaya?: Riwaya;
+  activeChallenge?: QuranChallenge | null;
+  onChallengeResult?: (score: number, perfectAyahs: number) => void;
 }
 
 type Stage = 'idle' | 'running' | 'finished';
@@ -36,108 +39,45 @@ type TestMode = 'recitation' | 'next_ayah';
 type HintMode = 'none' | 'first_word' | 'full';
 type RecordingState = 'idle' | 'listening' | 'processing';
 
-interface Question {
-  ayah: Ayah;
-  words: string[]; // الأصلية بالتشكيل (للعرض)
-  normalized: string[]; // بدون تشكيل (للمقارنة)
-  nextAyah?: Ayah;
-  options?: Ayah[];
-}
-
-interface AyahAttempt {
-  transcript: string;
-  matched: Set<number>;
-  extraWords: string[];
-  accuracy: number;
-  revealed: boolean;
-  selectedAyahNumber?: number;
-}
-
-interface OverallResults {
-  totalAyahs: number;
-  attemptedAyahs: number;
-  perfectAyahs: number;
-  totalWords: number;
-  matchedWords: number;
-  accuracy: number;
-}
-
 const RIWAYA_LABELS: Record<Riwaya, string> = {
   hafs: 'حفص عن عاصم',
   warsh: 'ورش عن نافع',
 };
 
-// ─── تطبيع النص العربي للمقارنة ───
-function normalizeArabic(text: string): string {
-  return text
-    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // إزالة التشكيل والتطويل
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/[^\u0621-\u064A\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// ⏱️ إعدادات التوقيت
+const CONTINUOUS_SILENCE_MS = 5000; // صمت قبل الانتقال التلقائي (وضع متواصل)
+const NORMAL_SILENCE_MS = 8000;     // صمت قبل الإيقاف (وضع عادي)
 
-// ─── محاذاة LCS بين الكلمات المتوقعة والمُسموعة ───
-function alignLCS(expected: string[], recognized: string[]) {
-  const m = expected.length,
-    n = recognized.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] =
-        expected[i - 1] === recognized[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
-    }
-  }
-  const matchedE = new Set<number>();
-  const matchedR = new Set<number>();
-  let i = m,
-    j = n;
-  while (i > 0 && j > 0) {
-    if (expected[i - 1] === recognized[j - 1]) {
-      matchedE.add(i - 1);
-      matchedR.add(j - 1);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
-    else j--;
-  }
-  return { matchedE, matchedR };
-}
-
-function getSpeechRecognition(): any {
-  if (typeof window === 'undefined') return null;
-  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
-}
+const isNativePlatform = Capacitor.isNativePlatform();
 
 export const MemorizationTest: React.FC<MemorizationTestProps> = ({
-  surah,
-  selectedReciter,
-  onStatsUpdate,
-  riwaya,
+  surah, selectedReciter, onStatsUpdate, riwaya, activeChallenge, onChallengeResult,
 }) => {
   const effectiveRiwaya: Riwaya = riwaya ?? selectedReciter.riwaya ?? 'hafs';
-  const speechSupported = useMemo(() => !!getSpeechRecognition(), []);
 
-  // ─── الإعدادات ───
-  const [startAyah, setStartAyah] = useState(1);
-  const [endAyah, setEndAyah] = useState(Math.min(7, surah.ayahs.length));
+  // ── إعدادات الاختبار ──
+  const [startAyah, setStartAyah] = useState(() =>
+    activeChallenge ? Math.max(1, activeChallenge.ayahStart) : 1,
+  );
+  const [endAyah, setEndAyah] = useState(() =>
+    activeChallenge
+      ? Math.min(activeChallenge.ayahEnd, surah.ayahs.length)
+      : Math.min(7, surah.ayahs.length),
+  );
   const [hintMode, setHintMode] = useState<HintMode>('none');
-  const [testMode, setTestMode] = useState<TestMode>('recitation');
+  // ✅ جديد — التسميع المتواصل (افتراضي مفعّل)
+  const [continuousMode, setContinuousMode] = useState(true);
+  // تجاهل البسملة في أول آية من السور غير الفاتحة
+  const [skipBasmalah, setSkipBasmalah] = useState(false);
 
-  // ─── الجلسة ───
+  // ── حالة الجلسة ──
   const [stage, setStage] = useState<Stage>('idle');
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [attempts, setAttempts] = useState<Record<number, AyahAttempt>>({});
-  const [results, setResults] = useState<OverallResults | null>(null);
+  const [attempts, setAttempts] = useState<Record<number, AttemptDraft>>({});
+  const [results, setResults] = useState<RecitationResultSummary | null>(null);
 
-  // ─── التسجيل ───
+  // ── حالة التسجيل ──
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -145,207 +85,280 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInput, setTextInput] = useState('');
 
-  // ─── Refs ───
-  const recognitionRef = useRef<any>(null);
+  // ── مراجع ──
   const shouldContinueRef = useRef(false);
-  const finalTranscriptRef = useRef('');
+  const segmentTranscriptRef = useRef('');    // التراكم النصي للآية الحالية
+  const interimTextRef = useRef('');          // النص المؤقت (لم يُثبَّت بعد)
+  const activeAyahRef = useRef(0);            // الآية التي نستمع لها حاليًا
+  const isFinishingRef = useRef(false);       // حماية من الحفظ المزدوج عند الإنهاء
   const silenceTimerRef = useRef<number | null>(null);
   const secondsTimerRef = useRef<number | null>(null);
-  const recordingAyahIdxRef = useRef(0);
+  const continuousModeRef = useRef(continuousMode);
+  continuousModeRef.current = continuousMode;
+  const questionsRef = useRef(questions);
+  questionsRef.current = questions;
+
+  const {
+    isListening,
+    isSupported: speechSupported,
+    start: startSpeechService,
+    stop: stopSpeechService,
+  } = useSpeechRecognition({
+    onRawTranscript: (text: string, isFinal: boolean) => {
+      if (!isFinal) {
+        interimTextRef.current = text;
+        setLiveTranscript((segmentTranscriptRef.current + ' ' + text).trim());
+        return;
+      }
+
+      segmentTranscriptRef.current = (segmentTranscriptRef.current + ' ' + text).trim();
+      interimTextRef.current = '';
+      setLiveTranscript(segmentTranscriptRef.current);
+      resetSilenceTimer();
+
+      if (continuousModeRef.current) {
+        const q = questionsRef.current[activeAyahRef.current];
+        if (q) {
+          const words = segmentTranscriptRef.current
+            .trim().split(/\s+/).map(normalizeArabicText).filter(Boolean);
+          if (words.length >= q.normalized.length) {
+            const { matchedExpected } = alignRecitationWords(q.normalized, words, {
+              minSimilarity: RECITATION_MIN_SIMILARITY,
+            });
+            if (matchedExpected.size >= q.normalized.length) {
+              advanceContinuousAyah();
+            }
+          }
+        }
+      }
+    },
+    shouldListen: () => shouldContinueRef.current,
+    onUnavailable: () => {
+      shouldContinueRef.current = false;
+      isFinishingRef.current = false;
+      if (silenceTimerRef.current !== null) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      if (secondsTimerRef.current !== null) {
+        clearInterval(secondsTimerRef.current);
+        secondsTimerRef.current = null;
+      }
+      setRecordingSeconds(0);
+      setError(
+        isNativePlatform
+          ? 'تعذر الوصول إلى الميكروفون. يرجى التأكد من منحه الإذن في إعدادات الهاتف.'
+          : 'المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك.'
+      );
+      setShowTextInput(true);
+      setRecordingState('idle');
+    },
+  });
 
   const cleanupRecording = useCallback(() => {
     shouldContinueRef.current = false;
-    if (silenceTimerRef.current) {
+    isFinishingRef.current = false;
+    if (silenceTimerRef.current !== null) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
-    if (secondsTimerRef.current) {
+    if (secondsTimerRef.current !== null) {
       clearInterval(secondsTimerRef.current);
       secondsTimerRef.current = null;
     }
-    try {
-      recognitionRef.current?.abort?.();
-    } catch {
-      // The recognition session may already be stopped.
-    }
-  }, []);
+    void stopSpeechService();
+  }, [stopSpeechService]);
 
-  // إعادة الضبط عند تغيير السورة
+  // إعادة الضبط عند تغيير السورة أو التحدي
   useEffect(() => {
-    setStartAyah(1);
-    setEndAyah(Math.min(7, surah.ayahs.length));
+    setStartAyah(activeChallenge ? Math.max(1, activeChallenge.ayahStart) : 1);
+    setEndAyah(
+      activeChallenge
+        ? Math.min(activeChallenge.ayahEnd, surah.ayahs.length)
+        : Math.min(7, surah.ayahs.length),
+    );
     setStage('idle');
     setQuestions([]);
     setCurrentIndex(0);
     setAttempts({});
     setResults(null);
+    setRecordingState('idle');
+    setLiveTranscript('');
+    setError(null);
+    activeAyahRef.current = 0;
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
     cleanupRecording();
-  }, [surah.number, surah.ayahs.length, cleanupRecording]);
+  }, [surah.number, surah.ayahs.length, activeChallenge?.id, cleanupRecording]);
 
-  // تنظيف عند الإغلاق
   useEffect(() => () => cleanupRecording(), [cleanupRecording]);
 
-  // إيقاف التسجيل عند التنقل
-  useEffect(() => {
-    if (recordingState !== 'idle') stopRecording();
-    setShowTextInput(false);
-    setTextInput('');
-    setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex]);
+  // ══════════════════════════════════════════════════════════
+  // منطق التسميع المتواصل
+  // ══════════════════════════════════════════════════════════
 
-  // ─── بناء الأسئلة ───
-  const buildQuestions = (): Question[] => {
-    const selectedAyahs = surah.ayahs.filter(
-      (ayah) => ayah.numberInSurah >= startAyah && ayah.numberInSurah <= endAyah,
-    );
-    const questionsAyahs = testMode === 'next_ayah' ? selectedAyahs.slice(0, -1) : selectedAyahs;
-
-    return questionsAyahs.map((ayah, index) => {
-      const words = extractWords(ayah.text).map((word) => word.original);
-      if (testMode !== 'next_ayah') {
-        return { ayah, words, normalized: words.map(normalizeArabic) };
-      }
-
-      const nextAyah = selectedAyahs[index + 1];
-      if (!nextAyah) {
-        return { ayah, words, normalized: words.map(normalizeArabic) };
-      }
-      const options = createNextAyahOptions(surah, ayah, nextAyah);
-      return { ayah, words, normalized: words.map(normalizeArabic), nextAyah, options };
-    });
+  /** استخراج محاولة من النص المتراكم للآية الحالية */
+  const buildAttemptFromCurrentSegment = (ayahIdx: number): AttemptDraft | null => {
+    const q = questions[ayahIdx];
+    if (!q) return null;
+    const transcript = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
+    return createAttemptFromTranscript(transcript, q, RECITATION_MIN_SIMILARITY);
   };
 
-  // ─── بدء التسجيل ───
-  const startRecording = async () => {
-    setError(null);
-    const SR = getSpeechRecognition();
-    if (!SR) {
-      setError('المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك.');
-      setShowTextInput(true);
-      return;
+  /** يحفظ الآية الحالية في attempts ويعيد للآية التالية (يبقي الاستماع نشطًا) */
+  const advanceContinuousAyah = () => {
+    const ayahIdx = activeAyahRef.current;
+    const attempt = buildAttemptFromCurrentSegment(ayahIdx);
+    if (attempt) {
+      setAttempts(prev => ({ ...prev, [ayahIdx]: attempt }));
     }
-    try {
-      const recognition = new SR();
-      recognition.lang = 'ar-SA';
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
 
-      finalTranscriptRef.current = '';
-      setLiveTranscript('');
-      recordingAyahIdxRef.current = currentIndex;
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
+    setLiveTranscript('');
 
-      recognition.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const t = event.results[i][0].transcript;
-          if (event.results[i].isFinal) finalTranscriptRef.current += ' ' + t;
-          else interim += ' ' + t;
-        }
-        setLiveTranscript((finalTranscriptRef.current + interim).trim());
-        resetSilenceTimer();
-      };
-
-      recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') return;
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setError('تم رفض إذن الميكروفون. اسمح به من إعدادات المتصفح.');
-          shouldContinueRef.current = false;
-        } else if (event.error === 'audio-capture') {
-          setError('لا يوجد ميكروفون متاح.');
-          shouldContinueRef.current = false;
-        } else if (event.error === 'network') {
-          setError('خطأ في الشبكة أثناء التعرف على الصوت.');
-          shouldContinueRef.current = false;
-        }
-      };
-
-      recognition.onend = () => {
-        if (shouldContinueRef.current) {
-          try {
-            recognition.start();
-          } catch {
-            // The browser may reject a restart while recognition is still active.
-          }
-        } else {
-          finalizeAttempt(recordingAyahIdxRef.current);
-        }
-      };
-
-      recognitionRef.current = recognition;
-      shouldContinueRef.current = true;
-      recognition.start();
-
-      setRecordingState('listening');
+    const nextIdx = ayahIdx + 1;
+    if (nextIdx >= questions.length) {
+      // 🎉 أكمل كل الآيات — إيقاف تلقائي
+      isFinishingRef.current = true;
+      shouldContinueRef.current = false;
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
+      void stopSpeechService();
+      setRecordingState('idle');
       setRecordingSeconds(0);
-      secondsTimerRef.current = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+    } else {
+      activeAyahRef.current = nextIdx;
+      setCurrentIndex(nextIdx);
       resetSilenceTimer();
-    } catch {
-      setError('تعذر بدء التعرف على الصوت. حاول مرة أخرى.');
     }
+  };
+
+  /** يحفظ الآية الحالية ثم يتوقف (ضغط "إيقاف" من المستخدم) */
+  const finalizeCurrentOnStop = () => {
+    const ayahIdx = activeAyahRef.current;
+    const attempt = buildAttemptFromCurrentSegment(ayahIdx);
+    if (attempt) {
+      setAttempts(prev => ({ ...prev, [ayahIdx]: attempt }));
+    }
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
+    setLiveTranscript('');
+    setRecordingState('idle');
+    setRecordingSeconds(0);
   };
 
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    const ms = continuousModeRef.current ? CONTINUOUS_SILENCE_MS : NORMAL_SILENCE_MS;
     silenceTimerRef.current = window.setTimeout(() => {
-      if (shouldContinueRef.current) stopRecording();
-    }, 4000);
+      if (!shouldContinueRef.current) return;
+
+      if (continuousModeRef.current) {
+        const text = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
+        if (text) {
+          advanceContinuousAyah();
+        } else {
+          // صمت تام من البداية — لا نتقدم، ننتظر
+          resetSilenceTimer();
+        }
+      } else {
+        void stopRecording();
+      }
+    }, ms);
   };
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(async () => {
     shouldContinueRef.current = false;
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    if (secondsTimerRef.current) {
-      clearInterval(secondsTimerRef.current);
-      secondsTimerRef.current = null;
-    }
-    try {
-      recognitionRef.current?.stop();
-    } catch {
-      // The recognition session may already be stopped.
-    }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
     setRecordingState('processing');
-  };
 
-  // ─── إنهاء محاولة ومقارنة ───
-  const finalizeAttempt = (ayahIdx: number) => {
-    const transcript = finalTranscriptRef.current.trim();
-    setRecordingState('idle');
-    setRecordingSeconds(0);
+    try {
+      await stopSpeechService();
+    } catch {
+      // Stopping is best-effort: the UI still has to leave the recording state.
+    }
 
-    if (!transcript) {
-      setError('لم يُسمع شيء. حاول مرة أخرى أو اكتب تسميعك.');
+    if (isFinishingRef.current) {
+      isFinishingRef.current = false;
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+      setLiveTranscript('');
       return;
     }
 
-    const q = questions[ayahIdx];
-    if (!q) return;
+    if (continuousModeRef.current) {
+      finalizeCurrentOnStop();
+    } else {
+      const transcript = (segmentTranscriptRef.current + ' ' + interimTextRef.current).trim();
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+      setLiveTranscript('');
+      if (transcript) {
+        const attempt = buildAttemptFromCurrentSegment(activeAyahRef.current);
+        if (attempt) {
+          setAttempts(prev => ({ ...prev, [activeAyahRef.current]: attempt }));
+        }
+      } else {
+        setError('لم يُسمع شيء. حاول مرة أخرى أو اكتب تسميعك.');
+      }
+      segmentTranscriptRef.current = '';
+      interimTextRef.current = '';
+    }
+  }, [stopSpeechService]);
 
-    const recognized = transcript.split(/\s+/).map(normalizeArabic).filter(Boolean);
-    const { matchedE, matchedR } = alignLCS(q.normalized, recognized);
-    const extraWords = recognized.filter((_, i) => !matchedR.has(i));
-    const accuracy =
-      q.normalized.length > 0 ? Math.round((matchedE.size / q.normalized.length) * 100) : 0;
-
-    setAttempts((prev) => ({
-      ...prev,
-      [ayahIdx]: { transcript, matched: matchedE, extraWords, accuracy, revealed: false },
-    }));
+  /** للتأكد من إيقاف التسجيل عند التنقل اليدوي (غير المتواصل) */
+  useEffect(() => {
+    if (shouldContinueRef.current) return;
+    if (recordingState !== 'idle') void stopRecording();
+    setShowTextInput(false);
+    setTextInput('');
     setError(null);
+  }, [currentIndex]);
+
+  const startRecording = async () => {
+    isFinishingRef.current = false;
+    if (silenceTimerRef.current !== null) clearTimeout(silenceTimerRef.current);
+    if (secondsTimerRef.current !== null) clearInterval(secondsTimerRef.current);
+    setError(null);
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
+    setLiveTranscript('');
+    activeAyahRef.current = currentIndex;
+    shouldContinueRef.current = true;
+    setRecordingState('listening');
+    setRecordingSeconds(0);
+    if (secondsTimerRef.current) clearInterval(secondsTimerRef.current);
+    secondsTimerRef.current = window.setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+    resetSilenceTimer();
+
+    try {
+      await startSpeechService();
+    } catch {
+      cleanupRecording();
+      setError('تعذر بدء التعرف على الصوت. يرجى المحاولة مرة أخرى.');
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+    }
   };
 
-  // ─── إدخال يدوي ───
+  // ══════════════════════════════════════════════════════════
+  // إدخال يدوي
+  // ══════════════════════════════════════════════════════════
   const submitText = () => {
     const text = textInput.trim();
     if (!text) return;
-    finalTranscriptRef.current = text;
-    finalizeAttempt(currentIndex);
+    segmentTranscriptRef.current = text;
+    interimTextRef.current = '';
+    const attempt = buildAttemptFromCurrentSegment(currentIndex);
+    if (attempt) {
+      setAttempts(prev => ({ ...prev, [currentIndex]: attempt }));
+    }
+    segmentTranscriptRef.current = '';
     setTextInput('');
     setShowTextInput(false);
+    setError(null);
   };
 
   const revealAyah = () => {
@@ -396,113 +409,134 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
     setError(null);
   };
 
+  // ══════════════════════════════════════════════════════════
+  // تنقل / بدء / إنهاء
+  // ══════════════════════════════════════════════════════════
+
   const goNext = () => {
-    if (currentIndex < questions.length - 1) setCurrentIndex((i) => i + 1);
+    if (recordingState === 'listening') {
+      // في المتواصل: انتقل يدويًا (احفظ الحالي، ابدأ التالي)
+      advanceContinuousAyah();
+    } else if (currentIndex < questions.length - 1) {
+      setCurrentIndex(i => i + 1);
+    }
   };
   const goPrev = () => {
-    if (currentIndex > 0) setCurrentIndex((i) => i - 1);
+    if (recordingState === 'listening') return; // لا نسمح بالرجوع أثناء الاستماع
+    if (currentIndex > 0) setCurrentIndex(i => i - 1);
   };
 
-  // ─── بدء/إنهاء/إعادة ───
   const startTest = () => {
-    if (!canStartTest) return;
-    setQuestions(buildQuestions());
+    if (endAyah < startAyah) return;
+    const qs = buildQuestions(surah, startAyah, endAyah, {
+      skipOpeningBasmalah: skipBasmalah,
+    });
+    if (qs.length === 0) {
+      setError('لا توجد آيات في النطاق المحدد.');
+      return;
+    }
+    setQuestions(qs);
     setCurrentIndex(0);
     setAttempts({});
     setResults(null);
     setStage('running');
     setError(null);
+    activeAyahRef.current = 0;
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
   };
 
-  const finishTest = () => {
-    let perfectAyahs = 0,
-      matchedWords = 0,
-      totalWords = 0,
-      attemptedAyahs = 0;
+  const finishTest = (override?: Record<number, AttemptDraft>) => {
+    // إذا كنا نستمع، خذ لقطة من النص الحالي
+    let data = override ?? attempts;
+    if (recordingState === 'listening') {
+      const lastAttempt = buildAttemptFromCurrentSegment(activeAyahRef.current);
+      if (lastAttempt) {
+        data = { ...data, [activeAyahRef.current]: lastAttempt };
+      }
+      // أوقف التسجيل
+      isFinishingRef.current = true;
+      shouldContinueRef.current = false;
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (secondsTimerRef.current) { clearInterval(secondsTimerRef.current); secondsTimerRef.current = null; }
+      void stopSpeechService();
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+    }
+
+    // احفظ نتائج الآيات في نظام التكرار المتباعد
     questions.forEach((q, idx) => {
-      const a = attempts[idx];
-      const total = testMode === 'next_ayah' ? 1 : q.normalized.length;
-      totalWords += total;
-      if (a) {
-        attemptedAyahs++;
-        const correct = isCorrectAttempt(q, a);
-        matchedWords += correct ? total : testMode === 'next_ayah' ? 0 : a.matched.size;
-        if (correct) perfectAyahs++;
-        const resultAyahNumber =
-          testMode === 'next_ayah' ? q.nextAyah?.numberInSurah : q.ayah.numberInSurah;
-        if (resultAyahNumber !== undefined) {
-          recordVerseResult(surah.number, resultAyahNumber, correct, []);
-        }
+      const a = data[idx];
+      if (a && !a.revealed) {
+        recordVerseResult(
+          surah.number,
+          q.ayah.numberInSurah,
+          isPerfectAttempt(q, a),
+          buildRecitationMistakes(q.words, a),
+          effectiveRiwaya,
+        );
       }
     });
-    const accuracy = totalWords > 0 ? Math.round((matchedWords / totalWords) * 100) : 0;
-    setResults({
-      totalAyahs: questions.length,
-      attemptedAyahs,
-      perfectAyahs,
-      totalWords,
-      matchedWords,
-      accuracy,
-    });
+
+    const computed = summarizeQuestions(questions, data);
+    setAttempts(data);
+    setResults(computed);
+
+    if (activeChallenge && onChallengeResult) {
+      onChallengeResult(computed.accuracy, computed.perfectAyahs);
+    }
+
     addPointsAndVerses(
-      Math.round(perfectAyahs * 20 + matchedWords * 2),
-      perfectAyahs,
-      accuracy,
-      accuracy,
+      Math.round(computed.perfectAyahs * 20 + computed.matchedWords * 2),
+      computed.perfectAyahs, computed.accuracy, computed.accuracy,
     );
     onStatsUpdate();
     setStage('finished');
   };
 
+  // ✅ إنهاء تلقائي بعد إكمال كل الآيات في الوضع المتواصل
+  useEffect(() => {
+    if (!continuousMode) return;
+    if (stage !== 'running') return;
+    if (recordingState !== 'idle') return;
+    if (questions.length === 0) return;
+    const allDone = questions.every((_, i) => attempts[i]);
+    if (!allDone) return;
+    const t = window.setTimeout(() => finishTest(), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempts, recordingState, stage, questions.length, continuousMode]);
+
   const resetTest = () => {
     cleanupRecording();
     setStage('idle');
-    setQuestions([]);
-    setCurrentIndex(0);
-    setAttempts({});
-    setResults(null);
-    setRecordingState('idle');
-    setLiveTranscript('');
-    setError(null);
+    setQuestions([]); setCurrentIndex(0); setAttempts({}); setResults(null);
+    setRecordingState('idle'); setLiveTranscript(''); setError(null);
+    activeAyahRef.current = 0;
+    segmentTranscriptRef.current = '';
+    interimTextRef.current = '';
   };
 
-  // ─── قيم مشتقة ───
+  // ── مشتقات ──
   const currentQ = questions[currentIndex];
   const currentAttempt = attempts[currentIndex];
   const maxAyah = surah.ayahs.length;
   const answeredCount = Object.keys(attempts).length;
 
-  const cumulative = useMemo(() => {
-    let m = 0,
-      t = 0;
-    questions.forEach((q, i) => {
-      const a = attempts[i];
-      if (a) {
-        if (testMode === 'next_ayah') {
-          t++;
-          if (isCorrectAttempt(q, a)) m++;
-        } else {
-          m += a.matched.size;
-          t += q.normalized.length;
-        }
-      }
-    });
-    return t > 0 ? Math.round((m / t) * 100) : 0;
-  }, [attempts, isCorrectAttempt, questions, testMode]);
-
-  const canStartTest =
-    endAyah >= startAyah && (testMode !== 'next_ayah' || endAyah - startAyah >= 1);
-  const testQuestionCount =
-    testMode === 'next_ayah' ? Math.max(0, endAyah - startAyah) : endAyah - startAyah + 1;
+  const cumulative = useMemo(
+    () => computeCumulativeAccuracy(questions, attempts),
+    [attempts, questions],
+  );
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
   // RENDER
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
   return (
-    <div className="flex h-full flex-col bg-[#f7f6f1]" dir="rtl">
-      {/* شريط تقدم علوي */}
+    <div className="h-full flex flex-col bg-gradient-to-b from-stone-50 to-stone-100">
+
+      {/* شريط علوي: تقدم + حالة الاستماع */}
       {stage === 'running' && currentQ && (
         <div className="shrink-0 border-b border-emerald-950/10 bg-white/90 backdrop-blur">
           <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
@@ -524,10 +558,17 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
               />
             </div>
           </div>
+
+          {/* 🔴 مؤشر التسميع المتواصل */}
+          {recordingState === 'listening' && continuousMode && (
+            <div className="border-t border-rose-100 bg-rose-50 px-3 sm:px-4 py-1.5 flex items-center justify-center gap-2 text-[11px] font-bold text-rose-800">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span>التسميع المتواصل نشط — سمّع الآيات بالتتابع دون توقف</span>
+            </div>
+          )}
         </div>
       )}
 
-      {/* المحتوى */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
           {/* ════════ IDLE ════════ */}
@@ -555,36 +596,98 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     </p>
                   </div>
                 </div>
-              </section>
+              </div>
 
-              <section className="rounded-3xl border border-stone-200/80 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-stone-900">اختر نوع الاختبار</h3>
-                    <p className="mt-1 text-[11px] text-stone-500">
-                      يمكنك التبديل بينهما في أي وقت
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-800">
-                    سورة {surah.name}
+              {activeChallenge && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5" /> تحدي: {activeChallenge.title}
+                  </p>
+                  <p className="mt-1 text-amber-800/80">
+                    النطاق محدد مسبقًا. أكمل التسميع لتُسجّل نتيجتك.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-2 text-xs font-semibold text-stone-700">
+                  من الآية
+                  <input
+                    type="number" min={1} max={maxAyah} value={startAyah}
+                    disabled={!!activeChallenge}
+                    onChange={e => {
+                      const v = Math.min(maxAyah, Math.max(1, Number(e.target.value)));
+                      setStartAyah(v);
+                      setEndAyah(prev => Math.max(prev, v));
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-stone-300 px-3 text-sm disabled:bg-stone-100"
+                  />
+                </label>
+                <label className="space-y-2 text-xs font-semibold text-stone-700">
+                  إلى الآية
+                  <input
+                    type="number" min={startAyah} max={maxAyah} value={endAyah}
+                    disabled={!!activeChallenge}
+                    onChange={e => setEndAyah(Math.min(maxAyah, Math.max(startAyah, Number(e.target.value))))}
+                    className="min-h-11 w-full rounded-xl border border-stone-300 px-3 text-sm disabled:bg-stone-100"
+                  />
+                </label>
+              </div>
+
+              {/* ✅ خيار التسميع المتواصل */}
+              <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-stone-200 bg-stone-50/60 p-3 hover:bg-stone-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={continuousMode}
+                  onChange={e => setContinuousMode(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-emerald-700 shrink-0"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-emerald-700" />
+                    التسميع المتواصل
+                  </span>
+                  <span className="text-[10px] text-stone-500 leading-5 block">
+                    استمع مرة واحدة فقط. ينتقل التطبيق تلقائيًا بين الآيات عند إتمام كل آية (مطابقة كاملة أو صمت قصير) دون الحاجة لضغط الميكروفون مجددًا.
                   </span>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="نوع الاختبار">
-                  <button
-                    type="button"
-                    onClick={() => setTestMode('recitation')}
-                    aria-pressed={testMode === 'recitation'}
-                    className={`group rounded-2xl border p-4 text-right transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
-                      testMode === 'recitation'
-                        ? 'border-emerald-700 bg-emerald-50/70 shadow-sm'
-                        : 'border-stone-200 bg-stone-50/60 hover:border-emerald-300 hover:bg-emerald-50/40'
-                    }`}
-                  >
-                    <span
-                      className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl ${
-                        testMode === 'recitation'
-                          ? 'bg-emerald-800 text-amber-200'
-                          : 'bg-white text-emerald-800'
+              </label>
+
+              {/* تجاهل البسملة في أول السورة */}
+              <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-stone-200 bg-stone-50/60 p-3 hover:bg-stone-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={skipBasmalah}
+                  onChange={e => setSkipBasmalah(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-emerald-700 shrink-0"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-700" />
+                    تجاهل البسملة في أول السورة
+                  </span>
+                  <span className="text-[10px] text-stone-500 leading-5 block">
+                    لا تُحتسب البسملة في أول آية من السور غير الفاتحة؛ البسملة في الفاتحة جزء من التسميع دائمًا.
+                  </span>
+                </div>
+              </label>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-stone-700">المساعدة البصرية</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ['none', 'بدون'],
+                    ['first_word', 'الكلمة الأولى'],
+                    ['full', 'كاملة'],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setHintMode(key)}
+                      className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition-colors ${
+                        hintMode === key
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                          : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
                       }`}
                     >
                       <Mic className="h-5 w-5" />
@@ -621,44 +724,20 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     </span>
                   </button>
                 </div>
-              </section>
+              </div>
 
-              <section className="rounded-3xl border border-stone-200/80 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-amber-800">
-                    <Settings className="h-4 w-4" />
-                  </span>
-                  <h3 className="text-sm font-bold text-stone-900">إعداد نطاق الاختبار</h3>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-2 text-xs font-semibold text-stone-700">
-                    من الآية
-                    <input
-                      type="number"
-                      min={1}
-                      max={maxAyah}
-                      value={startAyah}
-                      onChange={(e) => {
-                        const v = Math.min(maxAyah, Math.max(1, Number(e.target.value)));
-                        setStartAyah(v);
-                        setEndAyah((prev) => Math.max(prev, v));
-                      }}
-                      className="min-h-11 w-full rounded-xl border border-stone-300 bg-stone-50 px-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
-                    />
-                  </label>
-                  <label className="space-y-2 text-xs font-semibold text-stone-700">
-                    إلى الآية
-                    <input
-                      type="number"
-                      min={startAyah}
-                      max={maxAyah}
-                      value={endAyah}
-                      onChange={(e) =>
-                        setEndAyah(Math.min(maxAyah, Math.max(startAyah, Number(e.target.value))))
-                      }
-                      className="min-h-11 w-full rounded-xl border border-stone-300 bg-stone-50 px-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
-                    />
-                  </label>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600 flex items-start gap-2">
+                <BookOpen className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="leading-6">
+                  النطاق: الآيات {startAyah}–{endAyah} ({endAyah - startAyah + 1} آية) · الرواية{' '}
+                  {RIWAYA_LABELS[effectiveRiwaya]}
+                </span>
+              </div>
+
+              {!speechSupported && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{isNativePlatform ? 'خدمة التعرف على الصوت غير متوفرة على هذا الجهاز. يمكنك كتابة تسميعك يدويًا.' : 'متصفحك لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك يدويًا.'}</span>
                 </div>
 
                 {testMode === 'recitation' && (
@@ -729,135 +808,77 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
           {/* ════════ RUNNING ════════ */}
           {stage === 'running' && currentQ && (
             <>
-              {testMode === 'next_ayah' ? (
-                <section className="overflow-hidden rounded-[1.75rem] border border-emerald-950/10 bg-white shadow-lg shadow-emerald-950/5">
-                  <div className="flex items-center justify-between gap-3 bg-emerald-950 px-4 py-3 text-white sm:px-6">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-amber-200">
-                        <BookOpen className="h-4 w-4" />
-                      </span>
-                      <div>
-                        <p className="text-[10px] font-semibold text-emerald-100/70">
-                          سورة {surah.name}
-                        </p>
-                        <h2 className="text-sm font-bold">تحدّي تسلسل الآيات</h2>
-                      </div>
-                    </div>
-                    <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold tabular-nums">
-                      {currentIndex + 1} / {questions.length}
+              <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between bg-stone-50/60">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md text-white text-[11px] font-bold tabular-nums px-1.5 ${
+                      recordingState === 'listening' && continuousMode ? 'bg-rose-600 animate-pulse' : 'bg-emerald-700'
+                    }`}>
+                      {currentQ.ayah.numberInSurah}
                     </span>
+                    <span className="text-[11px] text-stone-500 font-semibold">
+                      آية {currentIndex + 1} من {questions.length}
+                    </span>
+                    {recordingState === 'listening' && continuousMode && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700">
+                        <Radio className="w-3 h-3 animate-pulse" />
+                        يستمع...
+                      </span>
+                    )}
                   </div>
 
-                  <div className="space-y-5 p-4 sm:p-7">
+                <div className="px-4 py-6">
+                  {/* الانتظار / التلميح */}
+                  {!currentAttempt && recordingState === 'idle' && (
                     <div className="text-center">
-                      <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-900">
-                        بعد الآية {currentQ.ayah.numberInSurah.toLocaleString('ar-EG')}
-                      </span>
-                      <p className="mt-4 font-quran text-2xl leading-[2.2] text-stone-900 sm:text-3xl">
-                        {currentQ.ayah.text}
-                      </p>
-                      <p className="mt-3 text-xs font-semibold text-emerald-900">
-                        ما الآية التي تأتي بعدها؟
-                      </p>
+                      {hintMode === 'none' && (
+                        <p className="text-sm text-stone-500">سمّع الآية كاملة من ذاكرتك</p>
+                      )}
+                      {hintMode === 'first_word' && (
+                        <div dir="rtl" className="font-quran text-2xl text-emerald-800">
+                          {currentQ.words[0]} ...
+                        </div>
+                      )}
+                      {hintMode === 'full' && (
+                        <div dir="rtl" className="font-quran text-2xl leading-[2] text-stone-800">
+                          {currentQ.words.join(' ')}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="grid gap-2.5">
-                      {currentQ.options?.map((option, optionIndex) => {
-                        const selected =
-                          currentAttempt?.selectedAyahNumber === option.numberInSurah;
-                        const correct = option.numberInSurah === currentQ.nextAyah?.numberInSurah;
-                        const showAnswer = !!currentAttempt;
-                        const optionStyle =
-                          showAnswer && correct
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-1 ring-emerald-500/30'
-                            : showAnswer && selected && !correct
-                              ? 'border-rose-300 bg-rose-50 text-rose-950'
-                              : 'border-stone-200 bg-stone-50/70 text-stone-800 hover:border-emerald-300 hover:bg-emerald-50/50';
-
-                        return (
-                          <button
-                            key={option.numberInSurah}
-                            type="button"
-                            onClick={() => selectNextAyah(option)}
-                            disabled={showAnswer}
-                            aria-pressed={selected}
-                            className={`flex min-h-16 w-full items-center gap-3 rounded-2xl border p-3 text-right transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-default sm:p-4 ${optionStyle}`}
-                          >
-                            <span
-                              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
-                                showAnswer && correct
-                                  ? 'border-emerald-300 bg-white text-emerald-800'
-                                  : showAnswer && selected
-                                    ? 'border-rose-200 bg-white text-rose-700'
-                                    : 'border-stone-200 bg-white text-stone-500'
-                              }`}
-                            >
-                              {optionIndex + 1}
-                            </span>
-                            <span className="font-quran text-lg leading-[2] sm:text-xl">
-                              {option.text}
-                            </span>
-                            {showAnswer && correct && (
-                              <CheckCircle2 className="mr-auto h-5 w-5 shrink-0 text-emerald-700" />
-                            )}
-                            {showAnswer && selected && !correct && (
-                              <XCircle className="mr-auto h-5 w-5 shrink-0 text-rose-600" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {currentAttempt && (
-                      <div
-                        className={`flex items-start gap-2 rounded-2xl p-3 text-xs leading-6 ${
-                          currentAttempt.revealed
-                            ? 'border border-stone-200 bg-stone-50 text-stone-600'
-                            : currentAttempt.accuracy === 100
-                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
-                              : 'border border-amber-200 bg-amber-50 text-amber-950'
-                        }`}
-                        role="status"
-                      >
-                        {currentAttempt.revealed ? (
-                          <Eye className="mt-1 h-4 w-4 shrink-0" />
-                        ) : currentAttempt.accuracy === 100 ? (
-                          <CheckCircle2 className="mt-1 h-4 w-4 shrink-0" />
-                        ) : (
-                          <AlertTriangle className="mt-1 h-4 w-4 shrink-0" />
-                        )}
-                        <span>
-                          {currentAttempt.revealed ? (
-                            <>
-                              كُشفت الإجابة:{' '}
-                              <span className="font-quran text-base font-bold">
-                                {currentQ.nextAyah?.text}
-                              </span>{' '}
-                              — لن تُحتسب ضمن النتيجة.
-                            </>
-                          ) : currentAttempt.accuracy === 100 ? (
-                            'إجابة صحيحة، أحسنت! واصل إلى السؤال التالي.'
-                          ) : (
-                            <>
-                              ليست هذه الآية التالية. الإجابة الصحيحة:{' '}
-                              <span className="font-quran text-base font-bold">
-                                {currentQ.nextAyah?.text}
-                              </span>
-                            </>
-                          )}
-                        </span>
+                  {/* 🔴 الاستماع */}
+                  {recordingState === 'listening' && (
+                    <div className="space-y-4">
+                      <div className="flex justify-center">
+                        <div className="relative inline-flex h-20 w-20 items-center justify-center rounded-full bg-rose-100">
+                          <span className="absolute inset-0 rounded-full bg-rose-200 animate-ping opacity-60" />
+                          <Mic className="w-9 h-9 text-rose-700 relative" />
+                        </div>
                       </div>
-                    )}
+                      <div className="text-center text-xs font-semibold text-rose-700">
+                        {continuousMode ? 'يستمع (متواصل)' : 'يستمع...'} {formatTime(recordingSeconds)}
+                      </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-4">
+                      {/* تلميح الوضع المتواصل */}
+                      {continuousMode && (
+                        <p className="text-center text-[10px] text-stone-400">
+                          سيُنتقل تلقائيًا عند إتمام الآية — لا حاجة لضغط إيقاف
+                        </p>
+                      )}
+
+                      {liveTranscript && (
+                        <div dir="rtl" className="rounded-xl border border-rose-200 bg-rose-50/60 p-3 text-sm text-stone-800 font-quran text-center min-h-12">
+                          {liveTranscript}
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         onClick={goPrev}
                         disabled={currentIndex === 0}
                         className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40"
                       >
-                        <ChevronRight className="h-4 w-4" />
-                        السابق
+                        <Square className="w-4 h-4" /> إيقاف
                       </button>
                       <div className="flex items-center gap-2">
                         {!currentAttempt && (
@@ -888,19 +909,36 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         </button>
                       </div>
                     </div>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between bg-stone-50/60">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-emerald-700 text-white text-[11px] font-bold tabular-nums px-1.5">
-                          {currentQ.ayah.numberInSurah}
-                        </span>
-                        <span className="text-[11px] text-stone-500 font-semibold">
-                          آية {currentIndex + 1} من {questions.length}
-                        </span>
+                  )}
+
+                  {/* المعالجة */}
+                  {recordingState === 'processing' && (
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <Loader2 className="w-8 h-8 text-emerald-700 animate-spin" />
+                      <p className="text-xs text-stone-500 font-semibold">جاري المقارنة...</p>
+                    </div>
+                  )}
+
+                  {/* نتيجة المحاولة */}
+                  {currentAttempt && (
+                    <div className="space-y-4">
+                      <div dir="rtl" className="font-quran text-2xl sm:text-3xl leading-[2.2] text-center flex flex-wrap gap-x-2 gap-y-2 justify-center">
+                        {currentQ.words.map((w, idx) => {
+                          const matched = currentAttempt.matched.has(idx);
+                          const close = currentAttempt.closeWords?.has(idx);
+                          if (currentAttempt.revealed) {
+                            return <span key={idx} className="text-stone-800">{w}</span>;
+                          }
+                          return (
+                            <span key={idx} className={matched
+                              ? close
+                                ? 'text-amber-700'
+                                : 'text-emerald-700'
+                              : 'text-rose-600 underline decoration-rose-400 decoration-2 underline-offset-4'}>
+                              {w}
+                            </span>
+                          );
+                        })}
                       </div>
                       {currentAttempt && (
                         <span
@@ -927,59 +965,47 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       )}
                     </div>
 
-                    {/* محتوى البطاقة */}
-                    <div className="px-4 py-6">
-                      {/* لم يحاول بعد — عرض التلميح */}
-                      {!currentAttempt && recordingState === 'idle' && (
-                        <div className="space-y-4">
-                          <div className="text-center">
-                            {hintMode === 'none' && (
-                              <p className="text-sm text-stone-500">سمّع الآية كاملة من ذاكرتك</p>
-                            )}
-                            {hintMode === 'first_word' && (
-                              <div dir="rtl" className="font-quran text-2xl text-emerald-800">
-                                {currentQ.words[0]} ...
-                              </div>
-                            )}
-                            {hintMode === 'full' && (
-                              <div
-                                dir="rtl"
-                                className="font-quran text-2xl leading-[2] text-stone-800"
-                              >
-                                {currentQ.words.join(' ')}
-                              </div>
-                            )}
+                      {!currentAttempt.revealed &&
+                        currentAttempt.matched.size < currentQ.normalized.length && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-center text-xs">
+                            <span className="font-semibold text-rose-800">كلمات تحتاج مراجعة: </span>
+                            <span className="font-quran text-base text-rose-700">
+                              {currentQ.words
+                                .filter((_, index) => !currentAttempt.matched.has(index))
+                                .join(' ')}
+                            </span>
                           </div>
+                        )}
+
+                      {!currentAttempt.revealed &&
+                        (currentAttempt.closeWords?.size ?? 0) > 0 && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs">
+                            <span className="font-semibold text-amber-800">كلمات قريبة من الصحة (راجع تلفظها): </span>
+                            <span className="font-quran text-base text-amber-700">
+                              {currentQ.words
+                                .filter((_, index) => currentAttempt.closeWords?.has(index))
+                                .join(' ')}
+                            </span>
+                          </div>
+                        )}
+
+                      {currentAttempt.extraWords.length > 0 && !currentAttempt.revealed && (
+                        <div dir="rtl" className="text-xs text-stone-500 text-center">
+                          <span className="font-semibold">كلمات إضافية: </span>
+                          <span className="text-amber-700 font-quran">{currentAttempt.extraWords.join(' ')}</span>
                         </div>
                       )}
 
-                      {/* أثناء التسجيل */}
-                      {recordingState === 'listening' && (
-                        <div className="space-y-4">
-                          <div className="flex justify-center">
-                            <div className="relative inline-flex h-20 w-20 items-center justify-center rounded-full bg-rose-100">
-                              <span className="absolute inset-0 rounded-full bg-rose-200 animate-ping opacity-60" />
-                              <Mic className="w-9 h-9 text-rose-700 relative" />
-                            </div>
-                          </div>
-                          <div className="text-center text-xs font-semibold text-rose-700">
-                            يستمع... {formatTime(recordingSeconds)}
-                          </div>
-                          {liveTranscript && (
-                            <div
-                              dir="rtl"
-                              className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 font-quran text-center min-h-12"
-                            >
-                              {liveTranscript}
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={stopRecording}
-                            className="w-full inline-flex items-center justify-center gap-2 min-h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm"
-                          >
-                            <Square className="w-4 h-4" /> إيقاف التسجيل
-                          </button>
+                      {!currentAttempt.revealed && (
+                        <div className="text-center">
+                          <span className={`text-3xl font-bold tabular-nums ${
+                            currentAttempt.accuracy >= 85 ? 'text-emerald-700'
+                            : currentAttempt.accuracy >= 50 ? 'text-amber-700'
+                            : 'text-rose-700'
+                          }`}>{currentAttempt.accuracy}%</span>
+                          <p className="text-[11px] text-stone-500 mt-1">
+                            {currentAttempt.matched.size} من {currentQ.normalized.length} كلمة صحيحة
+                          </p>
                         </div>
                       )}
 
@@ -991,113 +1017,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         </div>
                       )}
 
-                      {/* بعد المحاولة — عرض النتيجة */}
-                      {currentAttempt && (
-                        <div className="space-y-4">
-                          {/* الآية بالألوان */}
-                          <div
-                            dir="rtl"
-                            className="font-quran text-2xl sm:text-3xl leading-[2.2] text-center flex flex-wrap gap-x-2 gap-y-2 justify-center"
-                          >
-                            {currentQ.words.map((w, idx) => {
-                              const matched = currentAttempt.matched.has(idx);
-                              if (currentAttempt.revealed) {
-                                return (
-                                  <span key={idx} className="text-stone-800">
-                                    {w}
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span
-                                  key={idx}
-                                  className={
-                                    matched
-                                      ? 'text-emerald-700'
-                                      : 'text-rose-600 underline decoration-rose-400 decoration-2 underline-offset-4'
-                                  }
-                                >
-                                  {w}
-                                </span>
-                              );
-                            })}
-                          </div>
-
-                          {/* كلمات إضافية */}
-                          {currentAttempt.extraWords.length > 0 && !currentAttempt.revealed && (
-                            <div dir="rtl" className="text-xs text-stone-500 text-center">
-                              <span className="font-semibold">كلمات إضافية: </span>
-                              <span className="text-amber-700 font-quran">
-                                {currentAttempt.extraWords.join(' ')}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* الدقة */}
-                          {!currentAttempt.revealed && (
-                            <div className="text-center">
-                              <span
-                                className={`text-3xl font-bold tabular-nums ${
-                                  currentAttempt.accuracy >= 85
-                                    ? 'text-emerald-700'
-                                    : currentAttempt.accuracy >= 50
-                                      ? 'text-amber-700'
-                                      : 'text-rose-700'
-                                }`}
-                              >
-                                {currentAttempt.accuracy}%
-                              </span>
-                              <p className="text-[11px] text-stone-500 mt-1">
-                                {currentAttempt.matched.size} من {currentQ.normalized.length} كلمة
-                                صحيحة
-                              </p>
-                            </div>
-                          )}
-
-                          {currentAttempt.revealed && (
-                            <p className="text-center text-xs text-stone-500">
-                              تم كشف الآية — لن تُحتسب ضمن النتيجة
-                            </p>
-                          )}
-
-                          {/* النص المُسموع */}
-                          {currentAttempt.transcript && !currentAttempt.revealed && (
-                            <div
-                              dir="rtl"
-                              className="rounded-xl bg-stone-50 border border-stone-200 p-3 text-xs text-stone-600 font-quran text-center"
-                            >
-                              <span className="text-[10px] font-sans font-bold text-stone-400 block mb-1">
-                                ما سُمِع
-                              </span>
-                              {currentAttempt.transcript}
-                            </div>
-                          )}
-
-                          {/* أزرار الإجراءات */}
-                          <div className="flex flex-wrap justify-center gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={retryAttempt}
-                              className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" /> إعادة المحاولة
-                            </button>
-                            {currentIndex < questions.length - 1 && (
-                              <button
-                                type="button"
-                                onClick={goNext}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-bold"
-                              >
-                                الآية التالية <ChevronLeft className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
+                      {currentAttempt.transcript && !currentAttempt.revealed && (
+                        <div dir="rtl" className="rounded-xl bg-stone-50 border border-stone-200 p-3 text-xs text-stone-600 font-quran text-center">
+                          <span className="text-[10px] font-sans font-bold text-stone-400 block mb-1">ما سُمِع</span>
+                          {currentAttempt.transcript}
                         </div>
                       )}
 
-                      {/* زر كشف */}
-                      {!currentAttempt && recordingState === 'idle' && (
-                        <div className="pt-4 text-center">
+                      <div className="flex flex-wrap justify-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={retryAttempt}
+                          className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> إعادة المحاولة
+                        </button>
+                        {currentIndex < questions.length - 1 && (
                           <button
                             type="button"
                             onClick={revealAyah}
@@ -1118,9 +1053,8 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     </div>
                   )}
 
-                  {/* زر الميكروفون الرئيسي */}
-                  {recordingState === 'idle' && !currentAttempt && (
-                    <div className="flex flex-col items-center gap-3">
+                  {!currentAttempt && recordingState === 'idle' && (
+                    <div className="pt-4 text-center">
                       <button
                         type="button"
                         onClick={startRecording}
@@ -1141,43 +1075,52 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       )}
                     </div>
                   )}
+                </div>
+              </div>
 
-                  {/* إدخال يدوي */}
-                  {showTextInput && !currentAttempt && (
-                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4 space-y-2">
-                      <textarea
-                        dir="rtl"
-                        value={textInput}
-                        onChange={(e) => setTextInput(e.target.value)}
-                        placeholder="اكتب تسميعك هنا..."
-                        className="w-full min-h-24 rounded-xl border border-stone-300 p-3 text-sm font-quran resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        lang="ar"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowTextInput(false);
-                            setTextInput('');
-                          }}
-                          className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
-                        >
-                          إلغاء
-                        </button>
-                        <button
-                          type="button"
-                          onClick={submitText}
-                          disabled={!textInput.trim()}
-                          className="flex-1 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white px-3 py-2 text-xs font-bold"
-                        >
-                          تحقق
-                        </button>
-                      </div>
-                    </div>
+              {error && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* زر الميكروفون */}
+              {recordingState === 'idle' && !currentAttempt && (
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-lg shadow-emerald-900/20 hover:shadow-xl active:scale-95 transition-all"
+                    aria-label={continuousMode ? 'ابدأ التسميع المتواصل' : 'ابدأ التسميع'}
+                  >
+                    <Mic className="w-11 h-11" />
+                  </button>
+                  <p className="text-xs font-semibold text-stone-600">
+                    {continuousMode ? 'اضغط لبدء التسميع المتواصل' : 'اضغط للتسميع'}
+                  </p>
+                  {!showTextInput && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTextInput(true)}
+                      className="inline-flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700"
+                    >
+                      <Keyboard className="w-3 h-3" /> أو اكتب تسميعك
+                    </button>
                   )}
 
-                  {/* التنقل */}
-                  <div className="flex items-center justify-between gap-2">
+              {/* إدخال يدوي */}
+              {showTextInput && !currentAttempt && recordingState === 'idle' && (
+                <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4 space-y-2">
+                  <textarea
+                    dir="rtl"
+                    value={textInput}
+                    onChange={e => setTextInput(e.target.value)}
+                    placeholder="اكتب تسميعك هنا..."
+                    className="w-full min-h-24 rounded-xl border border-stone-300 p-3 text-sm font-quran resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    lang="ar"
+                  />
+                  <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={goPrev}
@@ -1197,6 +1140,29 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                   </div>
                 </>
               )}
+
+              {/* تنقل (معطّل أثناء الاستماع المتواصل) */}
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  disabled={currentIndex === 0 || recordingState === 'listening'}
+                  className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-30"
+                >
+                  <ChevronRight className="w-4 h-4" /> السابق
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={
+                    (currentIndex === questions.length - 1 && recordingState !== 'listening') ||
+                    (recordingState === 'listening' && !continuousMode)
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-30"
+                >
+                  التالي <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
             </>
           )}
 
@@ -1204,15 +1170,11 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
           {stage === 'finished' && results && (
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 text-center space-y-4">
-                <div
-                  className={`inline-flex h-20 w-20 items-center justify-center rounded-full ${
-                    results.accuracy >= 80
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : results.accuracy >= 50
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-rose-100 text-rose-700'
-                  }`}
-                >
+                <div className={`inline-flex h-20 w-20 items-center justify-center rounded-full ${
+                  results.accuracy >= 80 ? 'bg-emerald-100 text-emerald-700'
+                  : results.accuracy >= 50 ? 'bg-amber-100 text-amber-700'
+                  : 'bg-rose-100 text-rose-700'
+                }`}>
                   <Trophy className="w-10 h-10" />
                 </div>
                 <div>
@@ -1227,6 +1189,11 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     {results.perfectAyahs} من {results.totalAyahs}{' '}
                     {testMode === 'next_ayah' ? 'إجابة صحيحة' : 'آية كاملة'}
                   </p>
+                  {activeChallenge && (
+                    <p className="text-xs text-emerald-700 font-semibold mt-2">
+                      ✓ تم تسجيل نتيجتك في التحدي
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3">
@@ -1254,7 +1221,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                 </div>
               </div>
 
-              {/* تفصيل الآيات */}
               <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 pb-1">
                   <BookOpen className="w-4 h-4 text-stone-400" /> تفصيل الآيات
@@ -1262,22 +1228,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                 <div className="space-y-1.5 max-h-80 overflow-y-auto">
                   {questions.map((q, i) => {
                     const a = attempts[i];
-                    const total = testMode === 'next_ayah' ? 1 : q.normalized.length;
-                    const matched = !a
-                      ? 0
-                      : testMode === 'next_ayah'
-                        ? Number(isCorrectAttempt(q, a))
-                        : a.matched.size;
-                    const perfect = !!a && isCorrectAttempt(q, a);
+                    const total = q.normalized.length;
+                    const matched = a?.matched.size ?? 0;
+                    const perfect = isPerfectAttempt(q, a);
                     return (
-                      <div
+                      <button
                         key={i}
-                        className={`flex items-center justify-between rounded-xl border px-3 py-2 ${
-                          !a
-                            ? 'border-stone-200 bg-stone-50/60'
-                            : perfect
-                              ? 'border-emerald-200 bg-emerald-50/60'
-                              : 'border-rose-200 bg-rose-50/60'
+                        type="button"
+                        onClick={() => {
+                          setCurrentIndex(i);
+                          setStage('running');
+                        }}
+                        aria-label={`مراجعة الآية ${q.ayah.numberInSurah}`}
+                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-right transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${
+                          !a ? 'border-stone-200 bg-stone-50/60'
+                            : perfect ? 'border-emerald-200 bg-emerald-50/60'
+                            : 'border-rose-200 bg-rose-50/60'
                         }`}
                       >
                         <span className="text-xs font-semibold text-stone-700">
@@ -1285,28 +1251,15 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                             ? `بعد الآية ${q.ayah.numberInSurah.toLocaleString('ar-EG')}`
                             : `الآية ${q.ayah.numberInSurah.toLocaleString('ar-EG')}`}
                         </span>
-                        <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-bold tabular-nums ${
-                            !a ? 'text-stone-400' : perfect ? 'text-emerald-700' : 'text-rose-700'
-                          }`}
-                        >
-                          {!a ? (
-                            'لم يُجب'
-                          ) : a.revealed ? (
-                            'مكشوفة'
-                          ) : perfect ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5" />{' '}
-                              {testMode === 'next_ayah' ? 'صحيح' : `${matched}/${total}`}
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3.5 h-3.5" />{' '}
-                              {testMode === 'next_ayah' ? 'تحتاج مراجعة' : `${matched}/${total}`}
-                            </>
-                          )}
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold tabular-nums ${
+                          !a ? 'text-stone-400' : perfect ? 'text-emerald-700' : 'text-rose-700'
+                        }`}>
+                          {!a ? 'لم تُسمَّع'
+                            : a.revealed ? 'مكشوفة'
+                            : perfect ? <><CheckCircle2 className="w-3.5 h-3.5" /> {matched}/{total}</>
+                            : <><XCircle className="w-3.5 h-3.5" /> {matched}/{total}</>}
                         </span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1316,7 +1269,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
         </div>
       </div>
 
-      {/* الشريط السفلي الثابت */}
+      {/* الشريط السفلي */}
       <div className="shrink-0 bg-white border-t border-stone-200 shadow-lg">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
           {stage === 'idle' && (
@@ -1334,10 +1287,13 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
             <>
               <span className="text-[11px] font-semibold text-stone-500">
                 {currentIndex + 1} / {questions.length}
+                {recordingState === 'listening' && continuousMode && (
+                  <span className="text-rose-600"> · متواصل</span>
+                )}
               </span>
               <button
                 type="button"
-                onClick={finishTest}
+                onClick={() => finishTest()}
                 className="inline-flex items-center justify-center gap-2 min-h-11 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm"
               >
                 <Flag className="w-4 h-4" /> إنهاء الاختبار
@@ -1350,11 +1306,13 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setQuestions(buildQuestions());
+                  setQuestions(questions);
                   setCurrentIndex(0);
                   setAttempts({});
                   setResults(null);
                   setStage('running');
+                  segmentTranscriptRef.current = '';
+                  interimTextRef.current = '';
                 }}
                 className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl border border-stone-300 bg-white text-stone-700 font-semibold text-sm hover:bg-stone-50"
               >

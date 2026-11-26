@@ -22,12 +22,13 @@ export const HAFS_RECITERS: Reciter[] = [
     riwaya: 'hafs',
   },
   {
+    // الـ id يُبقى كما هو حتى لا يفقد المستخدمون المفضّل المحفوظ، لكن الصوت
+    // أصبح من سلسلة المرتَّل: صوت الشيخ وحده بلا ترديد الطفل المرافق.
     id: 'minshawy_teacher',
     name: 'الشيخ محمد صديق المنشاوي',
-    description: 'المصحف المعلم بخشوع وتأثر',
-    folder: 'Minshawy_Teacher_128kbps',
+    description: 'المصحف المرتل بخشوع وتأثر — صوت الشيخ وحده',
+    folder: 'Minshawy_Murattal_128kbps',
     bitrate: '128kbps',
-    hasTeacherStyle: true,
     riwaya: 'hafs',
   },
   {
@@ -90,6 +91,19 @@ export const POPULAR_RECITERS: Reciter[] = [...HAFS_RECITERS, ...WARSH_RECITERS]
 
 export function getRecitersByRiwaya(riwaya: Riwaya): Reciter[] {
   return POPULAR_RECITERS.filter((r) => (r.riwaya ?? 'hafs') === riwaya);
+}
+
+/**
+ * Audio collections are numbered with the Hafs identity. A Warsh verse (for
+ * example 89:31) therefore has to be played with the Hafs verse that covers it
+ * (89:30). The mapping is generated with the text, never guessed at runtime.
+ */
+export function getAudioAyahNumber(
+  ayah: { numberInSurah: number; audioAyahNumber?: number },
+  riwaya: Riwaya = 'hafs',
+): number {
+  if (riwaya !== 'warsh') return ayah.numberInSurah;
+  return ayah.audioAyahNumber ?? ayah.numberInSurah;
 }
 
 /**

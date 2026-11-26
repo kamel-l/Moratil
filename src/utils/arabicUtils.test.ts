@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractWords,
   findSimilarAyahs,
+  formatTime,
+  levenshteinDistance,
   normalizeArabicText,
   removeOpeningBasmalah,
+  removeTashkeel,
+  toArabicDigits,
   wordSimilarity,
 } from './arabicUtils';
 import { recordVerseResult } from '../services/storageService';
@@ -108,5 +112,44 @@ describe('recordVerseResult', () => {
     expect(failure.recentMistakes).toHaveLength(1);
 
     vi.useRealTimers();
+  });
+});
+
+describe('Arabic text helpers', () => {
+  it('removes diacritics, tatweel and waslah but keeps the base letters', () => {
+    expect(removeTashkeel('الرَّحْمَٰنِ')).toBe('الرحمن');
+    expect(removeTashkeel('الـكِتَاب')).toBe('الكتاب');
+    expect(removeTashkeel('ٱلْأَرْض')).toBe('الأرض');
+    expect(normalizeArabicText('ٱلْأَرْض')).toBe('الارض');
+    expect(removeTashkeel('')).toBe('');
+  });
+
+  it('normalizes empty input and strips digit decorations', () => {
+    expect(normalizeArabicText('')).toBe('');
+    expect(normalizeArabicText('سُبْحَانَكَ ١٢٣')).toBe('سبحانك');
+  });
+
+  it('drops verse numbers and brackets when extracting words', () => {
+    const words = extractWords('بِسْمِ ٱللّٰهِ ﴿١﴾');
+    expect(words.map((word) => word.original)).toEqual(['بِسْمِ', 'ٱللّٰهِ']);
+    expect(extractWords('')).toEqual([]);
+  });
+
+  it('computes Levenshtein distance for inserts, deletes and identical strings', () => {
+    expect(levenshteinDistance('سبحان', 'سبحانه')).toBe(1);
+    expect(levenshteinDistance('الرحمن', 'الرحمن')).toBe(0);
+    expect(levenshteinDistance('', 'abc')).toBe(3);
+  });
+
+  it('formats elapsed time as MM:SS', () => {
+    expect(formatTime(0)).toBe('00:00');
+    expect(formatTime(65)).toBe('01:05');
+    expect(formatTime(125)).toBe('02:05');
+  });
+
+  it('converts western digits to Arabic-Indic digits', () => {
+    expect(toArabicDigits('12')).toBe('١٢');
+    expect(toArabicDigits(0)).toBe('٠');
+    expect(toArabicDigits('٩')).toBe('٩');
   });
 });

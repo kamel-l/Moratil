@@ -34,12 +34,6 @@ const STORAGE_KEYS = [
 const MAX_ACTIVITY_DAYS = 30;
 const REMINDER_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/**
- * Bounds of the SM-2 schedule. The ease factor grows by 0.1 on every flawless
- * review and the interval is multiplied by it, so without a ceiling a verse
- * reviewed many times ends up scheduled decades away (one production row had
- * 73 183 days). A verse should be seen at least once a year.
- */
 const MIN_EASE_FACTOR = 1.3;
 const MAX_EASE_FACTOR = 3;
 const MAX_INTERVAL_DAYS = 365;
@@ -167,7 +161,6 @@ export function setStorageUserId(userId: string | null): void {
   masteryCache = null;
   if (!userId || readRaw(STORAGE_OWNER_KEY)) return;
 
-  // Adopt pre-sync local progress once, for the first authenticated account on this device.
   for (const key of STORAGE_KEYS) {
     const existing = readRaw(key);
     if (existing !== null && readRaw(storageKey(key)) === null) {
@@ -316,9 +309,6 @@ export async function syncProgressFromCloud(
     throw activityResult.error;
   }
 
-  // The normalized snapshot is the only source of truth. The local device keeps
-  // the newest value so offline work is not lost, then everything is written
-  // back to the normalized tables by `uploadProgressSnapshot`.
   const mergedStats = mergeStats(localStats, normalized.stats);
   const mergedMastery = mergeMastery(getVerseMasteryMap(), normalized.mastery);
   const activityByDate = new Map(readLocalDailyActivity().map((day) => [day.date, day]));
@@ -338,9 +328,6 @@ export async function syncProgressFromCloud(
     saveVerseMasteryMap(mergedMastery);
     saveDailyActivity([...activityByDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
 
-    // Settings live in `profiles` now. Adopt the remote value only when this
-    // device never stored an explicit preference, so a fresh install inherits
-    // the account settings without overwriting local choices.
     if (normalized.profile) {
       if (readRaw(storageKey(DAILY_GOAL_KEY)) === null) {
         saveDailyVerseGoal(normalized.profile.dailyVerseGoal);
@@ -464,7 +451,7 @@ export function saveRevisionReminderSettings(settings: RevisionReminderSettings)
 }
 
 // ────────────────────────────────────────────────────────────
-// Riwaya (recitation) preference — local device preference, not synced
+// Riwaya
 // ────────────────────────────────────────────────────────────
 
 export function getRiwaya(): Riwaya {
@@ -497,8 +484,6 @@ function createDefaultStats(): UserStats {
     points: 0,
     level: 'مبتدئ',
     streakDays: 0,
-    // A brand-new account has not recited yet. Keeping the field empty lets the
-    // merge prefer a real remote date instead of "now".
     lastActiveDate: '',
     totalVersesRecited: 0,
     totalRecitedSeconds: 0,
@@ -600,9 +585,11 @@ function normalizeMasteryMap(value: unknown): Record<string, VerseMastery> {
   return map;
 }
 
-export function getVerseMasteryMap(): Record<string, VerseMastery> {
+export function getVerseMasteryMap(riwaya?: Riwaya): Record<string, VerseMastery> {
   const key = storageKey(MASTERY_KEY);
-  if (masteryCache?.storageKey === key) return masteryCache.value;
+  if (masteryCache?.storageKey === key) {
+    return riwaya ? filterMasteryByRiwaya(masteryCache.value, riwaya) : masteryCache.value;
+  }
 
   const stored = readJson(key);
   if (stored === undefined) {
@@ -613,7 +600,22 @@ export function getVerseMasteryMap(): Record<string, VerseMastery> {
 
   const map = normalizeMasteryMap(stored);
   masteryCache = { storageKey: key, value: map };
-  return map;
+  return riwaya ? filterMasteryByRiwaya(map, riwaya) : map;
+}
+
+function filterMasteryByRiwaya(
+  map: Record<string, VerseMastery>,
+  riwaya: Riwaya,
+): Record<string, VerseMastery> {
+  const filtered: Record<string, VerseMastery> = {};
+  for (const [key, entry] of Object.entries(map)) {
+    if ((entry.riwaya ?? 'hafs') === riwaya) filtered[key] = entry;
+  }
+  return filtered;
+}
+
+function masteryKey(surahNumber: number, ayahNumber: number, riwaya: Riwaya): string {
+  return riwaya === 'warsh' ? `warsh_${surahNumber}_${ayahNumber}` : `${surahNumber}_${ayahNumber}`;
 }
 
 export function saveVerseMasteryMap(map: Record<string, VerseMastery>): void {
@@ -623,25 +625,24 @@ export function saveVerseMasteryMap(map: Record<string, VerseMastery>): void {
   }
 }
 
-/**
- * Records a verse recitation in the spaced-repetition system (SM-2).
- */
 export function recordVerseResult(
   surahNumber: number,
   ayahNumber: number,
   isFlawless: boolean,
   mistakes: { expectedWord: string; recitedWord: string }[] = [],
+  riwaya: Riwaya = getRiwaya(),
 ): VerseMastery {
   const map = getVerseMasteryMap();
-  const key = `${surahNumber}_${ayahNumber}`;
+  const key = masteryKey(surahNumber, ayahNumber, riwaya);
   const now = new Date();
 
   const existing = map[key];
   const current: VerseMastery = existing
-    ? { ...existing, recentMistakes: [...existing.recentMistakes] }
+    ? { ...existing, recentMistakes: [...existing.recentMistakes], riwaya }
     : {
         surahNumber,
         ayahNumber,
+        riwaya,
         level: 'new',
         consecutiveSuccessCount: 0,
         mistakeCount: 0,
@@ -722,20 +723,20 @@ export function recordVerseResult(
   return current;
 }
 
-/**
- * Returns all verses that need review or reinforcement due to past mistakes.
- */
-export function getVersesNeedingReinforcement(): VerseMastery[] {
+export function getVersesNeedingReinforcement(riwaya: Riwaya = getRiwaya()): VerseMastery[] {
   const now = new Date();
-  return Object.values(getVerseMasteryMap()).filter(
+  return Object.values(getVerseMasteryMap(riwaya)).filter(
     (item) =>
       item.level === 'review_needed' || item.mistakeCount > 0 || new Date(item.nextReviewAt) <= now,
   );
 }
 
-export function getVersesDueForReview(now = new Date()): VerseMastery[] {
+export function getVersesDueForReview(
+  now = new Date(),
+  riwaya: Riwaya = getRiwaya(),
+): VerseMastery[] {
   const nowTime = now.getTime();
-  return Object.values(getVerseMasteryMap()).filter((item) => {
+  return Object.values(getVerseMasteryMap(riwaya)).filter((item) => {
     const nextReviewTime = Date.parse(item.nextReviewAt);
     return Number.isFinite(nextReviewTime) && nextReviewTime <= nowTime;
   });
@@ -810,6 +811,47 @@ export function getChallenges(): QuranChallenge[] {
 
 export function saveChallenges(challenges: QuranChallenge[]): void {
   writeJson(storageKey(CHALLENGES_KEY), challenges);
+}
+
+/** ✅ جديد — ينشئ أو يستبدل تحديًا مع طابع زمني */
+export function upsertChallenge(challenge: QuranChallenge): void {
+  const list = getChallenges();
+  const idx = list.findIndex((c) => c.id === challenge.id);
+  const enriched: QuranChallenge = {
+    ...challenge,
+    createdAt: challenge.createdAt ?? Date.now(),
+    attempts: challenge.attempts ?? 0,
+  };
+  if (idx >= 0) list[idx] = enriched;
+  else list.unshift(enriched);
+  saveChallenges(list);
+}
+
+/** ✅ جديد — يسجّل محاولة نتيجة تحدي ويعيد التحديث (أو null إن لم يوجد) */
+export function recordChallengeResult(
+  challengeId: string,
+  result: { score: number; perfectAyahs: number },
+): QuranChallenge | null {
+  const list = getChallenges();
+  const idx = list.findIndex((c) => c.id === challengeId);
+  if (idx < 0) return null;
+
+  const c = list[idx];
+  const safeScore = Math.max(0, Math.min(100, Math.round(result.score)));
+  const prevBest = c.bestScore ?? 0;
+  const passed = safeScore >= 60;
+
+  const updated: QuranChallenge = {
+    ...c,
+    bestScore: Math.max(prevBest, safeScore),
+    bestAyahsPerfect: Math.max(c.bestAyahsPerfect ?? 0, result.perfectAyahs),
+    attempts: (c.attempts ?? 0) + 1,
+    completed: c.completed || passed,
+    completedAt: c.completedAt ?? (passed ? Date.now() : null),
+  };
+  list[idx] = updated;
+  saveChallenges(list);
+  return updated;
 }
 
 export function resetCompetitionData(): void {
