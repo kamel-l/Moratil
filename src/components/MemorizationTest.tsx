@@ -35,6 +35,7 @@ interface MemorizationTestProps {
 }
 
 type Stage = 'idle' | 'running' | 'finished';
+type TestMode = 'recitation' | 'next_ayah';
 type HintMode = 'none' | 'first_word' | 'full';
 type RecordingState = 'idle' | 'listening' | 'processing';
 
@@ -361,17 +362,49 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
   };
 
   const revealAyah = () => {
-    setAttempts(prev => ({
+    setAttempts((prev) => ({
       ...prev,
       [currentIndex]: {
-        transcript: '', matched: new Set(), extraWords: [], accuracy: 0, revealed: true,
+        transcript: '',
+        matched: new Set(),
+        extraWords: [],
+        accuracy: 0,
+        revealed: true,
+        selectedAyahNumber: undefined,
       },
     }));
   };
 
+  const selectNextAyah = (selectedAyah: Ayah) => {
+    if (!currentQ?.nextAyah) return;
+    const isCorrect = selectedAyah.numberInSurah === currentQ.nextAyah.numberInSurah;
+    setAttempts((previous) => ({
+      ...previous,
+      [currentIndex]: {
+        transcript: '',
+        matched: isCorrect ? new Set(currentQ.normalized.map((_, index) => index)) : new Set(),
+        extraWords: [],
+        accuracy: isCorrect ? 100 : 0,
+        revealed: false,
+        selectedAyahNumber: selectedAyah.numberInSurah,
+      },
+    }));
+    setError(null);
+  };
+
+  const isCorrectAttempt = useCallback(
+    (question: Question, attempt: AyahAttempt): boolean =>
+      testMode === 'next_ayah'
+        ? !attempt.revealed && attempt.selectedAyahNumber === question.nextAyah?.numberInSurah
+        : !attempt.revealed && attempt.matched.size === question.normalized.length,
+    [testMode],
+  );
+
   const retryAttempt = () => {
-    setAttempts(prev => {
-      const copy = { ...prev }; delete copy[currentIndex]; return copy;
+    setAttempts((prev) => {
+      const copy = { ...prev };
+      delete copy[currentIndex];
+      return copy;
     });
     setError(null);
   };
@@ -505,20 +538,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
       {/* شريط علوي: تقدم + حالة الاستماع */}
       {stage === 'running' && currentQ && (
-        <div className="shrink-0 bg-white border-b border-stone-200">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
-            <div className="flex items-center justify-between text-xs font-semibold text-stone-600 mb-2">
+        <div className="shrink-0 border-b border-emerald-950/10 bg-white/90 backdrop-blur">
+          <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
+            <div className="mb-2 flex items-center justify-between text-xs font-semibold text-stone-600">
               <span className="inline-flex items-center gap-1.5">
-                <Target className="w-3.5 h-3.5 text-emerald-700" />
-                الآية {currentQ.ayah.numberInSurah}
+                <Target className="h-3.5 w-3.5 text-emerald-700" />
+                {testMode === 'next_ayah'
+                  ? `ما الآية التالية بعد الآية ${currentQ.ayah.numberInSurah}؟`
+                  : `الآية ${currentQ.ayah.numberInSurah}`}
               </span>
               <span className="tabular-nums">
                 {answeredCount}/{questions.length} · دقة {cumulative}%
               </span>
             </div>
-            <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden">
+            <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
               <div
-                className="h-full bg-gradient-to-l from-emerald-500 to-emerald-700 transition-all duration-300"
+                className="h-full bg-gradient-to-l from-amber-400 via-emerald-600 to-emerald-800 transition-all duration-300"
                 style={{ width: `${(answeredCount / Math.max(1, questions.length)) * 100}%` }}
               />
             </div>
@@ -535,18 +570,31 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 space-y-4">
-
+        <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
           {/* ════════ IDLE ════════ */}
           {stage === 'idle' && (
-            <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 space-y-5">
-              <div className="flex items-center gap-2.5">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
-                  <Mic className="w-5 h-5" />
-                </span>
-                <div>
-                  <h2 className="font-bold text-stone-900 leading-tight">اختبار الحفظ الصوتي</h2>
-                  <p className="text-[11px] text-stone-500">سمّع الآيات بصوتك ودع التطبيق يقيّم</p>
+            <div className="space-y-5">
+              <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-[radial-gradient(ellipse_at_85%_15%,rgba(16,185,129,0.28),transparent_38%),linear-gradient(125deg,#022c22_0%,#064e3b_58%,#073b32_100%)] p-5 text-white shadow-lg shadow-emerald-950/10 sm:p-7">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -left-12 -top-20 h-48 w-48 rounded-full border border-amber-100/10"
+                />
+                <div className="relative flex items-start gap-4">
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-100/20 bg-white/10 text-amber-200">
+                    <Trophy className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-200">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      تدريب تفاعلي
+                    </span>
+                    <h2 className="mt-1 font-serif text-2xl font-bold leading-tight sm:text-3xl">
+                      اختبر ثبات حفظك
+                    </h2>
+                    <p className="mt-2 max-w-xl text-xs leading-6 text-emerald-50/85 sm:text-sm">
+                      اختر طريقة تناسبك، حدّد مقطعًا من سورة {surah.name}، وابدأ التحدي.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -642,9 +690,39 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                           : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
                       }`}
                     >
-                      {label}
-                    </button>
-                  ))}
+                      <Mic className="h-5 w-5" />
+                    </span>
+                    <span className="block text-sm font-bold text-stone-900">التسميع الصوتي</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-stone-500">
+                      سمّع الآية بصوتك أو اكتبها، ثم راجع مواضع التطابق.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestMode('next_ayah')}
+                    aria-pressed={testMode === 'next_ayah'}
+                    className={`group rounded-2xl border p-4 text-right transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+                      testMode === 'next_ayah'
+                        ? 'border-emerald-700 bg-emerald-50/70 shadow-sm'
+                        : 'border-stone-200 bg-stone-50/60 hover:border-emerald-300 hover:bg-emerald-50/40'
+                    }`}
+                  >
+                    <span
+                      className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl ${
+                        testMode === 'next_ayah'
+                          ? 'bg-emerald-800 text-amber-200'
+                          : 'bg-white text-amber-700'
+                      }`}
+                    >
+                      <BookOpen className="h-5 w-5" />
+                    </span>
+                    <span className="block text-sm font-bold text-stone-900">
+                      ما الآية التالية؟
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-5 text-stone-500">
+                      اقرأ الآية واختر الآية التي تليها من بين الخيارات.
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -661,7 +739,69 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{isNativePlatform ? 'خدمة التعرف على الصوت غير متوفرة على هذا الجهاز. يمكنك كتابة تسميعك يدويًا.' : 'متصفحك لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك يدويًا.'}</span>
                 </div>
-              )}
+
+                {testMode === 'recitation' && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs font-semibold text-stone-700">المساعدة البصرية</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(
+                        [
+                          ['none', 'بدون', 'تسميع من الذاكرة'],
+                          ['first_word', 'الكلمة الأولى', 'تلميح لبداية الآية'],
+                          ['full', 'كاملة', 'وضع القراءة'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setHintMode(key)}
+                          className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition-colors ${
+                            hintMode === key
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                              : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-900/10 bg-emerald-50/60 p-3 text-xs text-emerald-950">
+                  <span className="inline-flex items-center gap-2 font-semibold">
+                    <BookOpen className="h-4 w-4 shrink-0 text-emerald-800" />
+                    الآيات {startAyah.toLocaleString('ar-EG')}–{endAyah.toLocaleString('ar-EG')}
+                  </span>
+                  <span className="text-emerald-900/75">
+                    {testQuestionCount.toLocaleString('ar-EG')} سؤال
+                    {testMode === 'next_ayah' && ' (بين كل آيتين متتاليتين)'}
+                    {testMode === 'recitation' && ` · ${RIWAYA_LABELS[effectiveRiwaya]}`}
+                  </span>
+                </div>
+                {testMode === 'next_ayah' && endAyah === startAyah && (
+                  <p className="mt-3 text-xs font-medium text-amber-800" role="status">
+                    اختر آيتين على الأقل لإنشاء سؤال عن الآية التالية.
+                  </p>
+                )}
+
+                {testMode === 'recitation' && !speechSupported && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      متصفحك لا يدعم التعرف على الصوت. استخدم Chrome أو Edge، أو اكتب تسميعك يدويًا.
+                    </span>
+                  </div>
+                )}
+                {testMode === 'recitation' && speechSupported && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 flex items-start gap-2">
+                    <Mic className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      عند الضغط على الميكروفون سيُطلب إذن التسجيل. تكلّم بوضوح بالعربية الفصحى.
+                    </span>
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
@@ -686,22 +826,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       </span>
                     )}
                   </div>
-                  {currentAttempt && (
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      currentAttempt.revealed
-                        ? 'bg-stone-100 text-stone-600'
-                        : currentAttempt.accuracy >= 85
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : currentAttempt.accuracy >= 50
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-rose-100 text-rose-800'
-                    }`}>
-                      {currentAttempt.revealed
-                        ? <><Eye className="w-3 h-3" /> مكشوفة</>
-                        : <><CheckCircle2 className="w-3 h-3" /> {currentAttempt.accuracy}%</>}
-                    </span>
-                  )}
-                </div>
 
                 <div className="px-4 py-6">
                   {/* الانتظار / التلميح */}
@@ -721,7 +845,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         </div>
                       )}
                     </div>
-                  )}
 
                   {/* 🔴 الاستماع */}
                   {recordingState === 'listening' && (
@@ -751,11 +874,40 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
 
                       <button
                         type="button"
-                        onClick={stopRecording}
-                        className="w-full inline-flex items-center justify-center gap-2 min-h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm"
+                        onClick={goPrev}
+                        disabled={currentIndex === 0}
+                        className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40"
                       >
                         <Square className="w-4 h-4" /> إيقاف
                       </button>
+                      <div className="flex items-center gap-2">
+                        {!currentAttempt && (
+                          <button
+                            type="button"
+                            onClick={revealAyah}
+                            className="inline-flex min-h-10 items-center gap-1 rounded-xl px-3 text-xs font-semibold text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700"
+                          >
+                            <Eye className="h-4 w-4" />
+                            اكشف الإجابة
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={currentAttempt ? retryAttempt : goNext}
+                          disabled={!currentAttempt && currentIndex === questions.length - 1}
+                          className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-emerald-800 px-4 text-xs font-bold text-white transition hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {currentAttempt ? (
+                            <>
+                              <RotateCcw className="h-4 w-4" /> أعد السؤال
+                            </>
+                          ) : (
+                            <>
+                              تخطَّ <ChevronLeft className="h-4 w-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -788,6 +940,30 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                           );
                         })}
                       </div>
+                      {currentAttempt && (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            currentAttempt.revealed
+                              ? 'bg-stone-100 text-stone-600'
+                              : currentAttempt.accuracy >= 85
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : currentAttempt.accuracy >= 50
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {currentAttempt.revealed ? (
+                            <>
+                              <Eye className="w-3 h-3" /> مكشوفة
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3 h-3" /> {currentAttempt.accuracy}%
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </div>
 
                       {!currentAttempt.revealed &&
                         currentAttempt.matched.size < currentQ.normalized.length && (
@@ -833,10 +1009,12 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         </div>
                       )}
 
-                      {currentAttempt.revealed && (
-                        <p className="text-center text-xs text-stone-500">
-                          تم كشف الآية — لن تُحتسب ضمن النتيجة
-                        </p>
+                      {/* المعالجة */}
+                      {recordingState === 'processing' && (
+                        <div className="flex flex-col items-center gap-3 py-4">
+                          <Loader2 className="w-8 h-8 text-emerald-700 animate-spin" />
+                          <p className="text-xs text-stone-500 font-semibold">جاري المقارنة...</p>
+                        </div>
                       )}
 
                       {currentAttempt.transcript && !currentAttempt.revealed && (
@@ -857,13 +1035,21 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         {currentIndex < questions.length - 1 && (
                           <button
                             type="button"
-                            onClick={goNext}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-bold"
+                            onClick={revealAyah}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400 hover:text-stone-700 underline-offset-2 hover:underline"
                           >
-                            الآية التالية <ChevronLeft className="w-4 h-4" />
+                            <Eye className="w-3 h-3" /> أظهر الآية (لن تُحتسب)
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* رسالة خطأ */}
+                  {error && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{error}</span>
                     </div>
                   )}
 
@@ -871,11 +1057,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                     <div className="pt-4 text-center">
                       <button
                         type="button"
-                        onClick={revealAyah}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400 hover:text-stone-700 underline-offset-2 hover:underline"
+                        onClick={startRecording}
+                        className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-lg shadow-emerald-900/20 hover:shadow-xl active:scale-95 transition-all"
+                        aria-label="ابدأ التسميع"
                       >
-                        <Eye className="w-3 h-3" /> أظهر الآية (لن تُحتسب)
+                        <Mic className="w-11 h-11" />
                       </button>
+                      <p className="text-xs font-semibold text-stone-600">اضغط للتسميع</p>
+                      {!showTextInput && (
+                        <button
+                          type="button"
+                          onClick={() => setShowTextInput(true)}
+                          className="inline-flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700"
+                        >
+                          <Keyboard className="w-3 h-3" /> أو اكتب تسميعك
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -911,8 +1108,6 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                       <Keyboard className="w-3 h-3" /> أو اكتب تسميعك
                     </button>
                   )}
-                </div>
-              )}
 
               {/* إدخال يدوي */}
               {showTextInput && !currentAttempt && recordingState === 'idle' && (
@@ -928,21 +1123,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => { setShowTextInput(false); setTextInput(''); }}
-                      className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
+                      onClick={goPrev}
+                      disabled={currentIndex === 0}
+                      className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-30"
                     >
-                      إلغاء
+                      <ChevronRight className="w-4 h-4" /> السابق
                     </button>
                     <button
                       type="button"
-                      onClick={submitText}
-                      disabled={!textInput.trim()}
-                      className="flex-1 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white px-3 py-2 text-xs font-bold"
+                      onClick={goNext}
+                      disabled={currentIndex === questions.length - 1}
+                      className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-30"
                     >
-                      تحقق
+                      التالي <ChevronLeft className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
+                </>
               )}
 
               {/* تنقل (معطّل أثناء الاستماع المتواصل) */}
@@ -983,12 +1179,15 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-stone-900">
-                    {results.accuracy >= 80 ? 'ما شاء الله — ممتاز'
-                      : results.accuracy >= 50 ? 'جيد — واصل المراجعة'
-                      : 'يحتاج مراجعة'}
+                    {results.accuracy >= 80
+                      ? 'ما شاء الله — ممتاز'
+                      : results.accuracy >= 50
+                        ? 'جيد — واصل المراجعة'
+                        : 'يحتاج مراجعة'}
                   </h2>
                   <p className="text-sm text-stone-500 mt-1">
-                    {results.perfectAyahs} من {results.totalAyahs} آية كاملة
+                    {results.perfectAyahs} من {results.totalAyahs}{' '}
+                    {testMode === 'next_ayah' ? 'إجابة صحيحة' : 'آية كاملة'}
                   </p>
                   {activeChallenge && (
                     <p className="text-xs text-emerald-700 font-semibold mt-2">
@@ -999,16 +1198,22 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3">
                     <p className="text-[10px] text-emerald-700 font-bold">الدقة</p>
-                    <p className="text-2xl font-bold text-emerald-900 tabular-nums">{results.accuracy}%</p>
+                    <p className="text-2xl font-bold text-emerald-900 tabular-nums">
+                      {results.accuracy}%
+                    </p>
                   </div>
                   <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
-                    <p className="text-[10px] text-amber-700 font-bold">كلمات</p>
+                    <p className="text-[10px] text-amber-700 font-bold">
+                      {testMode === 'next_ayah' ? 'إجابات صحيحة' : 'كلمات صحيحة'}
+                    </p>
                     <p className="text-2xl font-bold text-amber-900 tabular-nums">
                       {results.matchedWords}/{results.totalWords}
                     </p>
                   </div>
                   <div className="rounded-xl bg-stone-50 border border-stone-200 p-3">
-                    <p className="text-[10px] text-stone-700 font-bold">آيات</p>
+                    <p className="text-[10px] text-stone-700 font-bold">
+                      {testMode === 'next_ayah' ? 'أسئلة' : 'آيات'}
+                    </p>
                     <p className="text-2xl font-bold text-stone-900 tabular-nums">
                       {results.perfectAyahs}/{results.totalAyahs}
                     </p>
@@ -1042,7 +1247,9 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
                         }`}
                       >
                         <span className="text-xs font-semibold text-stone-700">
-                          الآية {q.ayah.numberInSurah}
+                          {testMode === 'next_ayah'
+                            ? `بعد الآية ${q.ayah.numberInSurah.toLocaleString('ar-EG')}`
+                            : `الآية ${q.ayah.numberInSurah.toLocaleString('ar-EG')}`}
                         </span>
                         <span className={`inline-flex items-center gap-1 text-[11px] font-bold tabular-nums ${
                           !a ? 'text-stone-400' : perfect ? 'text-emerald-700' : 'text-rose-700'
@@ -1069,7 +1276,7 @@ export const MemorizationTest: React.FC<MemorizationTestProps> = ({
             <button
               type="button"
               onClick={startTest}
-              disabled={endAyah < startAyah}
+              disabled={!canStartTest}
               className="w-full inline-flex items-center justify-center gap-2 min-h-11 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white font-bold text-sm"
             >
               <Play className="w-4 h-4" /> ابدأ الاختبار
